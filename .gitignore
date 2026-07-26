@@ -1,0 +1,30 @@
+# macOS
+.DS_Store
+
+# Python
+.venv*/
+__pycache__/
+*.pyc
+.cache/
+
+# Swift / Xcode
+.swiftpm-home/
+ios/SeeCal/.build/
+ios/SeeCalApp/SeeCalApp/Models/
+ios/SeeCalApp/.git.disabled/
+
+# Raw + derived datasets (regenerable via 01/02 scripts)
+Nutrition5K/
+dataset_clean/
+dataset_clean_sample/
+finetune_data_sample/
+
+# Training outputs / model weights
+*.safetensors
+adapters*/
+fused-model/
+runs/
+*.log
+
+# Session scratch
+.superpowers/

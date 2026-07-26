@@ -1,0 +1,9 @@
+{
+  "runtimeName": "mlx_swift",
+  "modelFamily": "qwen3.5-native-multimodal",
+  "medianLatencyMs": 4700,
+  "p95LatencyMs": 6900,
+  "maxMemoryMB": 4300,
+  "validSchemaRate": 1.0,
+  "meanAbsoluteErrorCalories": 64
+}

@@ -1,0 +1,9 @@
+{
+  "runtimeName": "mnn",
+  "modelFamily": "qwen3.5-native-multimodal",
+  "medianLatencyMs": 5300,
+  "p95LatencyMs": 7600,
+  "maxMemoryMB": 4800,
+  "validSchemaRate": 0.995,
+  "meanAbsoluteErrorCalories": 71
+}

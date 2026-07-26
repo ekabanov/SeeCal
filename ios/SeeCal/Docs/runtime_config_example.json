@@ -1,0 +1,9 @@
+{
+  "modelPath": "mlx-community/Qwen3.5-4B-MLX-4bit",
+  "adapterPath": "/models/adapters_v3",
+  "runtimePolicy": "mlx_only",
+  "maxOutputTokens": 512,
+  "temperature": 0.1,
+  "timeoutSeconds": 8,
+  "maxAttemptsPerRuntime": 1
+}

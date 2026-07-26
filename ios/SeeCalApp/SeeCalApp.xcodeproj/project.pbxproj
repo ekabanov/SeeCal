@@ -1,0 +1,510 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		BAAA4A9B2F5F49F400C3800E /* MLX in Frameworks */ = {isa = PBXBuildFile; productRef = BAAA4A9A2F5F49F400C3800E /* MLX */; };
+		BAAA4A9D2F5F49F400C3800E /* MLXFFT in Frameworks */ = {isa = PBXBuildFile; productRef = BAAA4A9C2F5F49F400C3800E /* MLXFFT */; };
+		BAAA4A9F2F5F49F400C3800E /* MLXFast in Frameworks */ = {isa = PBXBuildFile; productRef = BAAA4A9E2F5F49F400C3800E /* MLXFast */; };
+		BAAA4AA12F5F49F400C3800E /* MLXLinalg in Frameworks */ = {isa = PBXBuildFile; productRef = BAAA4AA02F5F49F400C3800E /* MLXLinalg */; };
+		BAAA4AA32F5F49F400C3800E /* MLXNN in Frameworks */ = {isa = PBXBuildFile; productRef = BAAA4AA22F5F49F400C3800E /* MLXNN */; };
+		BAAA4AA62F5F4A1E00C3800E /* SeeCalApp in Frameworks */ = {isa = PBXBuildFile; productRef = BAAA4AA52F5F4A1E00C3800E /* SeeCalApp */; };
+		BAAA4AA82F5F4A1E00C3800E /* SeeCalDomain in Frameworks */ = {isa = PBXBuildFile; productRef = BAAA4AA72F5F4A1E00C3800E /* SeeCalDomain */; };
+		BAAA4AAA2F5F4A1E00C3800E /* SeeCalInference in Frameworks */ = {isa = PBXBuildFile; productRef = BAAA4AA92F5F4A1E00C3800E /* SeeCalInference */; };
+		BAAA4AAC2F5F4A1E00C3800E /* SeeCalPersistence in Frameworks */ = {isa = PBXBuildFile; productRef = BAAA4AAB2F5F4A1E00C3800E /* SeeCalPersistence */; };
+		BAAA4AAF2F5F4A5000C3800E /* MLXEmbedders in Frameworks */ = {isa = PBXBuildFile; productRef = BAAA4AAE2F5F4A5000C3800E /* MLXEmbedders */; };
+		BAAA4AB12F5F4A5000C3800E /* MLXLLM in Frameworks */ = {isa = PBXBuildFile; productRef = BAAA4AB02F5F4A5000C3800E /* MLXLLM */; };
+		BAAA4AB32F5F4A5000C3800E /* MLXLMCommon in Frameworks */ = {isa = PBXBuildFile; productRef = BAAA4AB22F5F4A5000C3800E /* MLXLMCommon */; };
+		BAAA4AB52F5F4A5000C3800E /* MLXVLM in Frameworks */ = {isa = PBXBuildFile; productRef = BAAA4AB42F5F4A5000C3800E /* MLXVLM */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		BAAA4A8A2F5F49A500C3800E /* SeeCaliOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SeeCaliOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		BAD5F6672F64776000C72C07 /* SeeCaliOS-Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = "SeeCaliOS-Info.plist"; sourceTree = "<group>"; };
+		BAD5F6682F647E5200C72C07 /* SeeCaliOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SeeCaliOS.entitlements; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedBuildFileExceptionSet section */
+		BAD5F6662F6476D300C72C07 /* Exceptions for "SeeCalApp" folder in "SeeCaliOS" target */ = {
+			isa = PBXFileSystemSynchronizedBuildFileExceptionSet;
+			membershipExceptions = (
+				"Models/mlx-community/Qwen3.5-4B-MLX-4bit/chat_template.jinja",
+				"Models/mlx-community/Qwen3.5-4B-MLX-4bit/config.json",
+				"Models/mlx-community/Qwen3.5-4B-MLX-4bit/model.safetensors",
+				"Models/mlx-community/Qwen3.5-4B-MLX-4bit/model.safetensors.index.json",
+				"Models/mlx-community/Qwen3.5-4B-MLX-4bit/preprocessor_config.json",
+				"Models/mlx-community/Qwen3.5-4B-MLX-4bit/processor_config.json",
+				"Models/mlx-community/Qwen3.5-4B-MLX-4bit/tokenizer_config.json",
+				"Models/mlx-community/Qwen3.5-4B-MLX-4bit/tokenizer.json",
+				"Models/mlx-community/Qwen3.5-4B-MLX-4bit/video_preprocessor_config.json",
+				"Models/mlx-community/Qwen3.5-4B-MLX-4bit/vocab.json",
+			);
+			target = BAAA4A892F5F49A500C3800E /* SeeCaliOS */;
+		};
+/* End PBXFileSystemSynchronizedBuildFileExceptionSet section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		BAAA4A8C2F5F49A500C3800E /* SeeCalApp */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			exceptions = (
+				BAD5F6662F6476D300C72C07 /* Exceptions for "SeeCalApp" folder in "SeeCaliOS" target */,
+			);
+			path = SeeCalApp;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		BAAA4A872F5F49A500C3800E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BAAA4AB52F5F4A5000C3800E /* MLXVLM in Frameworks */,
+				BAAA4A9F2F5F49F400C3800E /* MLXFast in Frameworks */,
+				BAAA4AA12F5F49F400C3800E /* MLXLinalg in Frameworks */,
+				BAAA4A9B2F5F49F400C3800E /* MLX in Frameworks */,
+				BAAA4AAC2F5F4A1E00C3800E /* SeeCalPersistence in Frameworks */,
+				BAAA4AAF2F5F4A5000C3800E /* MLXEmbedders in Frameworks */,
+				BAAA4AAA2F5F4A1E00C3800E /* SeeCalInference in Frameworks */,
+				BAAA4AA32F5F49F400C3800E /* MLXNN in Frameworks */,
+				BAAA4A9D2F5F49F400C3800E /* MLXFFT in Frameworks */,
+				BAAA4AA82F5F4A1E00C3800E /* SeeCalDomain in Frameworks */,
+				BAAA4AB12F5F4A5000C3800E /* MLXLLM in Frameworks */,
+				BAAA4AB32F5F4A5000C3800E /* MLXLMCommon in Frameworks */,
+				BAAA4AA62F5F4A1E00C3800E /* SeeCalApp in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		BAAA4A812F5F49A500C3800E = {
+			isa = PBXGroup;
+			children = (
+				BAD5F6682F647E5200C72C07 /* SeeCaliOS.entitlements */,
+				BAD5F6672F64776000C72C07 /* SeeCaliOS-Info.plist */,
+				BAAA4A8C2F5F49A500C3800E /* SeeCalApp */,
+				BAAA4A8B2F5F49A500C3800E /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		BAAA4A8B2F5F49A500C3800E /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				BAAA4A8A2F5F49A500C3800E /* SeeCaliOS.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		BAAA4A892F5F49A500C3800E /* SeeCaliOS */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = BAAA4A952F5F49A600C3800E /* Build configuration list for PBXNativeTarget "SeeCaliOS" */;
+			buildPhases = (
+				BAAA4A862F5F49A500C3800E /* Sources */,
+				BAAA4A872F5F49A500C3800E /* Frameworks */,
+				BAAA4A882F5F49A500C3800E /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				BAAA4A8C2F5F49A500C3800E /* SeeCalApp */,
+			);
+			name = SeeCaliOS;
+			packageProductDependencies = (
+				BAAA4A9A2F5F49F400C3800E /* MLX */,
+				BAAA4A9C2F5F49F400C3800E /* MLXFFT */,
+				BAAA4A9E2F5F49F400C3800E /* MLXFast */,
+				BAAA4AA02F5F49F400C3800E /* MLXLinalg */,
+				BAAA4AA22F5F49F400C3800E /* MLXNN */,
+				BAAA4AA52F5F4A1E00C3800E /* SeeCalApp */,
+				BAAA4AA72F5F4A1E00C3800E /* SeeCalDomain */,
+				BAAA4AA92F5F4A1E00C3800E /* SeeCalInference */,
+				BAAA4AAB2F5F4A1E00C3800E /* SeeCalPersistence */,
+				BAAA4AAE2F5F4A5000C3800E /* MLXEmbedders */,
+				BAAA4AB02F5F4A5000C3800E /* MLXLLM */,
+				BAAA4AB22F5F4A5000C3800E /* MLXLMCommon */,
+				BAAA4AB42F5F4A5000C3800E /* MLXVLM */,
+			);
+			productName = SeeCalApp;
+			productReference = BAAA4A8A2F5F49A500C3800E /* SeeCaliOS.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		BAAA4A822F5F49A500C3800E /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2630;
+				LastUpgradeCheck = 2630;
+				TargetAttributes = {
+					BAAA4A892F5F49A500C3800E = {
+						CreatedOnToolsVersion = 26.3;
+					};
+				};
+			};
+			buildConfigurationList = BAAA4A852F5F49A500C3800E /* Build configuration list for PBXProject "SeeCalApp" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = BAAA4A812F5F49A500C3800E;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				BAAA4A992F5F49F400C3800E /* XCRemoteSwiftPackageReference "mlx-swift" */,
+				BAAA4AA42F5F4A1E00C3800E /* XCLocalSwiftPackageReference "../SeeCal" */,
+				BAAA4AAD2F5F4A5000C3800E /* XCRemoteSwiftPackageReference "mlx-swift-lm" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = BAAA4A8B2F5F49A500C3800E /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				BAAA4A892F5F49A500C3800E /* SeeCaliOS */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		BAAA4A882F5F49A500C3800E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		BAAA4A862F5F49A500C3800E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		BAAA4A932F5F49A600C3800E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = 6N57Z7GY37;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		BAAA4A942F5F49A600C3800E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = 6N57Z7GY37;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.2;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		BAAA4A962F5F49A600C3800E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = SeeCaliOS.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 6N57Z7GY37;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "SeeCaliOS-Info.plist";
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "SeeCal needs camera access to capture food photos.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "SeeCal needs photo library access to analyze food images.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ekabanov.SeeCalApp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		BAAA4A972F5F49A600C3800E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = SeeCaliOS.entitlements;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				DEVELOPMENT_TEAM = 6N57Z7GY37;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = "SeeCaliOS-Info.plist";
+				INFOPLIST_KEY_LSSupportsOpeningDocumentsInPlace = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "SeeCal needs camera access to capture food photos.";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "SeeCal needs photo library access to analyze food images.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ekabanov.SeeCalApp;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		BAAA4A852F5F49A500C3800E /* Build configuration list for PBXProject "SeeCalApp" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BAAA4A932F5F49A600C3800E /* Debug */,
+				BAAA4A942F5F49A600C3800E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		BAAA4A952F5F49A600C3800E /* Build configuration list for PBXNativeTarget "SeeCaliOS" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BAAA4A962F5F49A600C3800E /* Debug */,
+				BAAA4A972F5F49A600C3800E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCLocalSwiftPackageReference section */
+		BAAA4AA42F5F4A1E00C3800E /* XCLocalSwiftPackageReference "../SeeCal" */ = {
+			isa = XCLocalSwiftPackageReference;
+			relativePath = ../SeeCal;
+		};
+/* End XCLocalSwiftPackageReference section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		BAAA4A992F5F49F400C3800E /* XCRemoteSwiftPackageReference "mlx-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/ml-explore/mlx-swift";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 0.30.6;
+			};
+		};
+		BAAA4AAD2F5F4A5000C3800E /* XCRemoteSwiftPackageReference "mlx-swift-lm" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/ml-explore/mlx-swift-lm";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 2.30.6;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		BAAA4A9A2F5F49F400C3800E /* MLX */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BAAA4A992F5F49F400C3800E /* XCRemoteSwiftPackageReference "mlx-swift" */;
+			productName = MLX;
+		};
+		BAAA4A9C2F5F49F400C3800E /* MLXFFT */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BAAA4A992F5F49F400C3800E /* XCRemoteSwiftPackageReference "mlx-swift" */;
+			productName = MLXFFT;
+		};
+		BAAA4A9E2F5F49F400C3800E /* MLXFast */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BAAA4A992F5F49F400C3800E /* XCRemoteSwiftPackageReference "mlx-swift" */;
+			productName = MLXFast;
+		};
+		BAAA4AA02F5F49F400C3800E /* MLXLinalg */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BAAA4A992F5F49F400C3800E /* XCRemoteSwiftPackageReference "mlx-swift" */;
+			productName = MLXLinalg;
+		};
+		BAAA4AA22F5F49F400C3800E /* MLXNN */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BAAA4A992F5F49F400C3800E /* XCRemoteSwiftPackageReference "mlx-swift" */;
+			productName = MLXNN;
+		};
+		BAAA4AA52F5F4A1E00C3800E /* SeeCalApp */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SeeCalApp;
+		};
+		BAAA4AA72F5F4A1E00C3800E /* SeeCalDomain */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SeeCalDomain;
+		};
+		BAAA4AA92F5F4A1E00C3800E /* SeeCalInference */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SeeCalInference;
+		};
+		BAAA4AAB2F5F4A1E00C3800E /* SeeCalPersistence */ = {
+			isa = XCSwiftPackageProductDependency;
+			productName = SeeCalPersistence;
+		};
+		BAAA4AAE2F5F4A5000C3800E /* MLXEmbedders */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BAAA4AAD2F5F4A5000C3800E /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXEmbedders;
+		};
+		BAAA4AB02F5F4A5000C3800E /* MLXLLM */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BAAA4AAD2F5F4A5000C3800E /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXLLM;
+		};
+		BAAA4AB22F5F4A5000C3800E /* MLXLMCommon */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BAAA4AAD2F5F4A5000C3800E /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXLMCommon;
+		};
+		BAAA4AB42F5F4A5000C3800E /* MLXVLM */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = BAAA4AAD2F5F4A5000C3800E /* XCRemoteSwiftPackageReference "mlx-swift-lm" */;
+			productName = MLXVLM;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = BAAA4A822F5F49A500C3800E /* Project object */;
+}

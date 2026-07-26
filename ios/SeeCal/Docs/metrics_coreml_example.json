@@ -1,0 +1,9 @@
+{
+  "runtimeName": "coreml_spike",
+  "modelFamily": "qwen3.5-native-multimodal",
+  "medianLatencyMs": 6100,
+  "p95LatencyMs": 9000,
+  "maxMemoryMB": 5900,
+  "validSchemaRate": 0.98,
+  "meanAbsoluteErrorCalories": 86
+}

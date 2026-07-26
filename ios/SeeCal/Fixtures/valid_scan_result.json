@@ -1,0 +1,26 @@
+{
+  "total_calories": 512,
+  "protein_g": 35,
+  "fat_g": 18,
+  "carbs_g": 51,
+  "confidence": 0.91,
+  "items": [
+    {
+      "name": "salmon",
+      "estimated_grams": 140,
+      "calories": 290,
+      "protein_g": 30,
+      "fat_g": 17,
+      "carbs_g": 0
+    },
+    {
+      "name": "potatoes",
+      "estimated_grams": 180,
+      "calories": 222,
+      "protein_g": 5,
+      "fat_g": 1,
+      "carbs_g": 51
+    }
+  ],
+  "uncertainty_flags": ["portion_uncertain"]
+}
