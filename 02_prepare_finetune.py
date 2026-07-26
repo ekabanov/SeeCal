@@ -4,8 +4,9 @@
 Generates train / validation / test JSONL files for fine-tuning Qwen3.5
 with mlx-lm, using the cleaned image directory produced by 01_select_images.py.
 
-Each JSONL record uses the mlx-lm multimodal chat format:
+Each JSONL record uses the mlx-vlm multimodal chat format:
   {
+    "images": ["relative/path/to/image.jpg"],
     "messages": [
       {
         "role": "user",
@@ -16,10 +17,14 @@ Each JSONL record uses the mlx-lm multimodal chat format:
       },
       {
         "role": "assistant",
-        "content": "<structured nutrition response>"
+        "content": [{"type": "text", "text": "<structured nutrition response>"}]
       }
     ]
   }
+
+The top-level "images" field is what mlx-vlm 0.6.7 actually reads for pixel
+loading; the content-embedded image entry is kept too for readability/older
+tooling but is ignored by the 0.6.7 loader.
 
 Image paths are stored relative to the project root (the directory containing
 this script, i.e. SeeCal/), which is also the CWD from which training is
@@ -68,7 +73,13 @@ SYSTEM_PROMPT = (
 )
 
 
-def format_assistant_response(nutrition_row: dict, ingredients: list[dict]) -> str:
+MIN_ITEM_GRAMS = 0.05  # ingredient items below this round to 0.0g and violate
+                        # the iOS app's grams > 0 validation; drop them from targets.
+
+
+def format_assistant_response(
+    nutrition_row: dict, ingredients: list[dict]
+) -> tuple[str, int]:
     """
     Build the target assistant JSON string combining dish-level nutrition and
     per-ingredient breakdown.
@@ -77,12 +88,21 @@ def format_assistant_response(nutrition_row: dict, ingredients: list[dict]) -> s
     model learns to prioritise visually prominent components.
     Values are rounded to 1 decimal — the model learns scale, not spurious precision.
 
+    Items with grams < MIN_ITEM_GRAMS are dropped entirely (they round to 0.0g
+    and would violate the iOS app's grams > 0 validation). Dish-level totals
+    are NOT recomputed from the remaining items — they come straight from the
+    nutrition CSV and stay as-is.
+
     Schema matches the iOS FoodScanResult / ScanItem Codable structs.
+
+    Returns (json_str, num_items_dropped).
     """
+    kept_ingredients = [r for r in ingredients if float(r["grams"]) >= MIN_ITEM_GRAMS]
+    num_dropped = len(ingredients) - len(kept_ingredients)
     sorted_ingredients = sorted(
-        ingredients, key=lambda r: float(r["grams"]), reverse=True
+        kept_ingredients, key=lambda r: float(r["grams"]), reverse=True
     )
-    return json.dumps(
+    text = json.dumps(
         {
             "total_calories": round(float(nutrition_row["calories"]), 1),
             "protein_g":      round(float(nutrition_row["protein"]),  1),
@@ -102,6 +122,7 @@ def format_assistant_response(nutrition_row: dict, ingredients: list[dict]) -> s
         },
         separators=(", ", ": "),
     )
+    return text, num_dropped
 
 
 # ---------------------------------------------------------------------------
@@ -145,9 +166,16 @@ def build_record(image_path: str, assistant_text: str) -> dict:
     The {"type": "image"} entry causes the Qwen3.5 processor to insert real
     vision tokens (<|vision_start|><|image_pad|><|vision_end|>) during both
     training and inference, giving the LoRA adapters genuine visual grounding.
+
+    A top-level "images" field is also included, duplicating the same path.
+    mlx-vlm 0.6.7 reads images ONLY from this top-level field for pixel
+    loading — content-embedded image entries are ignored by the 0.6.7 loader
+    (they were required by the older 0.4.0 stack). Keeping the content entry
+    too makes the record self-describing and harmless under both stacks.
     """
     user_text = SYSTEM_PROMPT + "\n\n" + USER_PROMPT
     return {
+        "images": [image_path],
         "messages": [
             {
                 "role": "user",
@@ -201,8 +229,8 @@ def main():
     parser.add_argument(
         "--out-dir",
         type=Path,
-        default=Path(__file__).parent / "finetune_data",
-        help="Directory to write train/valid/test JSONL (default: ./finetune_data).",
+        default=Path(__file__).parent / "finetune_data_v2",
+        help="Directory to write train/valid/test JSONL (default: ./finetune_data_v2).",
     )
     parser.add_argument(
         "--seed", type=int, default=42, help="Random seed for reproducible splits."
@@ -220,8 +248,9 @@ def main():
         help=(
             "Optional absolute path prefix for image URIs. "
             "If set, images are stored as 'file://<image-root>/dish_id/img.jpg'. "
-            "If omitted (default), images are stored as relative paths from --out-dir, "
-            "e.g. '../dataset_clean/dish_id/img.jpg'."
+            "If omitted (default), images are stored as paths relative to the "
+            "project root (the directory containing this script), e.g. "
+            "'dataset_clean/dish_id/img.jpg' — NOT relative to --out-dir."
         ),
     )
     parser.add_argument(
@@ -311,6 +340,8 @@ def main():
     # ------------------------------------------------------------------
     IMAGE_EXTENSIONS = {".jpg", ".jpeg", ".png"}
     split_records: dict[str, list[dict]] = {"train": [], "valid": [], "test": []}
+    records_with_dropped_items = 0
+    total_items_dropped = 0
 
     for split_name, dish_ids in dish_splits.items():
         for dish_id in dish_ids:
@@ -323,10 +354,13 @@ def main():
             if not images:
                 continue
 
-            assistant_text = format_assistant_response(
+            assistant_text, num_dropped = format_assistant_response(
                 nutrition[dish_id],
                 ingredients.get(dish_id, []),
             )
+            if num_dropped:
+                records_with_dropped_items += len(images)
+                total_items_dropped += num_dropped * len(images)
 
             for img_path in images:
                 record = build_record(image_str(img_path), assistant_text)
@@ -334,6 +368,10 @@ def main():
 
     print(f"Image records  →  train: {len(split_records['train'])}  "
           f"valid: {len(split_records['valid'])}  test: {len(split_records['test'])}\n")
+    print(
+        f"Records with items dropped (grams < {MIN_ITEM_GRAMS}): "
+        f"{records_with_dropped_items} ({total_items_dropped} item instances total)\n"
+    )
 
     # ------------------------------------------------------------------
     # Write JSONL files
