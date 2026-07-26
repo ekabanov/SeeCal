@@ -134,7 +134,8 @@ def run_inference(model, processor, image_path: str, max_tokens: int = 512,
 
 
 def evaluate_test_set(model, processor, test_jsonl: Path, limit: int, data_dir: Path,
-                      config=None, thinking_budget: int = None):
+                      config=None, thinking_budget: int = None,
+                      max_tokens: int = 1536, out_json: Path = None):
     """Evaluate on test set and compute metrics."""
     records = []
     with test_jsonl.open() as f:
@@ -151,6 +152,7 @@ def evaluate_test_set(model, processor, test_jsonl: Path, limit: int, data_dir: 
     errors_fat = []
     errors_carbs = []
     parse_failures = 0
+    schema_failures = 0
 
     for i, rec in enumerate(records):
         # Get ground truth from assistant message
@@ -169,43 +171,64 @@ def evaluate_test_set(model, processor, test_jsonl: Path, limit: int, data_dir: 
 
         print(f"[{i+1}/{len(records)}] {Path(image_path).parent.name}/{Path(image_path).name}", end="")
 
-        pred = run_inference(model, processor, image_path, config=config,
-                             thinking_budget=thinking_budget)
+        pred = run_inference(model, processor, image_path, max_tokens=max_tokens,
+                             config=config, thinking_budget=thinking_budget)
 
         if pred.get("parse_error"):
             parse_failures += 1
             print(f" — PARSE ERROR")
             continue
 
-        cal_err = abs(pred["total_calories"] - gt["total_calories"])
-        prot_err = abs(pred["protein_g"] - gt["protein_g"])
-        fat_err = abs(pred["fat_g"] - gt["fat_g"])
-        carb_err = abs(pred["carbs_g"] - gt["carbs_g"])
+        # Valid JSON but wrong/missing/non-numeric keys must not kill the run:
+        # count separately so MAE is only over schema-conforming predictions.
+        try:
+            cal_err = abs(float(pred["total_calories"]) - float(gt["total_calories"]))
+            prot_err = abs(float(pred["protein_g"]) - float(gt["protein_g"]))
+            fat_err = abs(float(pred["fat_g"]) - float(gt["fat_g"]))
+            carb_err = abs(float(pred["carbs_g"]) - float(gt["carbs_g"]))
+        except (KeyError, TypeError, ValueError) as e:
+            schema_failures += 1
+            print(f" — SCHEMA ERROR ({e})")
+            continue
 
         errors_cal.append(cal_err)
         errors_protein.append(prot_err)
         errors_fat.append(fat_err)
         errors_carbs.append(carb_err)
 
-        print(f" — cal err: {cal_err:.1f} kcal  |  pred: {pred['total_calories']:.0f}  gt: {gt['total_calories']:.0f}")
+        print(f" — cal err: {cal_err:.1f} kcal  |  pred: {float(pred['total_calories']):.0f}  gt: {float(gt['total_calories']):.0f}")
 
     print(f"\n{'='*60}")
-    print(f"Results on {len(records)} samples ({parse_failures} parse failures):")
+    print(f"Results on {len(records)} samples "
+          f"({parse_failures} parse failures, {schema_failures} schema failures):")
     print(f"{'='*60}")
+
+    import statistics
 
     def stats(name, errs):
         if not errs:
             print(f"  {name}: no valid predictions")
-            return
-        import statistics
+            return None
         mean = statistics.mean(errs)
         median = statistics.median(errs)
         print(f"  {name}: MAE={mean:.1f}  median={median:.1f}  (n={len(errs)})")
+        return {"mae": mean, "median": median, "n": len(errs)}
 
-    stats("Calories (kcal)", errors_cal)
-    stats("Protein (g)", errors_protein)
-    stats("Fat (g)", errors_fat)
-    stats("Carbs (g)", errors_carbs)
+    summary = {
+        "samples": len(records),
+        "parse_failures": parse_failures,
+        "schema_failures": schema_failures,
+        "calories": stats("Calories (kcal)", errors_cal),
+        "protein_g": stats("Protein (g)", errors_protein),
+        "fat_g": stats("Fat (g)", errors_fat),
+        "carbs_g": stats("Carbs (g)", errors_carbs),
+        "errors_cal": errors_cal,
+    }
+    if out_json:
+        out_json.parent.mkdir(parents=True, exist_ok=True)
+        out_json.write_text(json.dumps(summary, indent=2))
+        print(f"\nSummary written to {out_json}")
+    return summary
 
 
 def main():
@@ -233,8 +256,13 @@ def main():
         help="Path to LoRA adapter directory. Omit when using a fused model.",
     )
     parser.add_argument(
-        "--max-tokens", type=int, default=512,
-        help="Max tokens to generate.",
+        "--max-tokens", type=int, default=1536,
+        help="Max tokens to generate (p90 ground-truth JSON is ~700 tokens; "
+             "512 truncates complex dishes and biases eval).",
+    )
+    parser.add_argument(
+        "--out-json", type=Path, default=None,
+        help="Write eval summary metrics to this JSON file (test-set mode).",
     )
     parser.add_argument(
         "--debug", action="store_true",
@@ -287,7 +315,8 @@ def main():
         # not relative to finetune_data/ — see 02_prepare_finetune.py image_str().
         data_dir = Path(__file__).parent.resolve()
         evaluate_test_set(model, processor, args.test_set, args.limit, data_dir, config,
-                          thinking_budget=args.thinking_budget)
+                          thinking_budget=args.thinking_budget,
+                          max_tokens=args.max_tokens, out_json=args.out_json)
 
 
 if __name__ == "__main__":
