@@ -78,10 +78,16 @@ bundling documented as a build-phase copy from a configurable MODELS_DIR — wei
 in git; increased-memory entitlement; iOS 17+, iPhone 15 Pro+ note), scripts/build.sh,
 scripts/test.sh (both suites: ml pytest + swift test + iOS-destination build with the
 FMT_CONSTEVAL flag), scripts/release-testflight.sh + release-appstore.sh (xcodebuild
-archive → exportArchive → App Store Connect API upload; all credentials via env vars
-ASC_KEY_ID/ASC_ISSUER_ID/ASC_KEY_PATH; --dry-run mode that stops before upload; clear
-error if signing not configured). ios/README.md updated. Scripts must be shellcheck-
-clean and runnable to the point of graceful failure without certs.
+archive → exportArchive → App Store Connect API upload; --dry-run mode that stops
+before upload; clear error if signing not configured). **Secrets handling (user
+directive)**: `scripts/release-setup.sh` interactively collects the App Store Connect
+credentials once (key ID, issuer ID, and the .p8 key file — prompted with no echo,
+never printed, never logged) and stores them in repo-local `.secrets/` (chmod 700,
+key file chmod 600). The release scripts source `.secrets/` automatically — no manual
+env setup ever. `.secrets/` goes into `.gitignore` FIRST, and release-setup.sh must
+verify gitignore coverage (`git check-ignore`) before writing anything, refusing to
+proceed otherwise. ios/README.md updated. Scripts must be shellcheck-clean and
+runnable to the point of graceful failure without certs.
 
 ### R6 (Sonnet): docs sweep + open-source hygiene
 Top-level README.md (project story, architecture diagram (mermaid), results table,
