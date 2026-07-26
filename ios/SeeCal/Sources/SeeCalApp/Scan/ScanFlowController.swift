@@ -106,6 +106,13 @@ public final class ScanFlowController: ObservableObject {
 
     public let captureService: CaptureService
 
+    /// Settings §8 Capture toggles, read live off the owning `AppViewModel` so
+    /// `CameraScreen` can gate its coaching overlays (level indicator, hint
+    /// text, depth affordances) without holding the whole view model itself.
+    public var capturePreferences: CapturePreferences {
+        viewModel.capturePreferences
+    }
+
     private let viewModel: AppViewModel
     private let inference: ScanInferenceRunning
     private let photoStore: CapturedPhotoStore

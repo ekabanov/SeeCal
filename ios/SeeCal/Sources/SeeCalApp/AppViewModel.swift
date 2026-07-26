@@ -17,6 +17,18 @@ public final class AppViewModel: ObservableObject {
     @Published public private(set) var isScanning = false
     @Published public private(set) var lastInferenceSeconds: Double?
     @Published public var lastError: String?
+    /// Settings §8 "Capture" toggles (LiDAR depth, capture coaching). Defaults
+    /// to both-on (`CapturePreferences.default`) until a persisted value loads
+    /// in `loadEntries()`, matching the prototype's initial switch state.
+    @Published public private(set) var capturePreferences: CapturePreferences = .default
+
+    /// Settings §8 "On-device model" card contents — resolved once at
+    /// construction from whatever `modelPath`/`adapterPath` the caller passes
+    /// (production: `ModelAssetResolver`'s resolved paths via `QwenRuntimeConfig`;
+    /// simulator/tests that don't pass a config: `ModelInfo.notBundled`). Fixed
+    /// for the process lifetime — the bundled model/adapter can't change
+    /// without a relaunch.
+    public let modelInfo: ModelInfo
 
     private let orchestrator: RuntimeOrchestrator
     private let store: MealLogStore
@@ -44,6 +56,30 @@ public final class AppViewModel: ObservableObject {
         ProgressAggregator.dailyPoints(
             from: mealEntries.map { AnyMealLogEntry(createdAt: $0.createdAt, totals: $0.totals) },
             days: 7
+        )
+    }
+
+    /// History screen chart dataset for one range (spec §6) — see
+    /// `ProgressAggregator.historyChartData` for the aggregation rules
+    /// (thresholds, weekly averages, axis-zone label density).
+    public func historyChartData(for range: HistoryRange) -> HistoryChartData {
+        ProgressAggregator.historyChartData(
+            from: mealEntries.map { AnyMealLogEntry(createdAt: $0.createdAt, totals: $0.totals) },
+            goalCalories: dailyTarget.calories,
+            range: range,
+            referenceDate: now()
+        )
+    }
+
+    /// History screen's "recent meals" card (spec §6): previous days' entries
+    /// (today's own meals stay on the Today screen only), most recent first,
+    /// capped at 10.
+    public var recentMealEntries: [MealLogEntry] {
+        Array(
+            mealEntries
+                .filter { !Calendar.current.isDateInToday($0.createdAt) }
+                .sorted { $0.createdAt > $1.createdAt }
+                .prefix(10)
         )
     }
 
@@ -80,6 +116,8 @@ public final class AppViewModel: ObservableObject {
         preferencesStore: UserPreferencesStore = InMemoryUserPreferencesStore(),
         weightStore: WeightLogStore = InMemoryWeightLogStore(),
         dailyTarget: DailyNutritionTarget = .defaultTarget,
+        modelPath: String? = nil,
+        adapterPath: String? = nil,
         now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.orchestrator = orchestrator
@@ -87,6 +125,7 @@ public final class AppViewModel: ObservableObject {
         self.preferencesStore = preferencesStore
         self.weightStore = weightStore
         self.dailyTarget = dailyTarget
+        self.modelInfo = ModelInfoResolver.resolve(modelPath: modelPath, adapterPath: adapterPath)
         self.now = now
     }
 
@@ -103,8 +142,22 @@ public final class AppViewModel: ObservableObject {
                 // never runs again.
                 dailyTarget = savedTarget
             }
+            if let savedCapturePreferences = try await preferencesStore.loadCapturePreferences() {
+                capturePreferences = savedCapturePreferences
+            }
             mealEntries = try await store.fetchAll()
             weightEntries = try await weightStore.fetchAll()
+        } catch {
+            lastError = error.localizedDescription
+        }
+    }
+
+    /// Settings §8 Capture toggles — write-through, so a redisplayed Settings
+    /// screen and the camera's coaching overlays stay in sync immediately.
+    public func updateCapturePreferences(_ preferences: CapturePreferences) async {
+        do {
+            capturePreferences = preferences
+            try await preferencesStore.saveCapturePreferences(preferences)
         } catch {
             lastError = error.localizedDescription
         }
@@ -313,5 +366,30 @@ public extension AppViewModel {
         guard let deltaKg, abs(deltaKg) >= 0.05 else { return nil }
         let sign = deltaKg < 0 ? "−" : "+"
         return sign + String(format: "%.1f", abs(deltaKg)) + " kg this month"
+    }
+}
+
+// MARK: - Settings display formatting (spec §8)
+
+public extension AppViewModel {
+    /// "Qwen3.5-4B · SeeCal adapter v6" when an adapter version was resolved;
+    /// "Qwen3.5-4B · base model (no adapter bundled)" when none was (no
+    /// adapter configured, or one is configured but its version can't be
+    /// determined) — never a fabricated version number (spec §8).
+    nonisolated static func modelCardTitle(info: ModelInfo) -> String {
+        if let version = info.adapterVersionLabel {
+            return "\(info.modelLabel) · SeeCal adapter \(version)"
+        }
+        return "\(info.modelLabel) · base model (no adapter bundled)"
+    }
+
+    /// Prototype copy verbatim for the parts that are fixed dataset/product
+    /// facts (fine-tune provenance, typical error, privacy line); only the
+    /// quantization figure is dynamic, read from the bundled model's own
+    /// config (`ModelInfoResolver`) — falls back to "Quantization not
+    /// bundled" rather than a hardcoded bit count when unavailable.
+    nonisolated static func modelCardSubtitle(info: ModelInfo) -> String {
+        let quantization = info.quantizationLabel ?? "Quantization not bundled"
+        return "\(quantization) · fine-tuned on 5,000 measured meals · typical calorie error ±12%.\nPhotos are processed locally and never uploaded."
     }
 }

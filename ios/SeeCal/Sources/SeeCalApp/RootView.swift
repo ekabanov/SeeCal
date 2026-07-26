@@ -150,11 +150,14 @@ public struct RootView: View {
                     onEditMeal: { entry in scanController.beginEdit(entry: entry) }
                 )
             case .history:
-                HistoryScreen(viewModel: viewModel)
+                HistoryScreen(
+                    viewModel: viewModel,
+                    onEditMeal: { entry in scanController.beginEdit(entry: entry) }
+                )
             case .profile:
                 ProfileScreen(viewModel: viewModel)
             case .settings:
-                SettingsScreen()
+                SettingsScreen(viewModel: viewModel)
             }
         }
     }

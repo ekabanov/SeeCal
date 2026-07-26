@@ -40,9 +40,11 @@ struct CameraScreen: View {
             } else {
                 controller.captureService.makePreviewView()
 
-                levelIndicator
+                if controller.capturePreferences.captureCoachingEnabled {
+                    levelIndicator
+                }
 
-                if controller.captureService.supportsDepthCapture {
+                if controller.capturePreferences.useLiDARDepth && controller.captureService.supportsDepthCapture {
                     depthAffordances
                 }
 
@@ -153,10 +155,14 @@ struct CameraScreen: View {
 
     private var bottomControls: some View {
         VStack(spacing: 14) {
-            Text(gravity.isLevel ? "Framed — capture when ready" : "Hold flat over the plate")
-                .font(.system(size: 13, weight: .semibold))
-                .foregroundStyle(Overlay.hintInk)
-                .shadow(color: .black.opacity(0.5), radius: 6, y: 1)
+            // Hint text is a coaching overlay (spec §5); the shutter directly
+            // below it is NEVER gated by this toggle — capture always works.
+            if controller.capturePreferences.captureCoachingEnabled {
+                Text(gravity.isLevel ? "Framed — capture when ready" : "Hold flat over the plate")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundStyle(Overlay.hintInk)
+                    .shadow(color: .black.opacity(0.5), radius: 6, y: 1)
+            }
 
             ShutterButton(reduceMotion: reduceMotion) {
                 Task { await controller.shutterTapped() }

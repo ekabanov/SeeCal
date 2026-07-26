@@ -109,74 +109,15 @@ public struct TodayScreen: View {
                         if index > 0 {
                             Divider().overlay(Theme.appLine)
                         }
-                        mealRow(entry)
+                        MealRowView(
+                            entry: entry,
+                            onTap: { onEditMeal(entry) },
+                            onDelete: { Task { await viewModel.deleteMeal(id: entry.id) } }
+                        )
                     }
                 }
             }
         }
-    }
-
-    /// One `.meal` row: 52pt rounded thumb, name, "HH:mm · N g protein", kcal
-    /// (bold + small "kcal" unit), chevron. Tapping opens the shared result/edit
-    /// sheet in edit mode (via `onEditMeal` → `ScanFlowController.beginEdit`).
-    private func mealRow(_ entry: MealLogEntry) -> some View {
-        Button {
-            onEditMeal(entry)
-        } label: {
-            HStack(spacing: 12) {
-                MealThumbnail(imagePath: entry.imagePath)
-
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(entry.name)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(Theme.appInk)
-                        .lineLimit(1)
-                    Text("\(Self.timeString(entry.createdAt)) · \(AppViewModel.roundedGrams(entry.totals.proteinGrams)) g protein")
-                        .font(.system(size: 12.5))
-                        .foregroundStyle(Theme.appInk2)
-                        .lineLimit(1)
-                        .truncationMode(.tail)
-                }
-
-                Spacer(minLength: 8)
-
-                (
-                    Text(AppViewModel.formattedKcal(entry.totals.calories))
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundColor(Theme.appInk)
-                    + Text(" kcal")
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundColor(Theme.appInk2)
-                )
-                .monospacedDigit()
-
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundStyle(Theme.appInk2.opacity(0.7))
-            }
-            .padding(.vertical, 12)
-            .padding(.horizontal, 14)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityLabel("Edit \(entry.name)")
-        .contextMenu {
-            // `.swipeActions` only has an effect inside a `List`; this VStack-based
-            // layout (matching the prototype's card-based meal rows, not a system
-            // List) uses a context menu instead so deleting an entry stays reachable.
-            Button("Delete", role: .destructive) {
-                Task { await viewModel.deleteMeal(id: entry.id) }
-            }
-        }
-    }
-
-    /// "HH:mm", zero-padded 24-hour clock (matches the prototype's
-    /// `String(now.getHours()).padStart(2,"0")+":"+...`).
-    private static func timeString(_ date: Date) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: "en_US_POSIX")
-        formatter.dateFormat = "HH:mm"
-        return formatter.string(from: date)
     }
 }
 
@@ -263,31 +204,5 @@ private struct MacroBarRow: View {
             .frame(height: 6)
         }
         .accessibilityElement(children: .combine)
-    }
-}
-
-// MARK: - Meal thumbnail (`.meal .thumb`)
-
-/// `.meal .thumb{width:52px;height:52px;border-radius:12px;background:var(--app-line)}`
-/// — loads the entry's photo from disk (`imagePath`); falls back to a neutral
-/// (`app-line`-colored) placeholder glyph when the file is missing or unreadable.
-private struct MealThumbnail: View {
-    let imagePath: String
-
-    var body: some View {
-        ZStack {
-            Theme.appLine
-            if let image = PlatformImageLoader.image(atPath: imagePath) {
-                image
-                    .resizable()
-                    .aspectRatio(contentMode: .fill)
-            } else {
-                Image(systemName: "photo")
-                    .font(.system(size: 18, weight: .regular))
-                    .foregroundStyle(Theme.appInk2)
-            }
-        }
-        .frame(width: 52, height: 52)
-        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
     }
 }

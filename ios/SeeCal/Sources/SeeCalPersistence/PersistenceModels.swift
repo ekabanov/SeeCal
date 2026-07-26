@@ -131,6 +131,8 @@ public protocol UserPreferencesStore: Sendable {
     func saveDailyTarget(_ target: DailyNutritionTarget) async throws
     func loadUserProfile() async throws -> UserProfile?
     func saveUserProfile(_ profile: UserProfile) async throws
+    func loadCapturePreferences() async throws -> CapturePreferences?
+    func saveCapturePreferences(_ preferences: CapturePreferences) async throws
 }
 
 public struct WeightEntry: Codable, Equatable, Sendable, Identifiable {
@@ -180,10 +182,16 @@ public actor InMemoryMealLogStore: MealLogStore {
 public actor InMemoryUserPreferencesStore: UserPreferencesStore {
     private var dailyTarget: DailyNutritionTarget?
     private var userProfile: UserProfile?
+    private var capturePreferences: CapturePreferences?
 
-    public init(initialDailyTarget: DailyNutritionTarget? = nil, initialUserProfile: UserProfile? = nil) {
+    public init(
+        initialDailyTarget: DailyNutritionTarget? = nil,
+        initialUserProfile: UserProfile? = nil,
+        initialCapturePreferences: CapturePreferences? = nil
+    ) {
         self.dailyTarget = initialDailyTarget
         self.userProfile = initialUserProfile
+        self.capturePreferences = initialCapturePreferences
     }
 
     public func loadDailyTarget() async throws -> DailyNutritionTarget? {
@@ -200,6 +208,14 @@ public actor InMemoryUserPreferencesStore: UserPreferencesStore {
 
     public func saveUserProfile(_ profile: UserProfile) async throws {
         userProfile = profile
+    }
+
+    public func loadCapturePreferences() async throws -> CapturePreferences? {
+        capturePreferences
+    }
+
+    public func saveCapturePreferences(_ preferences: CapturePreferences) async throws {
+        capturePreferences = preferences
     }
 }
 

@@ -1,4 +1,5 @@
 import SwiftUI
+import SeeCalPersistence
 
 // MARK: - Card
 
@@ -270,5 +271,108 @@ public struct PrivacyChip: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Theme.basilSoft)
         .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+    }
+}
+
+// MARK: - Meal row (`.meal`)
+
+/// `.meal .thumb{width:52px;height:52px;border-radius:12px;background:var(--app-line)}`
+/// — loads the entry's photo from disk (`imagePath`); falls back to a neutral
+/// (`app-line`-colored) placeholder glyph when the file is missing or unreadable.
+/// Shared by `TodayScreen`'s meal list and `HistoryScreen`'s recent-meals card
+/// (spec §6: "same row component as Today").
+public struct MealThumbnail: View {
+    private let imagePath: String
+
+    public init(imagePath: String) {
+        self.imagePath = imagePath
+    }
+
+    public var body: some View {
+        ZStack {
+            Theme.appLine
+            if let image = PlatformImageLoader.image(atPath: imagePath) {
+                image
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } else {
+                Image(systemName: "photo")
+                    .font(.system(size: 18, weight: .regular))
+                    .foregroundStyle(Theme.appInk2)
+            }
+        }
+        .frame(width: 52, height: 52)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+}
+
+/// One `.meal` row: 52pt rounded thumb, name, "HH:mm · N g protein", kcal
+/// (bold + small "kcal" unit), chevron. `onTap` opens the shared result/edit
+/// sheet; `onDelete` backs a context-menu "Delete" (the VStack-based card
+/// layout isn't a system `List`, so `.swipeActions` isn't available — see
+/// `TodayScreen`'s original comment on this row for why a context menu was
+/// chosen instead).
+public struct MealRowView: View {
+    private let entry: MealLogEntry
+    private let onTap: () -> Void
+    private let onDelete: () -> Void
+
+    public init(entry: MealLogEntry, onTap: @escaping () -> Void, onDelete: @escaping () -> Void) {
+        self.entry = entry
+        self.onTap = onTap
+        self.onDelete = onDelete
+    }
+
+    public var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 12) {
+                MealThumbnail(imagePath: entry.imagePath)
+
+                VStack(alignment: .leading, spacing: 1) {
+                    Text(entry.name)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Theme.appInk)
+                        .lineLimit(1)
+                    Text("\(Self.timeString(entry.createdAt)) · \(AppViewModel.roundedGrams(entry.totals.proteinGrams)) g protein")
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Theme.appInk2)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
+                }
+
+                Spacer(minLength: 8)
+
+                (
+                    Text(AppViewModel.formattedKcal(entry.totals.calories))
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(Theme.appInk)
+                    + Text(" kcal")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Theme.appInk2)
+                )
+                .monospacedDigit()
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.appInk2.opacity(0.7))
+            }
+            .padding(.vertical, 12)
+            .padding(.horizontal, 14)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("Edit \(entry.name)")
+        .contextMenu {
+            Button("Delete", role: .destructive, action: onDelete)
+        }
+    }
+
+    /// "HH:mm", zero-padded 24-hour clock (matches the prototype's
+    /// `String(now.getHours()).padStart(2,"0")+":"+...`).
+    private static func timeString(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "HH:mm"
+        return formatter.string(from: date)
     }
 }

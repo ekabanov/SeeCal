@@ -20,8 +20,61 @@ final class FileBackedUserPreferencesStoreTests: XCTestCase {
 
         let target = try await store.loadDailyTarget()
         let profile = try await store.loadUserProfile()
+        let capturePreferences = try await store.loadCapturePreferences()
         XCTAssertNil(target)
         XCTAssertNil(profile)
+        XCTAssertNil(capturePreferences)
+    }
+
+    // MARK: - Capture preferences (spec §8)
+
+    func testCapturePreferencesRoundTripAcrossFreshInstances() async throws {
+        let fileURL = tempDirectory.appendingPathComponent("preferences.json")
+        let preferences = CapturePreferences(useLiDARDepth: false, captureCoachingEnabled: true)
+
+        let store = FileBackedUserPreferencesStore(fileURL: fileURL)
+        try await store.saveCapturePreferences(preferences)
+
+        // Simulate a process restart with a fresh actor backed by the same file.
+        let reloaded = FileBackedUserPreferencesStore(fileURL: fileURL)
+        let loaded = try await reloaded.loadCapturePreferences()
+
+        XCTAssertEqual(loaded, preferences)
+    }
+
+    func testCapturePreferencesPersistIndependentlyOfProfileAndTarget() async throws {
+        let fileURL = tempDirectory.appendingPathComponent("preferences.json")
+        let store = FileBackedUserPreferencesStore(fileURL: fileURL)
+
+        try await store.saveDailyTarget(DailyNutritionTarget(calories: 2400, proteinGrams: 160, fatGrams: 75, carbsGrams: 230))
+        try await store.saveCapturePreferences(CapturePreferences(useLiDARDepth: true, captureCoachingEnabled: false))
+
+        let reloaded = FileBackedUserPreferencesStore(fileURL: fileURL)
+        let target = try await reloaded.loadDailyTarget()
+        let capturePreferences = try await reloaded.loadCapturePreferences()
+
+        XCTAssertEqual(target?.calories, 2400)
+        XCTAssertEqual(capturePreferences, CapturePreferences(useLiDARDepth: true, captureCoachingEnabled: false))
+    }
+
+    /// A preferences.json written before this key existed (P7) must still
+    /// load cleanly, with capture preferences absent (nil) rather than
+    /// throwing or corrupting the file.
+    func testPreExistingPreferencesFileWithoutCapturePreferencesKeyStillLoads() async throws {
+        let fileURL = tempDirectory.appendingPathComponent("preferences.json")
+        let legacyJSON = """
+        {
+          "dailyTarget": {"calories": 2200, "proteinGrams": 150, "fatGrams": 70, "carbsGrams": 220}
+        }
+        """
+        try Data(legacyJSON.utf8).write(to: fileURL)
+
+        let store = FileBackedUserPreferencesStore(fileURL: fileURL)
+        let target = try await store.loadDailyTarget()
+        let capturePreferences = try await store.loadCapturePreferences()
+
+        XCTAssertEqual(target?.calories, 2200)
+        XCTAssertNil(capturePreferences)
     }
 
     func testDailyTargetAndProfileRoundTripAcrossFreshInstances() async throws {

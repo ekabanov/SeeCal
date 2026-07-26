@@ -121,6 +121,7 @@ public actor FileBackedMealLogStore: MealLogStore {
 private struct PersistedPreferences: Codable {
     var dailyTarget: DailyNutritionTarget? = nil
     var userProfile: UserProfile? = nil
+    var capturePreferences: CapturePreferences? = nil
 }
 
 /// JSON-file backed `UserPreferencesStore`. Both the daily target and the user
@@ -149,6 +150,15 @@ public actor FileBackedUserPreferencesStore: UserPreferencesStore {
 
     public func saveUserProfile(_ profile: UserProfile) async throws {
         payload.userProfile = profile
+        try FileBackedStoreIO.write(payload, to: fileURL)
+    }
+
+    public func loadCapturePreferences() async throws -> CapturePreferences? {
+        payload.capturePreferences
+    }
+
+    public func saveCapturePreferences(_ preferences: CapturePreferences) async throws {
+        payload.capturePreferences = preferences
         try FileBackedStoreIO.write(payload, to: fileURL)
     }
 }
