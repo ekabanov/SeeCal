@@ -49,23 +49,68 @@ USER_PROMPT = (
 )
 
 
-def run_inference(model, processor, image_path: str, max_tokens: int = 512,
+def _load_prepare_module():
+    """Import 02_prepare_finetune.py (name starts with a digit, so importlib).
+
+    Single source of truth for the variant-B depth line format — inference must
+    render the byte-identical line the training data carries.
+    """
+    import importlib.util
+    path = Path(__file__).parent / "02_prepare_finetune.py"
+    spec = importlib.util.spec_from_file_location("prepare_finetune", path)
+    mod = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+def depth_augment(image_paths: list, prompt_text: str, depth_image: str,
+                  depth_mode: str) -> tuple:
+    """Ad-hoc single-photo depth support (--depth-mode + --depth-image).
+
+    text  — compute volume/height via depth_features, append the exact
+            variant-B line (rendered by 02_prepare_finetune.format_depth_line).
+    image — render the height image and append it as a second image.
+    """
+    import tempfile
+
+    import depth_features
+
+    depth = depth_features.load_depth(depth_image)
+    plane = depth_features.plane_fit(depth)
+    if depth_mode == "text":
+        stats = depth_features.food_stats(depth, plane)
+        prompt_text = prompt_text + _load_prepare_module().format_depth_line(stats)
+    else:  # image
+        height_img = depth_features.depth_to_height_image(depth, plane)
+        tmp = tempfile.NamedTemporaryFile(suffix=".png", delete=False)
+        height_img.save(tmp.name)
+        image_paths = list(image_paths) + [tmp.name]
+    return image_paths, prompt_text
+
+
+def run_inference(model, processor, image_paths, max_tokens: int = 512,
                   config=None, debug: bool = False,
-                  thinking_budget: int = None) -> dict:
-    """Run inference on a single image and return parsed JSON.
+                  thinking_budget: int = None, prompt_text: str = None) -> dict:
+    """Run inference on one record (1+ images) and return parsed JSON.
 
     Training format has NO system message — the system instruction is folded
     into the user message text (required to satisfy both pyarrow's uniform
     schema constraint and Qwen3.5's Jinja2 template constraint).  Inference
     must match: system instruction prepended to USER_PROMPT, no system block.
+
+    prompt_text is the full user text; when None, the v5 base prompt is used.
+    In test-set mode the caller passes the record's own text (which may carry
+    the variant-B depth line) so inference matches training by construction.
     """
-    # Combine system instruction + user question, matching training exactly.
-    combined_prompt = SYSTEM_PROMPT + "\n\n" + USER_PROMPT
+    if isinstance(image_paths, str):
+        image_paths = [image_paths]
+    if prompt_text is None:
+        prompt_text = SYSTEM_PROMPT + "\n\n" + USER_PROMPT
     prompt = mlx_apply_chat_template(
         processor,
         config,
-        combined_prompt,
-        num_images=1,
+        prompt_text,
+        num_images=len(image_paths),
     )
     # prompt is: <|im_start|>user\n...<|im_end|>\n<|im_start|>assistant\n<think>\n
 
@@ -95,7 +140,7 @@ def run_inference(model, processor, image_path: str, max_tokens: int = 512,
         model,
         processor,
         prompt=prompt,
-        image=image_path,
+        image=image_paths if len(image_paths) > 1 else image_paths[0],
         max_tokens=max_tokens,
         **generate_kwargs,
     )
@@ -164,15 +209,21 @@ def evaluate_test_set(model, processor, test_jsonl: Path, limit: int, data_dir: 
             asst_text = asst_content
         gt = json.loads(asst_text)
 
-        # Resolve image path: lives in user message content array
+        # Take images AND user text straight from the record: depth variants
+        # carry a second image (variant A) or an appended depth line (variant B),
+        # and using the record's own content guarantees train/infer parity.
         user_content = rec["messages"][0]["content"]
-        image_rel = next(item["image"] for item in user_content if item["type"] == "image")
-        image_path = str((data_dir / image_rel).resolve())
+        image_paths = [str((data_dir / item["image"]).resolve())
+                       for item in user_content if item["type"] == "image"]
+        prompt_text = next(item["text"] for item in user_content if item["type"] == "text")
 
-        print(f"[{i+1}/{len(records)}] {Path(image_path).parent.name}/{Path(image_path).name}", end="")
+        first = Path(image_paths[0])
+        print(f"[{i+1}/{len(records)}] {first.parent.name}/{first.name}"
+              f"{' (+depth img)' if len(image_paths) > 1 else ''}", end="")
 
-        pred = run_inference(model, processor, image_path, max_tokens=max_tokens,
-                             config=config, thinking_budget=thinking_budget)
+        pred = run_inference(model, processor, image_paths, max_tokens=max_tokens,
+                             config=config, thinking_budget=thinking_budget,
+                             prompt_text=prompt_text)
 
         if pred.get("parse_error"):
             parse_failures += 1
@@ -223,6 +274,9 @@ def evaluate_test_set(model, processor, test_jsonl: Path, limit: int, data_dir: 
         "fat_g": stats("Fat (g)", errors_fat),
         "carbs_g": stats("Carbs (g)", errors_carbs),
         "errors_cal": errors_cal,
+        "errors_protein": errors_protein,
+        "errors_fat": errors_fat,
+        "errors_carbs": errors_carbs,
     }
     if out_json:
         out_json.parent.mkdir(parents=True, exist_ok=True)
@@ -265,6 +319,18 @@ def main():
         help="Write eval summary metrics to this JSON file (test-set mode).",
     )
     parser.add_argument(
+        "--depth-mode", choices=["none", "text", "image"], default="none",
+        help="Ad-hoc single-photo depth support (requires --depth-image): "
+             "'text' appends the variant-B volume line, 'image' adds the height "
+             "image as a second input image. Test-set mode ignores this — depth "
+             "content comes from the records themselves.",
+    )
+    parser.add_argument(
+        "--depth-image", type=str, default=None,
+        help="Path to a raw depth PNG (Nutrition5K depth_raw.png format) for "
+             "--depth-mode. Only valid with --image.",
+    )
+    parser.add_argument(
         "--debug", action="store_true",
         help="Print the formatted prompt for debugging.",
     )
@@ -302,11 +368,19 @@ def main():
     print("Model loaded.\n")
 
     if args.image:
+        if args.depth_mode != "none" and not args.depth_image:
+            parser.error("--depth-mode requires --depth-image.")
         for img_path in args.image:
             print(f"Image: {img_path}")
-            result = run_inference(model, processor, img_path, args.max_tokens, config,
+            image_paths, prompt_text = [img_path], None
+            if args.depth_mode != "none":
+                base_text = SYSTEM_PROMPT + "\n\n" + USER_PROMPT
+                image_paths, prompt_text = depth_augment(
+                    image_paths, base_text, args.depth_image, args.depth_mode)
+            result = run_inference(model, processor, image_paths, args.max_tokens, config,
                                    debug=args.debug,
-                                   thinking_budget=args.thinking_budget)
+                                   thinking_budget=args.thinking_budget,
+                                   prompt_text=prompt_text)
             print(json.dumps(result, indent=2))
             print()
 
