@@ -83,6 +83,38 @@ local Nutrition5K data (200-dish samples); web claims cited at bottom.
 8. Height image: 255 = 120 mm, ~320x240 output.
 9. (D2) depth-line dropout 10–15%.
 
+## (f) D2 pinned spec (Fable design pass, 2026-07-26 — implementation-only for Sonnet)
+1. `01_select_images.py --with-depth`: copy `imagery/realsense_overhead/depth_raw.png`
+   → `dataset_clean/<dish>/depth_raw.png` for dishes already in dataset_clean;
+   idempotent (skip existing). No other behavior changes.
+2. `02_prepare_finetune.py --depth-mode {none,image,text}`, default `none` =
+   byte-identical to current output (verify: regenerate to a temp dir, diff against
+   finetune_data_v2/ — must be empty).
+3. Depth stats cache: `dataset_clean/depth_stats.csv` (dish_id, status, volume_ml,
+   max_height_mm, coverage_cm2). status ∈ {ok, missing, corrupt, fit_failed}. Computed
+   via depth_features.{load_depth,plane_fit,food_stats} on first --depth-mode≠none run;
+   reused if present; `--recompute-depth-stats` forces. Any exception or NaN → non-ok
+   status → the dish gets a plain (v5-format) record in both variants.
+4. Split identity: dish→{train,valid,test} assignment MUST equal finetune_data_v2's
+   (same seed/logic untouched). Assert by comparing dish-id sets per split against the
+   existing v2 JSONLs.
+5. **Feature dropout (both variants, train split only)**: drop depth for 12% of
+   depth-ok train dishes, selected deterministically from dish_id
+   (`md5(dish_id) % 100 < 12` — stable, variant-independent, so both variants drop the
+   same dishes). Dropped/valid/test handling: valid+test records always keep depth when
+   status=ok (no dropout outside train).
+6. Variant B (`text`, out-dir `finetune_data_v2d_txt/`): user text =
+   BASE + `"\n\nEstimated food volume from depth sensor: ~{volume_ml:.0f} ml (max height {max_height_mm:.0f} mm)."`
+   No coverage_cm2 in the line (keep iOS parity surface minimal). Line absent for
+   non-ok or dropped dishes.
+7. Variant A (`image`, out-dir `finetune_data_v2d_img/`): render
+   `depth_to_height_image` → `dataset_clean/<dish>/height.png` (grayscale L, 320x240).
+   Record: top-level `"images": [rgb, height]`; user content =
+   [image rgb, image height, text]. Non-ok/dropped → single-image v5-format record.
+8. Report: counts per split/variant, depth-ok coverage %, dropout count, 2 spot-check
+   records per variant, and run `00_smoke_test.py` on both variant train.jsonl files —
+   report pass/fail but do NOT modify the smoke test (two-image accounting is D3/Fable).
+
 Sources: Nutrition5k README + paper (arXiv 2103.03375) · DPF-Nutrition (arXiv
 2310.11702 / PMC10706621) · Sci Rep 2021 iPhone LiDAR accuracy · preclinical
 depth-food-volumetry (PMC7142738) · ARKit sceneDepth docs · dining-bowl modeling
