@@ -19,8 +19,14 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
+# MODEL_PATH convention (set by ml/download_model.sh; override for a local copy).
+# Maintainer's local override example (LM Studio's own cache of the same repo,
+# used during v4/v5/v6 development on this machine — NOT a portable default):
+#   MODEL_PATH=/Users/jevgenikabanov/.lmstudio/models/mlx-community/Qwen3.5-4B-MLX-4bit
+MODEL_PATH="${MODEL_PATH:-$HOME/models/Qwen3.5-4B-MLX-4bit}"
+
 .venv/bin/python -m mlx_vlm.lora \
-  --model-path /Users/jevgenikabanov/.lmstudio/models/mlx-community/Qwen3.5-4B-MLX-4bit \
+  --model-path "$MODEL_PATH" \
   --dataset finetune_data_v2 \
   --train-mode sft \
   --train-on-completions \
