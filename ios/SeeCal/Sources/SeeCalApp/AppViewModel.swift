@@ -19,7 +19,8 @@ public final class AppViewModel: ObservableObject {
     private let weightStore: WeightLogStore
 
     public var consumedToday: NutritionTotals {
-        NutritionTracker.totals(from: mealEntries.map(\.scanResult))
+        let todaysEntries = mealEntries.filter { Calendar.current.isDateInToday($0.createdAt) }
+        return NutritionTracker.totals(from: todaysEntries.map(\.scanResult))
     }
 
     public var remainingToday: NutritionRemaining {
@@ -93,6 +94,10 @@ public final class AppViewModel: ObservableObject {
     }
 
     public func addMealPhoto(imagePath: String, mealType: MealType, userHint: String?) async {
+        guard !isScanning else {
+            print("[SeeCal][AppViewModel] addMealPhoto ignored: scan already in progress")
+            return
+        }
         do {
             isScanning = true
             let started = Date()

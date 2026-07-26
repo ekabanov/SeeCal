@@ -46,6 +46,7 @@ public struct RootView: View {
                     ) {
                         Label("Choose Food Photo", systemImage: "camera.viewfinder")
                     }
+                    .disabled(viewModel.isScanning)
                     #else
                     Text("Photo picker is available in iOS app targets.")
                         .foregroundStyle(.secondary)
@@ -124,9 +125,13 @@ public struct RootView: View {
                         }
                     }
                     .onDelete { indexSet in
+                        // Capture the entries to delete up front: `deleteMeal` refetches
+                        // and re-sorts `mealEntries` after each mutation, so re-reading
+                        // `viewModel.mealEntries[index]` inside the loop would apply
+                        // stale indices to a shifted array.
+                        let entriesToDelete = indexSet.map { viewModel.mealEntries[$0] }
                         Task {
-                            for index in indexSet {
-                                let entry = viewModel.mealEntries[index]
+                            for entry in entriesToDelete {
                                 await viewModel.deleteMeal(id: entry.id)
                             }
                         }
@@ -295,7 +300,7 @@ public struct RootView: View {
             guard let data = try await item.loadTransferable(type: Data.self), !data.isEmpty else {
                 throw NSError(domain: "RootView", code: 1, userInfo: [NSLocalizedDescriptionKey: "Could not load selected image"])
             }
-            let imagePath = try persistTempImageData(data)
+            let imagePath = try persistMealImageData(data)
             let hint = userHint.trimmingCharacters(in: .whitespacesAndNewlines)
             await viewModel.addMealPhoto(
                 imagePath: imagePath,
@@ -308,8 +313,10 @@ public struct RootView: View {
         }
     }
 
-    private func persistTempImageData(_ data: Data) throws -> String {
-        let url = FileManager.default.temporaryDirectory.appendingPathComponent("seecal_\(UUID().uuidString).jpg")
+    private func persistMealImageData(_ data: Data) throws -> String {
+        let directory = FileBackedStoreLocations.imagesDirectory
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let url = directory.appendingPathComponent("seecal_\(UUID().uuidString).jpg")
         do {
             let processed = try InferenceImagePreprocessor.downsampledJPEG(from: data)
             print("[SeeCal][ImagePreprocess] bytes original=\(data.count) processed=\(processed.count)")
