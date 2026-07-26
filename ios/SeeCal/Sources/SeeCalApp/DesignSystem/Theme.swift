@@ -116,20 +116,4 @@ public extension View {
             .shadow(color: Theme.shadowColor.opacity(0.06), radius: 1, x: 0, y: 1)
             .shadow(color: Theme.shadowColor.opacity(0.05), radius: 12, x: 0, y: 8)
     }
-
-    /// `fullScreenCover` is unavailable on macOS (this package also targets macOS
-    /// v14 so `swift test` can run on the host Mac). The real app only ever ships
-    /// on iOS, where this always takes the `fullScreenCover` branch; the `.sheet`
-    /// fallback exists purely so the macOS host build compiles.
-    @ViewBuilder
-    func cameraFullScreenCover<Content: View>(
-        isPresented: Binding<Bool>,
-        @ViewBuilder content: @escaping () -> Content
-    ) -> some View {
-        #if os(iOS)
-        self.fullScreenCover(isPresented: isPresented, content: content)
-        #else
-        self.sheet(isPresented: isPresented, content: content)
-        #endif
-    }
 }

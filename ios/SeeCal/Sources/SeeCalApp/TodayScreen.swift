@@ -2,12 +2,6 @@ import SwiftUI
 import SeeCalDomain
 import SeeCalPersistence
 
-#if canImport(UIKit)
-import UIKit
-#elseif canImport(AppKit)
-import AppKit
-#endif
-
 /// Spec §4 / `#scr-today`: ring card (consumed/goal kcal + three macro bars),
 /// MEALS section, meal-row list, privacy chip. Matches the prototype's markup +
 /// CSS (`.pagehead`, `.card`, `.ringrow`, `.ring`, `.macros`/`.macro`/`.bar`,
@@ -15,66 +9,55 @@ import AppKit
 /// `docs/design/prototype/seecal-prototype.html` lines 582-616 and `renderToday()`
 /// (~line 1139) for the exact text formats this file reproduces.
 ///
-/// Deviation from the prototype: the pre-P4 "Add meal" card (meal-type picker +
-/// photo library picker, temporarily parked here since P3) is removed — it has no
-/// counterpart in `#scr-today`. Manually adding a meal photo is unavailable via UI
-/// until P6 wires the real camera → analyzing → result flow onto the tab bar's
-/// Scan FAB (`ScanStubScreen` is still just a stub); `AppViewModel.addMealPhoto`
-/// itself is untouched and already covered by `AppViewModelTrackingTests`.
+/// Meal rows open the shared result/edit sheet (spec §5) via `onEditMeal` —
+/// presentation is owned by `RootView`/`ScanFlowController`, so editing uses
+/// the exact same `MealResultSheet` component as a fresh scan.
 public struct TodayScreen: View {
     @ObservedObject private var viewModel: AppViewModel
+    private let onEditMeal: (MealLogEntry) -> Void
+    /// Bumped by the scan flow after "Log meal" so the list lands scrolled to
+    /// top ("switch Today scrolled to top", spec §5).
+    private let scrollToTopToken: UUID
 
-    @State private var editingEntry: MealLogEntry?
-    @State private var draft: MealEditDraft?
-
-    public init(viewModel: AppViewModel) {
+    public init(
+        viewModel: AppViewModel,
+        scrollToTopToken: UUID = UUID(),
+        onEditMeal: @escaping (MealLogEntry) -> Void = { _ in }
+    ) {
         self.viewModel = viewModel
+        self.scrollToTopToken = scrollToTopToken
+        self.onEditMeal = onEditMeal
     }
 
     public var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 12) {
-                PageHeader(subtitle: AppViewModel.dateSubtitle(for: Date()), title: "Today")
-                    .padding(.top, 8)
+        ScrollViewReader { proxy in
+            ScrollView {
+                VStack(alignment: .leading, spacing: 12) {
+                    PageHeader(subtitle: AppViewModel.dateSubtitle(for: Date()), title: "Today")
+                        .padding(.top, 8)
+                        .id(Self.topAnchorID)
 
-                Card {
-                    ringRow
-                }
-
-                SectionLabel("Meals")
-
-                mealsSection
-
-                PrivacyChip("Analyzed entirely on this iPhone.")
-            }
-            .padding(.horizontal, 18)
-            .padding(.bottom, Theme.screenBottomInset)
-        }
-        .background(Theme.appBg)
-        .sheet(item: $editingEntry) { entry in
-            if let draft {
-                MealEditSheet(
-                    draft: draft,
-                    onCancel: {
-                        editingEntry = nil
-                        self.draft = nil
-                    },
-                    onSave: { savedDraft in
-                        Task {
-                            do {
-                                let updatedEntry = try savedDraft.committedEntry()
-                                await viewModel.updateMeal(updatedEntry)
-                            } catch {
-                                viewModel.lastError = error.localizedDescription
-                            }
-                            editingEntry = nil
-                            self.draft = nil
-                        }
+                    Card {
+                        ringRow
                     }
-                )
+
+                    SectionLabel("Meals")
+
+                    mealsSection
+
+                    PrivacyChip("Analyzed entirely on this iPhone.")
+                }
+                .padding(.horizontal, 18)
+                .padding(.bottom, Theme.screenBottomInset)
+            }
+            .background(Theme.appBg)
+            .onChange(of: scrollToTopToken) {
+                proxy.scrollTo(Self.topAnchorID, anchor: .top)
             }
         }
     }
+
+    private static let topAnchorID = "today-top"
 
     // MARK: - Ring row (`.ringrow`)
 
@@ -134,12 +117,11 @@ public struct TodayScreen: View {
     }
 
     /// One `.meal` row: 52pt rounded thumb, name, "HH:mm · N g protein", kcal
-    /// (bold + small "kcal" unit), chevron. Tapping opens the existing edit-sheet
-    /// wiring (P6 will replace `MealEditSheet` with the real result/edit sheet).
+    /// (bold + small "kcal" unit), chevron. Tapping opens the shared result/edit
+    /// sheet in edit mode (via `onEditMeal` → `ScanFlowController.beginEdit`).
     private func mealRow(_ entry: MealLogEntry) -> some View {
         Button {
-            editingEntry = entry
-            draft = MealEditDraft(entry: entry)
+            onEditMeal(entry)
         } label: {
             HStack(spacing: 12) {
                 MealThumbnail(imagePath: entry.imagePath)
@@ -295,7 +277,7 @@ private struct MealThumbnail: View {
     var body: some View {
         ZStack {
             Theme.appLine
-            if let image = Self.loadImage(imagePath) {
+            if let image = PlatformImageLoader.image(atPath: imagePath) {
                 image
                     .resizable()
                     .aspectRatio(contentMode: .fill)
@@ -307,70 +289,5 @@ private struct MealThumbnail: View {
         }
         .frame(width: 52, height: 52)
         .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-    }
-
-    private static func loadImage(_ path: String) -> Image? {
-        guard !path.isEmpty, FileManager.default.fileExists(atPath: path) else { return nil }
-        #if canImport(UIKit)
-        guard let uiImage = UIImage(contentsOfFile: path) else { return nil }
-        return Image(uiImage: uiImage)
-        #elseif canImport(AppKit)
-        guard let nsImage = NSImage(contentsOfFile: path) else { return nil }
-        return Image(nsImage: nsImage)
-        #else
-        return nil
-        #endif
-    }
-}
-
-/// Placeholder layout only — the real result/edit sheet (photo, hero total, macro
-/// chips, per-item gram steppers per spec §5) lands in P6. This just exercises
-/// `MealEditDraft`'s per-item API well enough to keep the Today tab compiling and
-/// interactive.
-private struct MealEditSheet: View {
-    @State var draft: MealEditDraft
-    let onCancel: () -> Void
-    let onSave: (MealEditDraft) -> Void
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("Detected Items") {
-                    ForEach(draft.items) { item in
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text(item.name)
-                            GramStepper(
-                                valueText: String(Int(item.grams)),
-                                unitText: "g",
-                                decrementLabel: "Fewer grams",
-                                incrementLabel: "More grams",
-                                onDecrement: { draft.stepGrams(itemID: item.id, by: -MealItem.gramStep) },
-                                onIncrement: { draft.stepGrams(itemID: item.id, by: MealItem.gramStep) }
-                            )
-                            Text("\(Int(item.kcal)) kcal")
-                                .font(.caption)
-                                .foregroundStyle(Theme.appInk2)
-                        }
-                    }
-                }
-                Section("Totals") {
-                    let totals = draft.totals
-                    Text("\(Int(totals.calories)) kcal")
-                        .fontWeight(.semibold)
-                    Text("P \(Int(totals.proteinGrams))g • F \(Int(totals.fatGrams))g • C \(Int(totals.carbsGrams))g")
-                        .font(.caption)
-                        .foregroundStyle(Theme.appInk2)
-                }
-            }
-            .navigationTitle(draft.name)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel", action: onCancel)
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { onSave(draft) }
-                }
-            }
-        }
     }
 }

@@ -83,6 +83,23 @@ public struct MealEditDraft: Equatable, Sendable {
         existingEntry != nil
     }
 
+    /// The meal photo backing this draft, whichever mode it's in — the freshly
+    /// captured file for a new scan, the stored entry's photo in edit mode. Drives
+    /// the result sheet's header thumbnail (spec §5).
+    public var imagePath: String? {
+        existingEntry?.imagePath ?? newScanContext?.imagePath
+    }
+
+    /// Depth metadata (spec §5: "depth-assisted" chip + "~V ml · max height H mm"
+    /// meta line, rendered ONLY when present). `nil` until D5 lands, in both modes.
+    public var volumeMl: Double? {
+        existingEntry != nil ? existingEntry?.volumeMl : newScanContext?.volumeMl
+    }
+
+    public var maxHeightMm: Double? {
+        existingEntry != nil ? existingEntry?.maxHeightMm : newScanContext?.maxHeightMm
+    }
+
     /// Derived totals: the sum of every item's current (grams-scaled) nutrition —
     /// never stored independently (spec §2).
     public var totals: NutritionTotals {

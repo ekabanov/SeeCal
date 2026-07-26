@@ -20,6 +20,13 @@ public final class AppViewModel: ObservableObject {
 
     private let orchestrator: RuntimeOrchestrator
     private let store: MealLogStore
+
+    /// Seam for the scan flow (P6): `ScanFlowController` runs inference itself —
+    /// *without* persisting — so a result can be reviewed/adjusted in the result
+    /// sheet before an explicit "Log meal" (spec §5: "NOTHING is persisted without
+    /// explicit confirm"). Exposes the production orchestrator behind the
+    /// mockable `ScanInferenceRunning` protocol.
+    public var scanInferenceRunner: ScanInferenceRunning { orchestrator }
     private let preferencesStore: UserPreferencesStore
     private let weightStore: WeightLogStore
     private let now: @Sendable () -> Date
@@ -145,6 +152,19 @@ public final class AppViewModel: ObservableObject {
             isScanning = false
             lastError = error.localizedDescription
             print("[SeeCal][AppViewModel] addMealPhoto failed error=\(error.localizedDescription)")
+        }
+    }
+
+    /// Persists a brand-new, already-inferred entry — the scan flow's explicit
+    /// "Log meal" confirmation (spec §5). Unlike `addMealPhoto` (which infers and
+    /// persists in one step), this is pure persistence: inference already happened
+    /// in `ScanFlowController`, and the user has reviewed/adjusted the draft.
+    public func logMeal(_ entry: MealLogEntry) async {
+        do {
+            try await store.save(entry)
+            mealEntries = try await store.fetchAll()
+        } catch {
+            lastError = error.localizedDescription
         }
     }
 

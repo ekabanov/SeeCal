@@ -42,11 +42,21 @@ public enum AppTab: String, CaseIterable, Identifiable {
 public struct SeeCalTabBar: View {
     @Binding private var selection: AppTab
     private let onScanTapped: () -> Void
+    private let onTabTapped: ((AppTab) -> Void)?
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    public init(selection: Binding<AppTab>, onScanTapped: @escaping () -> Void) {
+    /// - Parameter onTabTapped: fires on EVERY ordinary-tab tap, including
+    ///   re-taps of the already-selected tab (which don't change `selection`).
+    ///   The scan flow uses this to leave the camera/analyzing surface on any
+    ///   tab tap, exactly like the prototype's tab handler (P6).
+    public init(
+        selection: Binding<AppTab>,
+        onScanTapped: @escaping () -> Void,
+        onTabTapped: ((AppTab) -> Void)? = nil
+    ) {
         self._selection = selection
         self.onScanTapped = onScanTapped
+        self.onTabTapped = onTabTapped
     }
 
     public var body: some View {
@@ -134,6 +144,7 @@ public struct SeeCalTabBar: View {
     }
 
     private func select(_ tab: AppTab) {
+        onTabTapped?(tab)
         guard tab != selection else { return }
         if reduceMotion {
             selection = tab
