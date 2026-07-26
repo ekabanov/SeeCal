@@ -1,7 +1,8 @@
 """
 tests/test_depth_features.py
 -----------------------------
-Tests for depth_features.py (Task D1 of docs/plans/2026-07-26-depth-plan.md).
+Tests for depth_features.py (Task D1 of docs/plans/2026-07-26-depth-plan.md, as
+corrected by docs/design/2026-07-26-depth-design-brief.md).
 
 Run with: .venv/bin/python -m pytest tests/test_depth_features.py -v
 """
@@ -18,6 +19,16 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import depth_features as df
 
 RIG_HEIGHT_M = 0.359  # Nutrition5k paper: RealSense rig height above the table.
+
+# Design brief section (e), checklist item 1: plate-mode depth must land in this
+# range (not the below-glass table's ~0.407 m, which a border-ring fit would find).
+PLATE_MODE_MIN_M = 0.33
+PLATE_MODE_MAX_M = 0.37
+
+# Design brief section (b).6 / (e) checklist item 6: the decisive test that
+# discriminates a correct reference plane from a correlated-but-biased one.
+DENSITY_MIN_G_PER_ML = 0.3
+DENSITY_MAX_G_PER_ML = 1.2
 
 # Five dishes known (from manual inspection, see module docstring in
 # depth_features.py) to have plausible, non-corrupted depth_raw.png files --
@@ -47,35 +58,38 @@ def good_depths():
 
 
 # ---------------------------------------------------------------------------
-# Unit-scale pin: this is the empirical decision from Task D1's step 1.
+# Support-surface reference pin: this is the empirical decision from the design
+# brief's section (b)/(e) -- central-disk histogram mode, NOT a border-ring fit.
 # ---------------------------------------------------------------------------
 
-def test_border_depth_matches_rig_height(good_depths):
+def test_plate_mode_depth_matches_rig_height(good_depths):
     """
-    Pins the DEPTH_SCALE_M_PER_UNIT decision (raw units = 1e-4 m). The outer
-    border ring of an overhead depth map is background table, so its median
-    depth (in the chosen scale) should be close to the rig height (0.359 m,
-    per the Nutrition5k paper).
-    """
-    border_medians = []
-    for dish_id, depth in good_depths.items():
-        h, w = depth.shape
-        border = max(1, int(df.BORDER_FRAC * min(h, w)))
-        border_mask = np.zeros((h, w), dtype=bool)
-        border_mask[:border, :] = True
-        border_mask[-border:, :] = True
-        border_mask[:, :border] = True
-        border_mask[:, -border:] = True
-        valid = border_mask & ~np.isnan(depth)
-        assert valid.sum() > 0, f"{dish_id}: no valid border pixels"
-        median_m = float(np.median(depth[valid]))
-        border_medians.append(median_m)
+    Pins the support-surface reference used by plane_fit(): the central-disk
+    histogram mode (restricted to z in [0.30, 0.398] m) must land on the true
+    capture plane, in [0.33, 0.37] m -- NOT the below-glass table (~0.407 m) that
+    a border-ring plane fit finds (see the GLASS PLATFORM TRAP module docstring).
 
-    overall_median = float(np.median(border_medians))
-    assert overall_median == pytest.approx(RIG_HEIGHT_M, abs=0.05), (
-        f"median border depth {overall_median:.4f} m is not within 0.05 m of "
-        f"rig height {RIG_HEIGHT_M} m -- wrong unit scale? "
-        f"per-dish medians: {border_medians}"
+    Checklist item 1 (design brief section (e)): asserted per-dish over >= 5
+    dishes, replacing the old border-based, +/-0.05 m tolerance check.
+    """
+    assert len(good_depths) >= 5
+    plate_depths = []
+    for dish_id, depth in good_depths.items():
+        normal, d, _inlier_mask = df.plane_fit(depth)
+        # normal is unit-length and, for the near-flat Nutrition5k table, points
+        # along -Z, so |normal . 0 + d| reduces to the plane's Z depth (see
+        # plane_fit's sign-convention docstring).
+        plate_depth = abs(float(normal @ np.zeros(3) + d))
+        plate_depths.append(plate_depth)
+        assert PLATE_MODE_MIN_M <= plate_depth <= PLATE_MODE_MAX_M, (
+            f"{dish_id}: plate-mode depth {plate_depth:.4f} m outside "
+            f"[{PLATE_MODE_MIN_M}, {PLATE_MODE_MAX_M}] m"
+        )
+
+    overall_median = float(np.median(plate_depths))
+    assert overall_median == pytest.approx(RIG_HEIGHT_M, abs=0.03), (
+        f"median plate-mode depth {overall_median:.4f} m is not close to rig "
+        f"height {RIG_HEIGHT_M} m -- per-dish depths: {plate_depths}"
     )
 
 
@@ -90,13 +104,41 @@ def test_load_depth_shape_and_dtype(good_depths):
 
 
 def test_load_depth_invalid_pixels_are_nan(good_depths):
+    """raw == 0 (no reading) maps to NaN; ordinary in-range readings do not."""
     depth = next(iter(good_depths.values()))
     raw = np.array(Image.open(_depth_path(next(iter(good_depths)))))
     zero_mask = raw == 0
     if zero_mask.any():
         assert np.all(np.isnan(depth[zero_mask]))
-    nonzero_mask = raw != 0
-    assert np.all(~np.isnan(depth[nonzero_mask]))
+    in_range_mask = (raw != 0) & (raw <= df.RAW_INVALID_MAX)
+    assert np.all(~np.isnan(depth[in_range_mask]))
+
+
+def test_load_depth_speckle_cut_is_nan(good_depths):
+    """raw > RAW_INVALID_MAX (4200, speckle noise) also maps to NaN."""
+    found_any_speckle = False
+    for dish_id, depth in good_depths.items():
+        raw = np.array(Image.open(_depth_path(dish_id)))
+        speckle_mask = raw > df.RAW_INVALID_MAX
+        if speckle_mask.any():
+            found_any_speckle = True
+            assert np.all(np.isnan(depth[speckle_mask])), dish_id
+    # Per the design brief, 98.5% of dishes carry some >4200 speckle, so this
+    # should be true for at least one of the fixture dishes.
+    assert found_any_speckle, "expected at least one fixture dish with >4200 speckle"
+
+
+def test_load_depth_invalid_cut_synthetic(tmp_path):
+    """Exact boundary behavior of the raw==0 OR raw>4200 invalid cut."""
+    raw = np.array([[0, 100, 4200, 4201, 65535]], dtype=np.uint16)
+    path = tmp_path / "synthetic_depth.png"
+    Image.fromarray(raw).save(path)
+    depth = df.load_depth(path)
+    assert np.isnan(depth[0, 0]), "raw == 0 must be invalid"
+    assert not np.isnan(depth[0, 1]), "ordinary in-range raw must be valid"
+    assert not np.isnan(depth[0, 2]), "raw == 4200 (the boundary) must be valid"
+    assert np.isnan(depth[0, 3]), "raw == 4201 (just past the boundary) must be invalid"
+    assert np.isnan(depth[0, 4]), "raw == 65535 (speckle) must be invalid"
 
 
 def test_load_depth_plausible_range(good_depths):
@@ -129,32 +171,30 @@ def test_plane_fit_normal_is_unit_length(good_depths):
     assert np.linalg.norm(normal) == pytest.approx(1.0, abs=1e-6)
 
 
+def test_plane_fit_inliers_are_within_central_disk(good_depths):
+    """The robust-fit inlier set must come entirely from the central disk."""
+    depth = next(iter(good_depths.values()))
+    _normal, _d, inlier_mask = df.plane_fit(depth)
+    central = df._central_disk_mask(depth.shape)
+    assert np.all(central[inlier_mask])
+
+
 def test_plane_fit_inliers_are_near_zero_height(good_depths):
     """
-    Points RANSAC calls plane inliers should sit close to the fitted plane. Some
-    slack beyond RANSAC_INLIER_THRESH_M is expected: the returned plane is a
-    least-squares refit over the RANSAC-selected inlier set, which shifts the
-    plane slightly from the exact 3-point model used during the RANSAC search
-    itself, so a handful of original inliers end up a bit further from the
-    final (refined) plane.
+    Points plane_fit calls inliers (within PLANE_FIT_INLIER_THRESH_M of the
+    histogram mode) should sit close to the final fitted plane. Some slack beyond
+    PLANE_FIT_INLIER_THRESH_M is expected: the returned plane is a least-squares
+    refit over the near-mode inlier set, which shifts the plane slightly from the
+    per-pixel mode-distance criterion used to select those inliers, so a handful
+    end up a bit further from the final (refined) plane.
     """
     depth = next(iter(good_depths.values()))
     normal, d, inlier_mask = df.plane_fit(depth)
     rows, cols = np.nonzero(inlier_mask)
     z = depth[rows, cols]
-    h, w = depth.shape
     x, y, zc = df._unproject(rows, cols, z, depth.shape)
     height = normal[0] * x + normal[1] * y + normal[2] * zc + d
-    assert np.max(np.abs(height)) < 2 * df.RANSAC_INLIER_THRESH_M
-
-
-def test_plane_fit_table_is_roughly_rig_height_away(good_depths):
-    """The fitted plane's distance from the camera origin should be ~ rig height."""
-    for dish_id, depth in good_depths.items():
-        normal, d, _inlier_mask = df.plane_fit(depth)
-        # Signed distance from the camera origin (0,0,0) to the plane.
-        dist_from_origin = abs(normal @ np.zeros(3) + d)
-        assert dist_from_origin == pytest.approx(RIG_HEIGHT_M, abs=0.1), dish_id
+    assert np.max(np.abs(height)) < 2 * df.PLANE_FIT_INLIER_THRESH_M
 
 
 # ---------------------------------------------------------------------------
@@ -176,10 +216,35 @@ def test_food_stats_plausible_magnitudes(good_depths):
     for dish_id, depth in good_depths.items():
         plane = df.plane_fit(depth)
         stats = df.food_stats(depth, plane)
-        # A dinner-plate-sized meal shouldn't exceed a few liters or ~10cm tall.
+        # A dinner-plate-sized meal shouldn't exceed a few liters or ~15cm tall
+        # (food_stats caps the food mask at HEIGHT_FOOD_MAX_M = 150mm).
         assert stats["volume_ml"] < 5000.0, dish_id
-        assert stats["max_height_mm"] < 200.0, dish_id
+        assert stats["max_height_mm"] <= 150.0, dish_id
         assert stats["coverage_cm2"] < 2000.0, dish_id
+
+
+def test_food_stats_max_height_is_not_raw_max():
+    """
+    max_height_mm must be the p99 of food-pixel heights, not the true max --
+    a single speckle outlier pixel should not move it (design brief checklist
+    item 7).
+    """
+    for dish_id in GOOD_DISH_IDS:
+        depth = df.load_depth(_depth_path(dish_id))
+        plane = df.plane_fit(depth)
+        rows, cols, z, height = df._height_above_plane(depth, plane)
+        central = df._central_disk_mask(depth.shape)[rows, cols]
+        food_mask = central & (height > df.HEIGHT_NOISE_FLOOR_M) & (height <= df.HEIGHT_FOOD_MAX_M)
+        food_heights_mm = height[food_mask] * 1000.0
+        if food_heights_mm.size == 0:
+            continue
+        expected_p99 = float(np.percentile(food_heights_mm, df.MAX_HEIGHT_PERCENTILE))
+        stats = df.food_stats(depth, plane)
+        assert stats["max_height_mm"] == pytest.approx(expected_p99, abs=1e-6)
+        # p99 must never exceed the true max.
+        assert stats["max_height_mm"] <= float(np.max(food_heights_mm)) + 1e-6
+        return
+    pytest.fail("no fixture dish produced a non-empty food mask")
 
 
 # ---------------------------------------------------------------------------
@@ -192,7 +257,7 @@ def test_depth_to_height_image_basic(good_depths):
     img = df.depth_to_height_image(depth, plane)
     assert isinstance(img, Image.Image)
     assert img.mode == "L"
-    assert img.size == (depth.shape[1], depth.shape[0])  # PIL size is (W, H)
+    assert img.size == df.HEIGHT_IMAGE_SIZE  # ~320x240, not native 640x480.
     arr = np.array(img)
     assert arr.dtype == np.uint8
     assert arr.min() >= 0
@@ -200,43 +265,65 @@ def test_depth_to_height_image_basic(good_depths):
 
 
 def test_depth_to_height_image_plane_pixels_are_zero(good_depths):
-    """Pixels the plane fit calls inliers should render as (near) 0 in the height image."""
+    """
+    Pixels the plane fit calls inliers should render as (near) 0 in the
+    NATIVE-resolution height render (_height_image_full_res), before the final
+    resize to HEIGHT_IMAGE_SIZE.
+    """
     depth = next(iter(good_depths.values()))
     plane = df.plane_fit(depth)
     _normal, _d, inlier_mask = plane
-    img_arr = np.array(df.depth_to_height_image(depth, plane))
+    img_arr = df._height_image_full_res(depth, plane)
     inlier_values = img_arr[inlier_mask]
-    # Inliers are within roughly RANSAC_INLIER_THRESH_M (4mm, plus refit slack --
-    # see test_plane_fit_inliers_are_near_zero_height) of the plane; at the
-    # 0-60mm mapping that's a small slice of the 0-255 range.
-    max_expected = round(2 * df.RANSAC_INLIER_THRESH_M * 1000.0 / df.HEIGHT_IMAGE_MAX_MM * 255.0) + 1
+    # Inliers are within roughly PLANE_FIT_INLIER_THRESH_M (4mm, plus refit slack
+    # -- see test_plane_fit_inliers_are_near_zero_height) of the plane; at the
+    # 0-120mm mapping that's a small slice of the 0-255 range.
+    max_expected = round(2 * df.PLANE_FIT_INLIER_THRESH_M * 1000.0 / df.HEIGHT_IMAGE_MAX_MM * 255.0) + 1
     assert inlier_values.max() <= max_expected
 
 
-def test_depth_to_height_image_saturates_at_60mm(good_depths):
+def test_depth_to_height_image_saturates_at_120mm(good_depths):
     depth = next(iter(good_depths.values())).copy()
     plane = df.plane_fit(depth)
     normal, d, _inlier_mask = plane
-    # Fabricate a pixel far above the plane (100mm) to check saturation to 255.
+    # Fabricate a pixel far above the plane (200mm) to check saturation to 255.
     h, w = depth.shape
     row, col = h // 2, w // 2
-    # Solve for a Z that gives height ~= 0.10m at this pixel's (X, Y) ray.
+    # Solve for a Z that gives height ~= 0.20m at this pixel's (X, Y) ray.
     # height = normal[0]*X + normal[1]*Y + normal[2]*Z + d, X=(col-cx)*Z/f, Y=(row-cy)*Z/f
     cx, cy = w / 2.0, h / 2.0
     a = normal[0] * (col - cx) / df.FOCAL_PX + normal[1] * (row - cy) / df.FOCAL_PX + normal[2]
-    # Solve a*Z + d = 0.10 -> Z = (0.10 - d) / a
-    target_height = 0.10
+    # Solve a*Z + d = 0.20 -> Z = (0.20 - d) / a
+    target_height = 0.20
     z_new = (target_height - d) / a
     depth[row, col] = z_new
-    img_arr = np.array(df.depth_to_height_image(depth, plane))
+    img_arr = df._height_image_full_res(depth, plane)
     assert img_arr[row, col] == 255
 
 
 # ---------------------------------------------------------------------------
-# Sanity harness: volume_ml vs dish mass correlation (regression floor).
+# Sanity harness: volume_ml vs dish mass correlation + density (regression floor).
 # ---------------------------------------------------------------------------
 
 def test_sanity_harness_correlation_regression_floor():
     result = df.run_sanity_harness(n_dishes=20, seed=42, verbose=True)
     assert len(result["rows"]) >= 15, "too few dishes had both depth and nutrition data"
     assert result["r"] > 0.3, f"volume_ml vs mass correlation too low: r={result['r']:.3f}"
+
+
+def test_sanity_harness_density_regression_floor():
+    """
+    Design brief section (b).6 / (e) checklist item 6: the decisive test. r alone
+    passes even on the buggy border-fit reference (r=0.57 with implied density
+    0.06 g/ml, i.e. off by ~10x from real food density); the median implied
+    density (mass_g / volume_ml) over >= 20 dishes catches that a correct
+    correlation still requires a physically plausible reference surface.
+    """
+    result = df.run_sanity_harness(n_dishes=20, seed=42, verbose=True)
+    assert len(result["rows"]) >= 15, "too few dishes had both depth and nutrition data"
+    density = result["density_g_per_ml"]
+    assert DENSITY_MIN_G_PER_ML <= density <= DENSITY_MAX_G_PER_ML, (
+        f"median implied density {density:.3f} g/ml outside plausible "
+        f"[{DENSITY_MIN_G_PER_ML}, {DENSITY_MAX_G_PER_ML}] g/ml range -- "
+        "reference plane is likely biased (see GLASS PLATFORM TRAP)"
+    )
