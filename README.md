@@ -51,7 +51,7 @@ cd ml
 ./setup.sh                                       # python env (mlx-vlm 0.6.7 stack)
 ./download_dataset.sh                            # Nutrition5k subset (CC BY 4.0, not committed)
 ./download_model.sh                              # Qwen3.5-4B-MLX-4bit base model
-export MODEL_PATH=~/models/Qwen3.5-4B-MLX-4bit
+export MODEL_PATH=~/models/mlx-community/Qwen3.5-4B-MLX-4bit
 ./prep.sh && ./train.sh && ./eval.sh adapters_v5 --limit 325 && ./convert.sh adapters_v5
 ```
 
