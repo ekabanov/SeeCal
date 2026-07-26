@@ -88,9 +88,23 @@ prompt_plain() { # <varname> <label> — empty input keeps the existing value
 }
 
 echo
+echo "SeeCal release setup — you will need four things:"
+echo "  1. An App Store Connect API key (Key ID + .p8 file)"
+echo "  2. The Issuer ID of your App Store Connect team"
+echo "  3. Your Apple Developer Team ID"
+echo "  4. Your app's bundle identifier"
+echo "Each prompt below says exactly where to find its value."
+
+echo
 echo "App Store Connect API credentials"
 echo "---------------------------------"
+echo "Create/see API keys at: https://appstoreconnect.apple.com/access/integrations/api"
+echo "(App Store Connect -> Users and Access -> Integrations -> App Store Connect API"
+echo " -> Team Keys -> 'Generate API Key', role 'App Manager' or 'Admin')."
+echo "IMPORTANT: the .p8 file can only be downloaded ONCE, at creation time —"
+echo "store it safely. The Key ID is shown in the key list after creation."
 prompt_hidden ASC_KEY_ID    "ASC API key ID (no echo)"
+echo "The Issuer ID is shown at the top of that same Integrations page (one per team)."
 prompt_hidden ASC_ISSUER_ID "ASC issuer ID (no echo)"
 
 if [[ -z "${ASC_KEY_ID}" || -z "${ASC_ISSUER_ID}" ]]; then
@@ -98,6 +112,8 @@ if [[ -z "${ASC_KEY_ID}" || -z "${ASC_ISSUER_ID}" ]]; then
     exit 1
 fi
 
+echo "The .p8 is the file you downloaded when creating the API key (usually"
+echo "AuthKey_<KEYID>.p8 in your Downloads folder). It will be copied into .secrets/."
 P8_PROMPT="Path to your AuthKey_*.p8 file"
 if [[ -f "${KEY_FILE}" ]]; then
     P8_PROMPT="${P8_PROMPT} [already stored — Enter keeps it]"
@@ -124,6 +140,9 @@ fi
 echo
 echo "Signing identity (not secret, but per-user)"
 echo "-------------------------------------------"
+echo "Register bundle ids at: https://developer.apple.com/account/resources/identifiers"
+echo "The id must match an App Store Connect app record — create the app itself at"
+echo "App Store Connect -> Apps -> '+' (https://appstoreconnect.apple.com/apps)."
 prompt_plain BUNDLE_ID "App bundle identifier (e.g. com.yourname.seecal)"
 
 # Offer a detected team id as the default when the keychain has exactly one
@@ -135,6 +154,10 @@ if [[ -z "${DEVELOPMENT_TEAM}" ]] && command -v security > /dev/null 2>&1; then
         DEVELOPMENT_TEAM="${DETECTED_TEAM}"
         echo "Detected team ID ${DEVELOPMENT_TEAM} from your signing identity."
     fi
+fi
+if [[ -z "${DEVELOPMENT_TEAM}" ]]; then
+    echo "Find your Team ID (10 characters) at https://developer.apple.com/account"
+    echo "under 'Membership details'."
 fi
 prompt_plain DEVELOPMENT_TEAM "Apple Developer team ID (10 characters)"
 
