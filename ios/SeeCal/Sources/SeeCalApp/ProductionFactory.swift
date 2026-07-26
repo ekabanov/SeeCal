@@ -20,7 +20,9 @@ public enum SeeCalProductionFactory {
         config: QwenRuntimeConfig,
         mlxRunner: @escaping MLXSwiftQwenVisionEngine.Runner,
         mnnRunner: MNNQwenVisionEngine.Runner? = nil,
-        store: MealLogStore = InMemoryMealLogStore()
+        store: MealLogStore = FileBackedMealLogStore(),
+        preferencesStore: UserPreferencesStore = FileBackedUserPreferencesStore(),
+        weightStore: WeightLogStore = FileBackedWeightLogStore()
     ) throws -> AppViewModel {
         let validatedConfig = try config.validated()
         let mlxRuntime = MLXQwenRuntime(engine: MLXSwiftQwenVisionEngine(runner: mlxRunner))
@@ -43,6 +45,11 @@ public enum SeeCalProductionFactory {
             timeoutNanoseconds: timeoutNanoseconds,
             maxAttemptsPerRuntime: validatedConfig.maxAttemptsPerRuntime
         )
-        return AppViewModel(orchestrator: orchestrator, store: store)
+        return AppViewModel(
+            orchestrator: orchestrator,
+            store: store,
+            preferencesStore: preferencesStore,
+            weightStore: weightStore
+        )
     }
 }

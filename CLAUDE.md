@@ -36,10 +36,14 @@ Generates train/valid/test JSONL for mlx-vlm LoRA fine-tuning:
 - Loads both nutrition CSV and ingredients CSV
 - One record per image (not per dish) — 3 images = 3 training examples
 - Split by dish (80/10/10), then expanded to per-image records
-- Image paths stored **relative to --out-dir** (portable) or absolute via `--image-root`
+- Image paths stored **relative to the project root** (e.g. `dataset_clean/dish_xxx/overhead.jpg`),
+  NOT relative to `--out-dir` — training and inference must be run from the repo root so these
+  relative paths resolve
 - Output: `finetune_data/train.jsonl`, `valid.jsonl`, `test.jsonl`
 
-Stats: 3,262 matched dishes → ~7,091 train / 885 valid / 887 test records.
+Stats (current overhead-only dataset, `--max-images 1`, 1 record/dish): 2,594 train / 325 valid /
+325 test records. The earlier figures below (3,262 matched dishes → ~7,091 train / 885 valid / 887
+test) describe the retired 3-image-per-dish dataset, now archived under `finetune_data_sample/`.
 
 #### JSONL format (mlx-vlm compatible)
 ALL content fields are arrays (system, user, assistant) — this is required because pyarrow (used
@@ -57,10 +61,10 @@ auto-formatter uses). Inference must match — no system block, instruction in u
 {
   "messages": [
     {"role": "user",      "content": [
-      {"type": "image", "image": "../dataset_clean/dish_xxx/overhead.jpg"},
+      {"type": "image", "image": "dataset_clean/dish_xxx/overhead.jpg"},
       {"type": "text",  "text": "You are a nutrition expert...\n\nLook at this meal and identify..."}
     ]},
-    {"role": "assistant", "content": [{"type": "text",  "text": "{\"calories\": 246.0, ...}"}]}
+    {"role": "assistant", "content": [{"type": "text",  "text": "{\"total_calories\": 246.0, ...}"}]}
   ]
 }
 ```
@@ -68,12 +72,15 @@ auto-formatter uses). Inference must match — no system block, instruction in u
 The `{"type": "image"}` entry causes Qwen3.5's processor to insert real vision tokens
 (`<|vision_start|><|image_pad|><|vision_end|>`) during training — matching inference exactly.
 
-The assistant response includes both nutrition totals and ingredient list (sorted by grams descending):
+The assistant response includes nutrition totals and a per-item breakdown (sorted by grams
+descending). Note there is no `"calories"`, `"mass_g"`, or `"ingredients"` key — the actual keys
+are `total_calories`, `protein_g`, `fat_g`, `carbs_g`, and `items` (each item carrying its own
+per-item macros, matching the iOS-side schema in `ios/SeeCal/README.md`):
 ```json
-{"calories": 246.0, "protein_g": 33.1, "fat_g": 5.6, "carbs_g": 16.3, "mass_g": 332.0, "ingredients": [{"name": "broccoli", "grams": 129.0}, {"name": "chicken breast", "grams": 89.5}, ...]}
+{"total_calories": 246.0, "protein_g": 33.1, "fat_g": 5.6, "carbs_g": 16.3, "items": [{"name": "broccoli", "estimated_grams": 129.0, "calories": 44.0, "protein_g": 3.6, "fat_g": 0.5, "carbs_g": 8.6}, {"name": "chicken breast", "estimated_grams": 89.5, "calories": 148.0, "protein_g": 27.7, "fat_g": 3.2, "carbs_g": 0.0}, ...]}
 ```
 
-## Training Command
+## Training Command (SUPERSEDED — historical; use ./train.sh (0.6.7 stack))
 ```bash
 python -m mlx_vlm.lora \
   --model-path ~/models/Qwen3.5-4B-MLX-bf16 \
@@ -96,6 +103,27 @@ Key flags:
 - `--lora-rank 16` — replaces mlx-lm's --num-layers concept
 
 ## Training Results
+### Run 4 (v4) — INCOMPLETE, output unverified, do not treat as a finished run
+Verified by file forensics on 2026-07-26 (no training log survives, so timing/config are
+reconstructed from file timestamps and `train.sh`):
+- Launched Mar 14 21:20 via `train.sh` with `--batch-size 8 --iters 1000 --output-path adapters`
+  (a bare, non-versioned output name — checkpoints landed directly in the repo root; these were
+  later moved to `runs/v4_root_output/` during cleanup).
+- Training died somewhere between iteration 800 and 900. At ~1h55m per 100 iterations, this is
+  consistent with an unattended run that was killed or crashed overnight without anyone noticing.
+- `adapters_v4/adapters.safetensors` is the iteration-800 checkpoint, hand-copied into place on
+  Mar 15 12:57 — i.e. `adapters_v4/` is a manual recovery of the last surviving checkpoint, not
+  the output of a completed training run.
+- **Additional bug**: `--iters 1000` combined with the `dataset.select` clamp from fix #19 meant
+  training only ever iterated over the first 1000 of 2594 available training examples (< 1 epoch,
+  and never reaching the back ~60% of the dataset) — on top of dying before iter 1000 anyway.
+- A Swift-side parity probe on 2026-07-26 found the v4 adapter's output still garbled (see
+  `ios/SeeCal/README.md` for the LoRA-loading path used to test it). **Verdict (2026-07-26)**:
+  Python-side eval via `03_infer.py` on 50 test dishes confirms v4 is dead — 50/50 parse
+  failures (0/50 valid JSON). The base 4-bit model (no adapter) on the same 50 dishes: calories
+  MAE 83.4 / median 63.9, protein MAE 6.7, fat MAE 4.9, carbs MAE 12.4, 0 parse failures. Do not
+  use `adapters_v4/` for anything; it is superseded by the v5 effort below.
+
 ### Run 2 (BROKEN — training without images, do not use `adapters_v2/`)
 - LoRA training completed (1000 iterations) with mlx-vlm
 - Adapters saved to `adapters_v2/`
@@ -233,13 +261,72 @@ python -m mlx_lm.fuse \
     only needs to cover up to `len(dataset)` examples.
     Fix: change to `dataset.select(range(min(iters, len(dataset))))`.
 
-## Next Steps
-1. **Retrain** with `adapters_v4/` using the corrected command below (all 5 patches + correct assistant-id).
-2. **Evaluate** on test split (325 records, overhead-only) using `03_infer.py --test-set finetune_data/test.jsonl`
-3. **iPhone deployment**: fused model → CoreML conversion (or MLX Swift on-device)
-4. Consider `--train-vision` if accuracy plateaus (unfreezes vision encoder, more expensive)
+## Toolchain v2 (2026-07-26)
+Runs 1–4 all trained against a hand-patched, ancient checkout of mlx-vlm on a Python 3.14 venv
+(`.venv/`). As of 2026-07-26 there is a second, parallel toolchain that supersedes it for all new
+training:
 
-### Retrain Command (use this — all patches applied including --assistant-id fix)
+- **New venv `.venv-vlm067`**: mlx-vlm 0.6.7 (unpatched, installed straight from PyPI/git tag — no
+  local patches), mlx 0.32.0, mlx-lm 0.31.3, transformers 5.14.1, datasets 5.0.0, torch 2.13.0 /
+  torchvision 0.28.0. Torch and torchvision were installed **separately** — mlx-vlm's `[train]`
+  extra does not pull them in, and training silently fails on missing torchvision otherwise.
+- **All 5 legacy patches (fixes #14–17 and the `sft_trainer.py`/`datasets.py` patches under fix
+  #16/#17) are fixed upstream** as of mlx-vlm 0.6.7 — tracked as issue #824 / PR #826, plus the
+  v0.6.4 completion-mask rework. The patch files themselves are kept under `patches/` for
+  reference, but they only apply to (and are only needed by) the legacy `.venv`. Do not apply them
+  to `.venv-vlm067` — they are unnecessary and will not cleanly apply against the new source.
+- **Two migration traps found while porting**:
+  1. mlx-vlm 0.6.7 loads images **only** from a top-level `"images"` JSONL field — content-embedded
+     `{"type": "image", "image": path}` entries (the format this file documents above) are parsed
+     for the prompt text but silently ignored for pixel loading, i.e. training runs without
+     complaint but with no visual grounding at all (the exact failure mode of Run 2, but silent
+     instead of erroring). Dataset regenerated as `finetune_data_v2/` with a top-level `images`
+     array added per record to match the new loader's expectations.
+  2. LoRA scale convention changed: it is now `alpha / rank` (so `--lora-rank 16 --lora-alpha 32`
+     gives effective scale **2**), whereas the legacy stack used a bare `alpha` of 32 as the scale.
+     Configs carried over from the old commands need their alpha reinterpreted, not copy-pasted.
+- **Completion masking is prefix-based now** — `--train-on-completions` alone is sufficient; there
+  is no `--assistant-id` flag in 0.6.7 and none is needed (fix #18 above no longer applies here).
+- **Validation ladder** — never start a multi-hour run on the new stack without running this
+  first, in order: `00_smoke_test.py` (~1 minute, loads no model weights, just checks the data
+  pipeline) → a 32-dish overfit run (confirms the model can memorize a tiny set, i.e. gradients and
+  masking are wired correctly) → a 500-iteration probe evaluated with `03_infer.py` against the
+  un-adapted base model as a baseline. Skipping straight to a long run is exactly how Run 4 went
+  unnoticed for most of a day.
+- The `mlx_vlm.lora` CLI on 0.6.7 never reads `valid.jsonl` — validation loss is only available via
+  the Python API, not the CLI. Adapter resume from a checkpoint is supported via `--adapter-path`.
+- **iOS**: `mlx-swift-lm` supports Qwen3.5 as a VLM plus runtime LoRA loading (`LoRAContainer`).
+  `convert_adapter_for_swift.py` (repo root) converts an mlx-vlm adapter directory into the format
+  the Swift side expects; adapters from the legacy stack additionally need a weight-key rename
+  (`.A`/`.B` → `.lora_a`/`.lora_b`) and their scale computed from the adapter's own `alpha` (32.0
+  for `adapters_v4`, per the legacy bare-alpha convention — see the scale-convention trap above),
+  rather than the `alpha/rank` convention the new stack uses — new-stack adapters convert directly.
+  `mlx_lm.fuse` still drops the vision tower on this toolchain too (see fix #9) — do not fuse via
+  mlx-lm for either stack; serve base model + adapter directly.
+- **Pair adapter and venv, or numbers are silently wrong**: adapters must be evaluated with the
+  venv matching their training stack — legacy-format adapters (v4, effective scale 32) load with
+  the wrong scale (2) under 0.6.7, and new-format adapters must not be evaluated under `.venv`.
+
+## Next Steps
+1. **Baseline v4 — DONE.** Ran `03_infer.py --test-set finetune_data/test.jsonl` against the
+   iter-800 `adapters_v4/` checkpoint; results in `runs/eval_v4_baseline/`. Verdict: 50/50 parse
+   failures, adapter is dead (see Run 4 entry above). Base model on the same 50 dishes: calories
+   MAE 83.4 / median 63.9, protein 6.7, fat 4.9, carbs 12.4, 0 parse failures — this is the number
+   v5 needs to beat.
+2. **Train v5 — launched 2026-07-26** on the `.venv-vlm067` stack using `finetune_data_v2/`:
+   2 epochs, LR 1e-4, `--output-path adapters_v5`. Probe checkpoint at 1000 iters: 1/50 parse
+   failures, calories MAE 102.3 / median 55.3, carbs MAE 7.2 (vs. base 12.4). Full run in progress;
+   re-evaluate at completion.
+3. **iOS integration is now wired**: LoRA loading via `LoRAContainer` and `convert_adapter_for_swift.py`
+   are in place (see `ios/SeeCal/README.md`). Once v5 lands, convert it with
+   `convert_adapter_for_swift.py` and point the app config at `adapters_v5_swift/`.
+4. Consider `--train-vision` if accuracy plateaus (unfreezes vision encoder, more expensive).
+
+### Retrain Command (legacy `.venv` stack — superseded by Toolchain v2 / v5 above; kept for
+history since this is the command that was *intended* for Run 4, all patches applied including
+the --assistant-id fix; the file forensics in the Run 4 entry above show the command that was
+*actually* launched via `train.sh` differed — batch-size 8, iters 1000, output-path `adapters` —
+so treat this block as documentation of intent, not a record of what ran)
 ```bash
 python 02_prepare_finetune.py --only-overhead  # regenerate dataset_clean/ first if needed
 

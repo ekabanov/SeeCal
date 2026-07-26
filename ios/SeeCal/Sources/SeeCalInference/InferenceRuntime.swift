@@ -1,10 +1,23 @@
 import Foundation
 import SeeCalDomain
 
-public enum InferenceError: Error, Equatable, CustomStringConvertible {
+public enum InferenceError: Error, Equatable, CustomStringConvertible, LocalizedError {
     case runtimeUnavailable(String)
     case runtimeFailed(String)
     case parsingFailed(String)
+    case allRuntimesFailed([RuntimeFailure])
+
+    /// A single runtime's failure, captured so callers can surface a real message
+    /// instead of a generic "no runtime available" string.
+    public struct RuntimeFailure: Equatable, Sendable {
+        public let runtimeName: String
+        public let errorDescription: String
+
+        public init(runtimeName: String, errorDescription: String) {
+            self.runtimeName = runtimeName
+            self.errorDescription = errorDescription
+        }
+    }
 
     public var description: String {
         switch self {
@@ -14,7 +27,19 @@ public enum InferenceError: Error, Equatable, CustomStringConvertible {
             return "Runtime failed: \(reason)"
         case let .parsingFailed(reason):
             return "Failed to parse JSON: \(reason)"
+        case let .allRuntimesFailed(failures):
+            if failures.isEmpty {
+                return "No available runtime could produce a valid result"
+            }
+            let details = failures
+                .map { "\($0.runtimeName): \($0.errorDescription)" }
+                .joined(separator: "; ")
+            return "All runtimes failed — \(details)"
         }
+    }
+
+    public var errorDescription: String? {
+        description
     }
 }
 
@@ -41,23 +66,32 @@ public actor RuntimeOrchestrator {
     }
 
     public func infer(request: FoodScanRequest) async throws -> FoodScanResult {
+        var failures: [InferenceError.RuntimeFailure] = []
+
         for runtime in runtimes {
             guard await runtime.isAvailable() else {
+                failures.append(.init(runtimeName: runtime.name, errorDescription: "runtime unavailable"))
                 continue
             }
 
+            var lastError: Error?
             for _ in 0..<maxAttemptsPerRuntime {
                 do {
                     return try await withTimeout(timeoutNanoseconds) {
                         try await runtime.infer(request: request)
                     }
                 } catch {
+                    lastError = error
                     continue
                 }
             }
+
+            if let lastError {
+                failures.append(.init(runtimeName: runtime.name, errorDescription: String(describing: lastError)))
+            }
         }
 
-        throw InferenceError.runtimeUnavailable("No available runtime could produce a valid result")
+        throw InferenceError.allRuntimesFailed(failures)
     }
 }
 
