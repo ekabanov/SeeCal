@@ -311,6 +311,27 @@ are historical.
   venv matching their training stack — legacy-format adapters (v4, effective scale 32) load with
   the wrong scale (2) under 0.6.7, and new-format adapters must not be evaluated under `.venv`.
 
+## Depth track verdict + iOS app build-out (2026-07-26 evening)
+- **Depth track (D1–D4)**: depth_features.py (glass-platform-corrected geometry, f=465.1,
+  density-gated), datasets finetune_data_v2d_txt/_img, inference parity + check_prompt_parity.py.
+  Variant A (depth image) blocked: mlx-vlm trainer collation broken for multi-image records
+  (0.6.7 AND git main; reported upstream). Variant B (volume text) probe beat the matched v5
+  probe by 33% cal MAE, **but the full 2-epoch v6 run was a statistical tie with v5**
+  (50 dishes paired: +5.2 kcal, t=0.56; v6 59.2 vs v5 54.4 MAE). **Depth track STOPPED;
+  v5 remains the shipping adapter.** Full 325-dish v5-vs-v6 evals queued after the repo reorg
+  (command in .superpowers/sdd/progress.md — remember --limit 325).
+- **iOS app (branch ios-app, P1–P8)**: full product build-out from the interactive prototype
+  (docs/design/prototype/seecal-prototype.html = binding visual spec;
+  docs/specs/2026-07-26-app-spec.md). Goal engine (Mifflin-St Jeor, profile-derived, manual
+  goal editing retired), per-item meals w/ migrations, design system + 5-tab shell, Today,
+  onboarding wizard + Profile (weekly-rate slider), scan→analyzing→result flow
+  (background continuation + banner, nothing persisted without confirm), History
+  (goal-adherence chart) + Settings (model card reads real configs). Whole-branch review +
+  10-finding fix wave complete. 171 tests green; iOS-destination build passes with
+  OTHER_CPLUSPLUSFLAGS='$(inherited) -DFMT_CONSTEVAL='.
+- **Pending**: model-card "±12%" accuracy copy awaits the 325-dish eval; then the
+  monorepo/open-sourcing reorg (queued), then evals, then final adapter decision.
+
 ## Next Steps
 1. **Baseline v4 — DONE.** Ran `03_infer.py --test-set finetune_data/test.jsonl` against the
    iter-800 `adapters_v4/` checkpoint; results in `runs/eval_v4_baseline/`. Verdict: 50/50 parse
