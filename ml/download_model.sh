@@ -75,7 +75,7 @@ if [ -n "$DIR_OVERRIDE" ]; then
   MODELS_DIR="$DIR_OVERRIDE"
 fi
 
-MODEL_DIR="$MODELS_DIR/Qwen3.5-4B-MLX-4bit"
+MODEL_DIR="$MODELS_DIR/mlx-community/Qwen3.5-4B-MLX-4bit"
 
 # ---------------------------------------------------------------------------
 # Pick a way to run the 'hf' CLI.

@@ -15,7 +15,7 @@ from mlx_vlm.prompt_utils import apply_chat_template as tmpl
 from mlx_vlm.utils import load_config
 from transformers import AutoProcessor
 
-MODEL = "/Users/jevgenikabanov/.lmstudio/models/mlx-community/Qwen3.5-4B-MLX-4bit"
+MODEL = str(Path("~/models/mlx-community/Qwen3.5-4B-MLX-4bit").expanduser())
 REPO = Path(__file__).resolve().parent
 
 processor = AutoProcessor.from_pretrained(MODEL)

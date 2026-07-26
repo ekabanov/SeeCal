@@ -22,13 +22,13 @@ from pathlib import Path
 import numpy as np
 
 ASSISTANT_ID = 74455       # tokenizer.encode('assistant') for Qwen3.5
-DEFAULT_MODEL = "/Users/jevgenikabanov/.lmstudio/models/mlx-community/Qwen3.5-4B-MLX-4bit"
+DEFAULT_MODEL = "~/models/mlx-community/Qwen3.5-4B-MLX-4bit"
 
 
 def main():
     ap = argparse.ArgumentParser(description="SeeCal pre-training smoke test")
     ap.add_argument("--data", type=Path, default=Path("finetune_data_v2/train.jsonl"))
-    ap.add_argument("--model-dir", type=Path, default=Path(DEFAULT_MODEL))
+    ap.add_argument("--model-dir", type=Path, default=Path(DEFAULT_MODEL).expanduser())
     ap.add_argument("--max-seq-length", type=int, default=2048)
     ap.add_argument("--batch-size", type=int, default=2)
     ap.add_argument("--records", type=int, default=4)

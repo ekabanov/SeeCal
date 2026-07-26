@@ -15,7 +15,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 cd "$SCRIPT_DIR"
 
-DEFAULT_MODEL_PATH="/Users/jevgenikabanov/.lmstudio/models/mlx-community/Qwen3.5-4B-MLX-4bit"
+DEFAULT_MODEL_PATH="~/models/mlx-community/Qwen3.5-4B-MLX-4bit"
 DEFAULT_TEST_SET="finetune_data_v2/test.jsonl"
 
 usage() {

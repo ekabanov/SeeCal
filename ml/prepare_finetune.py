@@ -685,7 +685,7 @@ def main():
     print("\nTo start fine-tuning with mlx-vlm:")
     print(
         f"  python -m mlx_vlm.lora \\\n"
-        f"    --model-path /Users/jevgenikabanov/.lmstudio/models/mlx-community/Qwen3.5-4B-MLX-4bit \\\n"
+        f"    --model-path ~/models/mlx-community/Qwen3.5-4B-MLX-4bit \\\n"
         f"    --dataset {args.out_dir} \\\n"
         f"    --train-mode sft \\\n"
         f"    --train-on-completions \\\n"

@@ -301,7 +301,7 @@ def main():
     )
     parser.add_argument(
         "--model-path", type=str,
-        default="/Users/jevgenikabanov/.lmstudio/models/mlx-community/Qwen3.5-4B-MLX-4bit",
+        default="~/models/mlx-community/Qwen3.5-4B-MLX-4bit",
         help="Path to base model.",
     )
     parser.add_argument(

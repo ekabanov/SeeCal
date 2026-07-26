@@ -20,7 +20,7 @@
 # Usage:
 #   ./train.sh [--help]
 # Configuration is via environment variables (no positional args):
-#   MODEL_PATH    Base model directory (default: ~/models/Qwen3.5-4B-MLX-4bit,
+#   MODEL_PATH    Base model directory (default: ~/models/mlx-community/Qwen3.5-4B-MLX-4bit,
 #                 set up by ./download_model.sh).
 #   OUTPUT_PATH   Adapter output directory (default: adapters_v5). PICK AN
 #                 EXPLICIT, VERSIONED NAME (adapters_v6, adapters_v7, ...) for
@@ -47,7 +47,7 @@ the configured base model and dataset. Takes no positional arguments —
 configure via environment variables:
 
   MODEL_PATH    Base model directory.
-                Default: ~/models/Qwen3.5-4B-MLX-4bit (./download_model.sh's
+                Default: ~/models/mlx-community/Qwen3.5-4B-MLX-4bit (./download_model.sh's
                 output location).
   OUTPUT_PATH   Adapter output directory. Default: adapters_v5.
                 IMPORTANT: pick an explicit versioned name (adapters_v6,
@@ -88,8 +88,8 @@ done
 # MODEL_PATH convention (set by ml/download_model.sh; override for a local copy).
 # Maintainer's local override example (LM Studio's own cache of the same repo,
 # used during v4/v5/v6 development on this machine — NOT a portable default):
-#   MODEL_PATH=/Users/jevgenikabanov/.lmstudio/models/mlx-community/Qwen3.5-4B-MLX-4bit
-MODEL_PATH="${MODEL_PATH:-$HOME/models/Qwen3.5-4B-MLX-4bit}"
+#   MODEL_PATH=~/models/mlx-community/Qwen3.5-4B-MLX-4bit
+MODEL_PATH="${MODEL_PATH:-$HOME/models/mlx-community/Qwen3.5-4B-MLX-4bit}"
 OUTPUT_PATH="${OUTPUT_PATH:-adapters_v5}"
 DATASET="${DATASET:-finetune_data_v2}"
 ADAPTER_PATH="${ADAPTER_PATH:-}"

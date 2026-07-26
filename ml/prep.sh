@@ -41,7 +41,7 @@ WITH_DEPTH=0
 SRC=""
 DST=""
 OUT_DIR=""
-MODEL_DIR="${MODEL_PATH:-$HOME/models/Qwen3.5-4B-MLX-4bit}"
+MODEL_DIR="${MODEL_PATH:-$HOME/models/mlx-community/Qwen3.5-4B-MLX-4bit}"
 SKIP_SMOKE=0
 
 usage() {
@@ -76,7 +76,7 @@ Runs the data half of the validation ladder in one command:
                 Model directory smoke_test.py loads a processor/config
                 from (NOT the full training run — no weights beyond the
                 processor are used). Default: $MODEL_PATH env var, or
-                ~/models/Qwen3.5-4B-MLX-4bit.
+                ~/models/mlx-community/Qwen3.5-4B-MLX-4bit.
   --skip-smoke  Skip the smoke_test.py step (selecting images + building
                 JSONL only). Not recommended — this is rung 1 of the
                 validation ladder for a reason.
