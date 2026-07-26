@@ -18,7 +18,6 @@ Nutrition5K/
 dataset_clean/
 dataset_clean_sample/
 finetune_data_sample/
-finetune_data_v2d_*/
 
 # Training outputs / model weights
 *.safetensors
