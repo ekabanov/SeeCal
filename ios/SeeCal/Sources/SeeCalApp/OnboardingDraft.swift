@@ -2,51 +2,56 @@ import Foundation
 import SeeCalDomain
 
 public struct OnboardingDraft: Equatable, Sendable {
-    public var biologicalSex: BiologicalSex
-    public var ageYearsText: String
+    public var sex: BiologicalSex
+    public var dateOfBirth: Date
     public var heightCmText: String
     public var weightKgText: String
-    public var activityLevel: ActivityLevel
-    public var goalPace: GoalPace
+    public var activity: ActivityLevel
+    public var weeklyRateKg: Double
 
     public init(
-        biologicalSex: BiologicalSex = .male,
-        ageYearsText: String = "30",
+        sex: BiologicalSex = .male,
+        dateOfBirth: Date = OnboardingDraft.defaultDateOfBirth,
         heightCmText: String = "175",
         weightKgText: String = "80",
-        activityLevel: ActivityLevel = .moderatelyActive,
-        goalPace: GoalPace = .maintain
+        activity: ActivityLevel = .moderate,
+        weeklyRateKg: Double = UserProfile.defaultWeeklyRateKg
     ) {
-        self.biologicalSex = biologicalSex
-        self.ageYearsText = ageYearsText
+        self.sex = sex
+        self.dateOfBirth = dateOfBirth
         self.heightCmText = heightCmText
         self.weightKgText = weightKgText
-        self.activityLevel = activityLevel
-        self.goalPace = goalPace
+        self.activity = activity
+        self.weeklyRateKg = UserProfile.clampWeeklyRate(weeklyRateKg)
     }
 
     public init(profile: UserProfile) {
-        biologicalSex = profile.biologicalSex
-        ageYearsText = String(profile.ageYears)
-        heightCmText = String(Int(profile.heightCm.rounded()))
+        sex = profile.sex
+        dateOfBirth = profile.dateOfBirth
+        heightCmText = String(profile.heightCm)
         weightKgText = String(format: "%.1f", profile.weightKg)
-        activityLevel = profile.activityLevel
-        goalPace = profile.goalPace
+        activity = profile.activity
+        weeklyRateKg = profile.weeklyRateKg
     }
 
     public func toUserProfile() throws -> UserProfile {
-        let age = try Self.parseInteger(ageYearsText, field: "age", min: 14, max: 100)
-        let height = try Self.parseDecimal(heightCmText, field: "height", min: 120, max: 230)
+        let height = try Self.parseInteger(heightCmText, field: "height", min: 120, max: 230)
         let weight = try Self.parseDecimal(weightKgText, field: "weight", min: 35, max: 250)
 
         return UserProfile(
-            biologicalSex: biologicalSex,
-            ageYears: age,
+            sex: sex,
+            dateOfBirth: dateOfBirth,
             heightCm: height,
             weightKg: weight,
-            activityLevel: activityLevel,
-            goalPace: goalPace
+            activity: activity,
+            weeklyRateKg: weeklyRateKg
         )
+    }
+
+    public static var defaultDateOfBirth: Date {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: "UTC") ?? .current
+        return calendar.date(byAdding: .year, value: -30, to: Date()) ?? Date()
     }
 
     private static func parseInteger(_ text: String, field: String, min: Int, max: Int) throws -> Int {

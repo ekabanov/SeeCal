@@ -10,8 +10,6 @@ public struct RootView: View {
     @StateObject private var viewModel: AppViewModel
     @State private var editingEntry: MealLogEntry?
     @State private var draft: MealEditDraft?
-    @State private var isEditingGoal = false
-    @State private var goalDraft = GoalEditDraft(target: .defaultTarget)
     @State private var isShowingOnboarding = false
     @State private var onboardingDraft = OnboardingDraft()
 
@@ -67,6 +65,8 @@ public struct RootView: View {
                 }
 
                 Section("Daily Target") {
+                    // Computed from userProfile via GoalCalculator (spec §2) — no
+                    // longer an independently editable value (GoalEditDraft retired).
                     let consumed = viewModel.consumedToday
                     let remaining = viewModel.remainingToday
                     let target = viewModel.dailyTarget
@@ -78,20 +78,16 @@ public struct RootView: View {
                     Text("P \(Int(remaining.proteinGrams))g • F \(Int(remaining.fatGrams))g • C \(Int(remaining.carbsGrams))g left")
                         .font(.caption)
                         .foregroundStyle(.secondary)
-                    Button("Edit Goal") {
-                        goalDraft = GoalEditDraft(target: target)
-                        isEditingGoal = true
-                    }
                 }
 
                 if let profile = viewModel.userProfile {
                     Section("Profile") {
-                        Text("Sex: \(profile.biologicalSex.rawValue.capitalized)")
-                        Text("Age: \(profile.ageYears)")
-                        Text("Height: \(Int(profile.heightCm)) cm")
+                        Text("Sex: \(profile.sex.rawValue.capitalized)")
+                        Text("Age: \(GoalCalculator.age(dateOfBirth: profile.dateOfBirth))")
+                        Text("Height: \(profile.heightCm) cm")
                         Text(String(format: "Weight: %.1f kg", profile.weightKg))
-                        Text("Activity: \(activityTitle(profile.activityLevel))")
-                        Text("Goal Pace: \(goalPaceTitle(profile.goalPace))")
+                        Text("Activity: \(activityTitle(profile.activity))")
+                        Text(String(format: "Weekly target: %.1f kg/week", profile.weeklyRateKg))
                         Button("Edit Profile") {
                             onboardingDraft = OnboardingDraft(profile: profile)
                             isShowingOnboarding = true
@@ -230,23 +226,6 @@ public struct RootView: View {
                     )
                 }
             }
-            .sheet(isPresented: $isEditingGoal) {
-                GoalEditSheet(
-                    draft: goalDraft,
-                    onCancel: { isEditingGoal = false },
-                    onSave: { savedDraft in
-                        Task {
-                            do {
-                                let newTarget = try savedDraft.toDailyTarget()
-                                await viewModel.updateDailyTarget(newTarget)
-                            } catch {
-                                viewModel.lastError = error.localizedDescription
-                            }
-                            isEditingGoal = false
-                        }
-                    }
-                )
-            }
             .sheet(isPresented: $isShowingOnboarding) {
                 OnboardingSheet(
                     draft: onboardingDraft,
@@ -278,25 +257,12 @@ public struct RootView: View {
         switch level {
         case .sedentary:
             return "Sedentary"
-        case .lightlyActive:
-            return "Lightly Active"
-        case .moderatelyActive:
-            return "Moderately Active"
-        case .veryActive:
-            return "Very Active"
-        }
-    }
-
-    private func goalPaceTitle(_ pace: GoalPace) -> String {
-        switch pace {
-        case .loseSlow:
-            return "Lose 0.25 kg/week"
-        case .loseModerate:
-            return "Lose 0.5 kg/week"
-        case .maintain:
-            return "Maintain"
-        case .gainSlow:
-            return "Gain 0.25 kg/week"
+        case .light:
+            return "Light"
+        case .moderate:
+            return "Moderate"
+        case .active:
+            return "Active"
         }
     }
 
@@ -374,28 +340,28 @@ private struct OnboardingSheet: View {
         NavigationStack {
             Form {
                 Section("About You") {
-                    Picker("Sex", selection: $draft.biologicalSex) {
+                    Picker("Sex", selection: $draft.sex) {
                         Text("Male").tag(BiologicalSex.male)
                         Text("Female").tag(BiologicalSex.female)
                     }
-                    TextField("Age (years)", text: $draft.ageYearsText)
+                    DatePicker("Birthday", selection: $draft.dateOfBirth, displayedComponents: .date)
                     TextField("Height (cm)", text: $draft.heightCmText)
                     TextField("Weight (kg)", text: $draft.weightKgText)
                 }
 
                 Section("Lifestyle") {
-                    Picker("Activity", selection: $draft.activityLevel) {
+                    Picker("Activity", selection: $draft.activity) {
                         Text("Sedentary").tag(ActivityLevel.sedentary)
-                        Text("Lightly Active").tag(ActivityLevel.lightlyActive)
-                        Text("Moderately Active").tag(ActivityLevel.moderatelyActive)
-                        Text("Very Active").tag(ActivityLevel.veryActive)
+                        Text("Light").tag(ActivityLevel.light)
+                        Text("Moderate").tag(ActivityLevel.moderate)
+                        Text("Active").tag(ActivityLevel.active)
                     }
-                    Picker("Goal Pace", selection: $draft.goalPace) {
-                        Text("Lose 0.25 kg/week").tag(GoalPace.loseSlow)
-                        Text("Lose 0.5 kg/week").tag(GoalPace.loseModerate)
-                        Text("Maintain").tag(GoalPace.maintain)
-                        Text("Gain 0.25 kg/week").tag(GoalPace.gainSlow)
-                    }
+                    Stepper(
+                        String(format: "Weekly target: %.1f kg/week", draft.weeklyRateKg),
+                        value: $draft.weeklyRateKg,
+                        in: UserProfile.weeklyRateRange,
+                        step: 0.1
+                    )
                 }
             }
             .navigationTitle("Setup")
@@ -404,34 +370,6 @@ private struct OnboardingSheet: View {
                     if !isFirstRun {
                         Button("Cancel", action: onCancel)
                     }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { onSave(draft) }
-                }
-            }
-        }
-    }
-}
-
-private struct GoalEditSheet: View {
-    @State var draft: GoalEditDraft
-    let onCancel: () -> Void
-    let onSave: (GoalEditDraft) -> Void
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("Daily Goal") {
-                    TextField("Calories", text: $draft.caloriesText)
-                    TextField("Protein (g)", text: $draft.proteinText)
-                    TextField("Fat (g)", text: $draft.fatText)
-                    TextField("Carbs (g)", text: $draft.carbsText)
-                }
-            }
-            .navigationTitle("Edit Goal")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel", action: onCancel)
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Save") { onSave(draft) }
