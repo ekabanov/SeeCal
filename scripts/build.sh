@@ -75,10 +75,17 @@ if [[ "${DEVICE_BUILD}" == "1" ]]; then
     if [[ -f "${REPO_ROOT}/.secrets/release.env" ]]; then
         _env_bundle_id="${BUNDLE_ID:-}"
         _env_team="${DEVELOPMENT_TEAM:-}"
+        _env_models_dir="${MODELS_DIR:-}"
         # shellcheck source=/dev/null
         source "${REPO_ROOT}/.secrets/release.env"
         [[ -n "${_env_bundle_id}" ]] && BUNDLE_ID="${_env_bundle_id}"
         [[ -n "${_env_team}" ]] && DEVELOPMENT_TEAM="${_env_team}"
+        [[ -n "${_env_models_dir}" ]] && MODELS_DIR="${_env_models_dir}"
+        # Saved MODELS_DIR applies to device builds (weights are mandatory there);
+        # it was not passed at the top since env didn't have it.
+        if [[ -z "${_env_models_dir}" && -n "${MODELS_DIR:-}" ]]; then
+            XCODEBUILD_ARGS+=("MODELS_DIR=${MODELS_DIR}")
+        fi
     fi
     if [[ -z "${DEVELOPMENT_TEAM:-}" ]]; then
         echo "error: --device needs a signing team. Either:" >&2

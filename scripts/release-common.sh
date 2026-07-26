@@ -30,8 +30,11 @@ release_preflight() {
         echo "API key, bundle id, and team id." >&2
         exit 1
     fi
+    _env_models_dir="${MODELS_DIR:-}"
     # shellcheck source=/dev/null
     source "${REPO_ROOT}/.secrets/release.env"
+    # An explicitly exported MODELS_DIR wins over the saved one.
+    [[ -n "${_env_models_dir}" ]] && MODELS_DIR="${_env_models_dir}"
     for var in ASC_KEY_ID ASC_ISSUER_ID ASC_KEY_PATH BUNDLE_ID DEVELOPMENT_TEAM; do
         if [[ -z "${!var:-}" ]]; then
             echo "error: ${var} is missing from .secrets/release.env." >&2
@@ -60,6 +63,7 @@ release_preflight() {
     # 3. Weights — a release build must bundle them.
     if [[ -z "${MODELS_DIR:-}" ]]; then
         echo "error: MODELS_DIR is not set — a release build must bundle model weights." >&2
+        echo "Re-run scripts/release-setup.sh (it stores MODELS_DIR), or:" >&2
         echo "Point MODELS_DIR at a directory containing:" >&2
         echo "  mlx-community/Qwen3.5-4B-MLX-4bit/   (ml/download_model.sh)" >&2
         echo "  adapters/                            (ml/convert.sh output, optional)" >&2

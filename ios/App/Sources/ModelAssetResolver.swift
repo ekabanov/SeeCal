@@ -30,7 +30,7 @@ enum ModelAssetResolver {
         }
 
 #if targetEnvironment(simulator)
-        let localDevPath = "/Users/jevgenikabanov/.lmstudio/models/mlx-community/Qwen3.5-4B-MLX-4bit"
+        let localDevPath = "/Users/jevgenikabanov/models/mlx-community/Qwen3.5-4B-MLX-4bit"
         var isDirectory: ObjCBool = false
         if FileManager.default.fileExists(atPath: localDevPath, isDirectory: &isDirectory), isDirectory.boolValue {
             logger.log("Bundled model not found; using simulator fallback path: \(localDevPath, privacy: .public)")

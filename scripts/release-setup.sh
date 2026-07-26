@@ -48,7 +48,7 @@ mkdir -p "${SECRETS_DIR}"
 chmod 700 "${SECRETS_DIR}"
 
 # Existing values (re-run support). release.env is our own chmod-600 file.
-ASC_KEY_ID="" ASC_ISSUER_ID="" BUNDLE_ID="" DEVELOPMENT_TEAM=""
+ASC_KEY_ID="" ASC_ISSUER_ID="" BUNDLE_ID="" DEVELOPMENT_TEAM="" MODELS_DIR=""
 if [[ -f "${ENV_FILE}" ]]; then
     # shellcheck source=/dev/null
     source "${ENV_FILE}"
@@ -166,6 +166,22 @@ if [[ -z "${BUNDLE_ID}" || -z "${DEVELOPMENT_TEAM}" ]]; then
     exit 1
 fi
 
+echo
+echo "Model weights directory — bundled into the app at build time. Layout:"
+echo "  <dir>/mlx-community/Qwen3.5-4B-MLX-4bit/   (populate: ml/download_model.sh)"
+echo "  <dir>/adapters/                            (populate: ml/convert.sh, optional)"
+prompt_plain MODELS_DIR "MODELS_DIR (Enter for ~/models)"
+MODELS_DIR="${MODELS_DIR:-${HOME}/models}"
+MODELS_DIR="${MODELS_DIR/#~/${HOME}}"
+if [[ ! -d "${MODELS_DIR}/mlx-community/Qwen3.5-4B-MLX-4bit" ]]; then
+    echo "warning: base model not found at ${MODELS_DIR}/mlx-community/Qwen3.5-4B-MLX-4bit"
+    echo "         Run ml/download_model.sh before your first release build."
+fi
+if [[ ! -d "${MODELS_DIR}/adapters" ]]; then
+    echo "note: no adapters/ directory in ${MODELS_DIR} — the app will ship the base"
+    echo "      model only. Populate it from ml/convert.sh output for the fine-tune."
+fi
+
 # --- 4. write --------------------------------------------------------------
 umask 177
 {
@@ -175,6 +191,7 @@ umask 177
     printf 'ASC_KEY_PATH=%q\n' "${KEY_FILE}"
     printf 'BUNDLE_ID=%q\n' "${BUNDLE_ID}"
     printf 'DEVELOPMENT_TEAM=%q\n' "${DEVELOPMENT_TEAM}"
+    printf 'MODELS_DIR=%q\n' "${MODELS_DIR}"
 } > "${ENV_FILE}"
 chmod 600 "${ENV_FILE}"
 
@@ -183,6 +200,7 @@ echo "Saved:"
 echo "  ${ENV_FILE} (chmod 600)"
 echo "  ${KEY_FILE} (chmod 600)"
 echo "  bundle id: ${BUNDLE_ID}   team: ${DEVELOPMENT_TEAM}"
+echo "  models dir: ${MODELS_DIR}"
 echo "  ASC key ID / issuer ID: stored (not shown)"
 echo
 echo "You can now run scripts/release-testflight.sh or scripts/release-appstore.sh."

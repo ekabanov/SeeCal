@@ -64,7 +64,7 @@ check).
 ### 3. `./download_model.sh` — fetch the base model
 
 ```bash
-./download_model.sh                      # into ~/models/Qwen3.5-4B-MLX-4bit
+./download_model.sh                      # into ~/models/mlx-community/Qwen3.5-4B-MLX-4bit
 ./download_model.sh --dir /some/path      # custom MODELS_DIR
 ```
 
@@ -81,7 +81,7 @@ so this is the only thing you need to wire up after downloading.
 ./setup.sh                                   # 1. python env
 ./download_dataset.sh                        # 2. Nutrition5k subset (+ auto metadata convert)
 ./download_model.sh                          # 3. base model
-export MODEL_PATH=~/models/Qwen3.5-4B-MLX-4bit   # printed by download_model.sh
+export MODEL_PATH=~/models/mlx-community/Qwen3.5-4B-MLX-4bit   # printed by download_model.sh
 ./prep.sh                                    # 4. select images -> JSONL -> smoke test
 ./train.sh                                   # 5. LoRA fine-tune (~3.5h on M3 Ultra)
 ./eval.sh adapters_v5 --limit 325            # 6. full test-set evaluation
