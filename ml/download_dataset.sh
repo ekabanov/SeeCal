@@ -23,13 +23,15 @@
 #     ingr_id,ingr_name,grams,cal,fat,carb,protein,   <- repeated once per ingredient
 #     ingr_id,ingr_name,grams,cal,fat,carb,protein, ...
 # i.e. a variable number of trailing columns per dish. This script saves them
-# as-is under ml/Nutrition5K/metadata_raw/. The tidy, fixed-schema files this
-# repo's own prepare_finetune.py actually reads (dish_nutrition_values.csv,
-# dish_ingredients.csv, ingredients_metadata.csv, at ml/Nutrition5K/ root) are
-# a DERIVED format — parsing dish_metadata_cafe{1,2}.csv into that shape is
-# not implemented by this script (out of scope for R3; flagged as a follow-up).
-# If ml/Nutrition5K/ already has those tidy files (e.g. from a colleague's
-# copy, or a prior manual conversion), this script's fast path recognizes them
+# as-is under ml/Nutrition5K/metadata_raw/, then automatically runs
+# convert_metadata.py to derive the tidy, fixed-schema files this repo's own
+# prepare_finetune.py / select_images.py actually read
+# (dish_nutrition_values.csv, dish_ingredients.csv, ingredients_metadata.csv,
+# at ml/Nutrition5K/ root) — see convert_metadata.py's module docstring for
+# the exact conversion rules (including why cafe2's 238 dishes are excluded
+# by default, to match the historically-derived tidy files). If
+# ml/Nutrition5K/ already has those tidy files (e.g. from a colleague's copy,
+# or a prior manual conversion), this script's fast path recognizes them
 # directly and does nothing.
 #
 # License / citation (print with --help):
@@ -40,7 +42,7 @@
 #   Contact: nutrition5k@google.com. Full terms: the dataset's GitHub repo.
 #
 # Usage:
-#   ./download_dataset.sh [--dest DIR] [--full] [--help]
+#   ./download_dataset.sh [--dest DIR] [--full] [--include-cafe2] [--help]
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -48,21 +50,30 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUCKET_ROOT="gs://nutrition5k_dataset/nutrition5k_dataset"
 DEST="$SCRIPT_DIR/Nutrition5K"
 FULL=0
+INCLUDE_CAFE2=0
 
 usage() {
   cat <<'EOF'
-Usage: ./download_dataset.sh [--dest DIR] [--full] [--help]
+Usage: ./download_dataset.sh [--dest DIR] [--full] [--include-cafe2] [--help]
 
 Downloads the Nutrition5k dataset subset this pipeline needs into
-ml/Nutrition5K/ (default), or a directory you choose with --dest.
+ml/Nutrition5K/ (default), or a directory you choose with --dest. After
+fetching, automatically converts the raw metadata into the tidy CSVs the
+pipeline reads if they're not already present (see convert_metadata.py).
 
-  --dest DIR   Destination directory (default: ml/Nutrition5K)
-  --full       Mirror the ENTIRE public bucket (~181GB: adds
-               imagery/side_angles/ rotating-camera frames, dish_ids/
-               train-test splits, scripts/). Default downloads only the
-               ~3-4GB subset this pipeline reads: the three metadata CSVs
-               plus imagery/realsense_overhead/.
-  -h, --help   Show this help and exit.
+  --dest DIR        Destination directory (default: ml/Nutrition5K)
+  --full            Mirror the ENTIRE public bucket (~181GB: adds
+                     imagery/side_angles/ rotating-camera frames, dish_ids/
+                     train-test splits, scripts/). Default downloads only
+                     the ~3-4GB subset this pipeline reads: the three
+                     metadata CSVs plus imagery/realsense_overhead/.
+  --include-cafe2   Forwarded to convert_metadata.py as --cafes all: fold
+                     dish_metadata_cafe2.csv's 238 dishes (~228 with
+                     realsense_overhead imagery) into the tidy CSVs too
+                     (does NOT match the historically-derived tidy files/
+                     published metrics, which are cafe1-only — see
+                     convert_metadata.py --help).
+  -h, --help        Show this help and exit.
 
 Idempotent: if the destination already has the metadata files and
 imagery/realsense_overhead/ populated, this script prints status and exits
@@ -78,11 +89,19 @@ Source (verified 2026-07-26):
   https://github.com/google-research-datasets/Nutrition5k
   gs://nutrition5k_dataset/nutrition5k_dataset/
 
+After fetching, if the tidy CSVs (dish_nutrition_values.csv,
+dish_ingredients.csv, ingredients_metadata.csv) are missing from the
+destination, this script automatically runs convert_metadata.py against
+metadata_raw/ to produce them. By default the conversion reproduces the
+historically-derived tidy files exactly: cafe1 dishes only (cafe2's 238
+dishes are excluded — see convert_metadata.py's docstring). Pass
+--include-cafe2 to fold cafe2 in too (a different, larger dataset).
+
 Dataset contents:
   metadata/dish_metadata_cafe1.csv, dish_metadata_cafe2.csv
       Per-dish nutrition totals + per-ingredient breakdown, RAW/wide format
-      (variable trailing columns per dish — not directly what this repo's
-      prepare_finetune.py reads; see the script header comment for the gap).
+      (variable trailing columns per dish — converted automatically into
+      the tidy CSVs prepare_finetune.py reads; see convert_metadata.py).
   metadata/ingredients_metadata.csv
       Ingredient -> calories/fat/carb/protein per gram lookup table.
   imagery/realsense_overhead/<dish_id>/{rgb.png,depth_raw.png,depth_color.png}
@@ -119,6 +138,10 @@ while [ $# -gt 0 ]; do
       ;;
     --full)
       FULL=1
+      shift
+      ;;
+    --include-cafe2)
+      INCLUDE_CAFE2=1
       shift
       ;;
     -h|--help)
@@ -167,6 +190,25 @@ metadata_present() {
   tidy_metadata_present || raw_metadata_present
 }
 
+# Runs convert_metadata.py against $DEST/metadata_raw/ to (re)produce the
+# tidy CSVs. Prefers ml/.venv's python (no extra deps needed — the converter
+# is stdlib-only) but falls back to system python3 so this works even before
+# ./setup.sh has been run.
+convert_tidy_metadata() {
+  local py="$SCRIPT_DIR/.venv/bin/python3"
+  if [ ! -x "$py" ]; then
+    py="python3"
+  fi
+  echo "Converting raw metadata -> tidy CSVs (convert_metadata.py) ..."
+  if [ "$INCLUDE_CAFE2" -eq 1 ]; then
+    "$py" "$SCRIPT_DIR/convert_metadata.py" \
+      --raw-dir "$DEST/metadata_raw" --out-dir "$DEST" --cafes all
+  else
+    "$py" "$SCRIPT_DIR/convert_metadata.py" \
+      --raw-dir "$DEST/metadata_raw" --out-dir "$DEST"
+  fi
+}
+
 print_status() {
   echo "Destination: $DEST"
   if tidy_metadata_present; then
@@ -195,6 +237,10 @@ print_status() {
     echo "  Side angles: not downloaded (only fetched with --full)"
   fi
 }
+
+if raw_metadata_present && ! tidy_metadata_present; then
+  convert_tidy_metadata
+fi
 
 if metadata_present && overhead_present && { [ "$FULL" -eq 0 ] || side_angles_present; }; then
   echo "Nutrition5k subset already present — nothing to do."
@@ -246,18 +292,21 @@ if [ "$FULL" -eq 1 ]; then
 fi
 
 echo
-echo "Download complete."
+echo "Fetch complete."
+
+if raw_metadata_present && ! tidy_metadata_present; then
+  convert_tidy_metadata
+fi
+
 print_status
 
 if ! tidy_metadata_present; then
   cat <<'EOF'
 
-NOTE: metadata_raw/ contains the OFFICIAL raw CSVs, not the tidy
-dish_nutrition_values.csv / dish_ingredients.csv / ingredients_metadata.csv
-that this repo's prepare_finetune.py reads. Converting the wide-format
-dish_metadata_cafe{1,2}.csv into that tidy shape is not implemented by this
-script (tracked as a follow-up, not part of dataset acquisition). If you
-already have those tidy files from elsewhere, drop them directly into
+NOTE: tidy CSVs (dish_nutrition_values.csv / dish_ingredients.csv /
+ingredients_metadata.csv) are still missing after attempting automatic
+conversion — check the convert_metadata.py output above for the error. If
+you already have those tidy files from elsewhere, drop them directly into
 ml/Nutrition5K/ and this script will recognize them as done next time.
 EOF
 fi

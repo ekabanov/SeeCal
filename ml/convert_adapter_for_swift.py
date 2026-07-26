@@ -24,9 +24,19 @@ The emitted `lora_parameters.keys` lists the module key paths (relative to each
 decoder layer) that actually carry adapter weights, so the Swift side only wraps
 those Linear layers instead of every Linear in the layer.
 
+Version stamping: the output adapter_config.json also gets a
+"seecal_adapter_version" key — the exact forward-compat key iOS's
+ModelInfoResolver.adapterVersionLabel looks for first (see
+ios/SeeCal/Sources/SeeCalInference/ModelInfoResolver.swift), before falling
+back to parsing a "_v<N>" suffix off the directory name. By default the
+version is derived the same way as that fallback (a trailing "_v<N>" in
+--adapter-path's directory name, e.g. "adapters_v5" -> "v5"); pass
+--version to set it explicitly (e.g. for a directory name that doesn't
+follow the adapters_vN convention).
+
 Usage:
     python convert_adapter_for_swift.py [--adapter-path adapters_v4] \
-        [--output-path adapters_v4_swift]
+        [--output-path adapters_v4_swift] [--version v4]
 """
 
 import argparse
@@ -40,6 +50,17 @@ import mlx.core as mx
 LAYER_RE = re.compile(r"\.layers\.(\d+)\.")
 # module path relative to the decoder layer, e.g. "self_attn.q_proj"
 RELATIVE_KEY_RE = re.compile(r"\.layers\.\d+\.(.+)\.(?:A|B|lora_a|lora_b)$")
+# Matches ModelInfoResolver.versionSuffix's Swift-side regex ("_v([0-9]+)"),
+# preferring the LAST occurrence in the name (e.g. a hypothetical
+# "adapters_v5_v2_swift" resolves to "v2", matching the Swift fallback).
+VERSION_SUFFIX_RE = re.compile(r"_v([0-9]+)", re.IGNORECASE)
+
+
+def version_from_dirname(name: str) -> str | None:
+    matches = list(VERSION_SUFFIX_RE.finditer(name))
+    if not matches:
+        return None
+    return "v" + matches[-1].group(1)
 
 
 def detect_format(keys):
@@ -85,10 +106,19 @@ def main():
                         help="mlx-vlm adapter directory (adapter_config.json + adapters.safetensors)")
     parser.add_argument("--output-path", default="adapters_v4_swift",
                         help="output directory for the Swift-loadable adapter")
+    parser.add_argument("--version", default=None,
+                        help="Explicit adapter version string to stamp into the output "
+                             "adapter_config.json's 'seecal_adapter_version' key (e.g. 'v5'). "
+                             "Default: derived from a trailing '_v<N>' in --adapter-path's "
+                             "directory name (e.g. 'adapters_v5' -> 'v5'). If neither yields a "
+                             "value, the key is omitted (iOS falls back to parsing the output "
+                             "directory name itself).")
     args = parser.parse_args()
 
     adapter_dir = Path(args.adapter_path)
     out_dir = Path(args.output_path)
+
+    version = args.version or version_from_dirname(adapter_dir.name)
 
     config = json.loads((adapter_dir / "adapter_config.json").read_text())
     weights = mx.load(str(adapter_dir / "adapters.safetensors"))
@@ -133,6 +163,8 @@ def main():
             "keys": relative_keys,
         },
     }
+    if version:
+        swift_config["seecal_adapter_version"] = version
 
     out_dir.mkdir(parents=True, exist_ok=True)
     mx.save_safetensors(str(out_dir / "adapters.safetensors"), converted)
@@ -145,6 +177,10 @@ def main():
     print(f"total keys:      {len(converted)} ({renamed} renamed)")
     print(f"adapted modules: {len(bases_a)} across layers 0..{num_layers - 1}")
     print(f"rank={rank} effective_scale={scale} dtypes={dtypes}")
+    print(f"seecal_adapter_version: {version!r}"
+          + ("" if version else " (not stamped — no --version and no '_v<N>' in "
+                                 f"{adapter_dir.name!r}; iOS will fall back to parsing "
+                                 "the output directory name)"))
     print("module key paths (per layer):")
     for k in relative_keys:
         print(f"  {k}")
