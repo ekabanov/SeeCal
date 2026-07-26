@@ -65,7 +65,7 @@ swift test -Xcxx -DFMT_CONSTEVAL=
 ## Production integration
 
 `adapterPath` below points at a converted LoRA adapter directory, not a raw mlx-vlm training
-output. Adapters are produced by running `convert_adapter_for_swift.py` (repo root) against an
+output. Adapters are produced by running `convert_adapter_for_swift.py` (in `ml/`) against an
 mlx-vlm adapter directory (e.g. `adapters_v4/`, `adapters_v5/` once training lands) — see
 `CLAUDE.md` for the training side. The examples below reference `adapters_v4_swift/`, the current
 converted adapter; once v5 finishes training and is converted, switch these to `adapters_v5_swift/`.
