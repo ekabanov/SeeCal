@@ -22,6 +22,13 @@ MODEL_FOLDER="mlx-community/Qwen3.5-4B-MLX-4bit"
 DEST="${TARGET_BUILD_DIR}/${UNLOCALIZED_RESOURCES_FOLDER_PATH}/Models"
 
 if [[ -z "${MODELS_DIR:-}" ]]; then
+    # Simulator builds never need bundled weights: ModelAssetResolver falls back
+    # to local host paths there. Auto-skip so "open in Xcode → Run" just works.
+    if [[ "${PLATFORM_NAME:-}" == "iphonesimulator" ]]; then
+        echo "note: simulator build without MODELS_DIR — skipping weight bundling."
+        rm -rf "${DEST}"
+        exit 0
+    fi
     if [[ "${SEECAL_ALLOW_NO_WEIGHTS:-0}" == "1" ]]; then
         echo "note: SEECAL_ALLOW_NO_WEIGHTS=1 — skipping weight bundling (simulator dev mode)."
         rm -rf "${DEST}"
