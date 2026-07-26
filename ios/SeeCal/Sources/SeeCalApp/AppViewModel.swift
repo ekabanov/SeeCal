@@ -26,7 +26,7 @@ public final class AppViewModel: ObservableObject {
 
     public var consumedToday: NutritionTotals {
         let todaysEntries = mealEntries.filter { Calendar.current.isDateInToday($0.createdAt) }
-        return NutritionTracker.totals(from: todaysEntries.map(\.scanResult))
+        return todaysEntries.reduce(NutritionTotals()) { $0 + $1.totals }
     }
 
     public var remainingToday: NutritionRemaining {
@@ -35,7 +35,7 @@ public final class AppViewModel: ObservableObject {
 
     public var weeklyProgress: [DailyProgressPoint] {
         ProgressAggregator.dailyPoints(
-            from: mealEntries.map { AnyMealLogEntry(createdAt: $0.createdAt, scanResult: $0.scanResult) },
+            from: mealEntries.map { AnyMealLogEntry(createdAt: $0.createdAt, totals: $0.totals) },
             days: 7
         )
     }
@@ -109,7 +109,8 @@ public final class AppViewModel: ObservableObject {
             print("[SeeCal][AppViewModel] addMealPhoto start mealType=\(mealType.rawValue) imagePath=\(imagePath)")
             let request = FoodScanRequest(imagePath: imagePath, mealType: mealType, userHint: userHint)
             let result = try await orchestrator.infer(request: request)
-            let entry = MealLogEntry(mealType: mealType, imagePath: imagePath, scanResult: result)
+            let items = result.items.map(MealItem.init(scanItem:))
+            let entry = MealLogEntry(mealType: mealType, imagePath: imagePath, items: items)
             try await store.save(entry)
             mealEntries = try await store.fetchAll()
             lastInferenceSeconds = Date().timeIntervalSince(started)
@@ -122,11 +123,11 @@ public final class AppViewModel: ObservableObject {
         }
     }
 
-    public func updateMeal(_ entry: MealLogEntry, with result: FoodScanResult) async {
+    /// Persists an edited entry (e.g. from `MealEditDraft.committedEntry()` in edit
+    /// mode). The entry replaces the stored one by `id` — see `MealLogStore.update`.
+    public func updateMeal(_ entry: MealLogEntry) async {
         do {
-            var updated = entry
-            updated.scanResult = try result.validated()
-            try await store.update(updated)
+            try await store.update(entry)
             mealEntries = try await store.fetchAll()
         } catch {
             lastError = error.localizedDescription

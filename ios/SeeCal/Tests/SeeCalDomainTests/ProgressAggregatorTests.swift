@@ -8,19 +8,11 @@ final class ProgressAggregatorTests: XCTestCase {
         let today = calendar.startOfDay(for: now)
         let yesterday = calendar.date(byAdding: .day, value: -1, to: today)!
 
-        let result = FoodScanResult(
-            totalCalories: 500,
-            proteinGrams: 20,
-            fatGrams: 10,
-            carbsGrams: 55,
-            confidence: 0.9,
-            items: [ScanItem(name: "meal", estimatedGrams: 200, calories: 500, proteinGrams: 20, fatGrams: 10, carbsGrams: 55)],
-            uncertaintyFlags: []
-        )
+        let totals = NutritionTotals(calories: 500, proteinGrams: 20, fatGrams: 10, carbsGrams: 55)
 
         let entries = [
-            AnyMealLogEntry(createdAt: today, scanResult: result),
-            AnyMealLogEntry(createdAt: yesterday, scanResult: result)
+            AnyMealLogEntry(createdAt: today, totals: totals),
+            AnyMealLogEntry(createdAt: yesterday, totals: totals)
         ]
 
         let points = ProgressAggregator.dailyPoints(from: entries, calendar: calendar, days: 7)

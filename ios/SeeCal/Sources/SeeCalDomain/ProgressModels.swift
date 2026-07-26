@@ -29,13 +29,7 @@ public enum ProgressAggregator {
         for entry in entries {
             let day = calendar.startOfDay(for: entry.createdAt)
             let current = buckets[day] ?? NutritionTotals()
-            let added = NutritionTotals(
-                calories: entry.scanResult.totalCalories,
-                proteinGrams: entry.scanResult.proteinGrams,
-                fatGrams: entry.scanResult.fatGrams,
-                carbsGrams: entry.scanResult.carbsGrams
-            )
-            buckets[day] = current + added
+            buckets[day] = current + entry.totals
         }
 
         return (0..<days).reversed().compactMap { offset in
@@ -54,12 +48,16 @@ public enum ProgressAggregator {
     }
 }
 
+/// A type-erased view of a persisted meal log entry, carrying only what aggregation
+/// needs: when it happened and its (already-scaled-items-derived) totals. Kept
+/// independent of `SeeCalPersistence.MealLogEntry` so this module has no dependency
+/// on the persistence layer.
 public struct AnyMealLogEntry: Sendable {
     public var createdAt: Date
-    public var scanResult: FoodScanResult
+    public var totals: NutritionTotals
 
-    public init(createdAt: Date, scanResult: FoodScanResult) {
+    public init(createdAt: Date, totals: NutritionTotals) {
         self.createdAt = createdAt
-        self.scanResult = scanResult
+        self.totals = totals
     }
 }

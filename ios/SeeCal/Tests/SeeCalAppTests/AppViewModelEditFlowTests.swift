@@ -24,7 +24,7 @@ private struct SingleResultEngine: NativeQwenVisionEngine {
 
 final class AppViewModelEditFlowTests: XCTestCase {
     @MainActor
-    func testEditFlowUpdatesTotals() async {
+    func testEditFlowUpdatesTotals() async throws {
         let runtime = MLXQwenRuntime(engine: SingleResultEngine())
         let orchestrator = RuntimeOrchestrator(runtimes: [runtime])
         let store = InMemoryMealLogStore()
@@ -36,19 +36,19 @@ final class AppViewModelEditFlowTests: XCTestCase {
             return
         }
 
-        let updated = FoodScanResult(
-            totalCalories: 550,
-            proteinGrams: 35,
-            fatGrams: 15,
-            carbsGrams: 50,
-            confidence: 0.8,
-            items: [ScanItem(name: "meal", estimatedGrams: 220, calories: 550, proteinGrams: 35, fatGrams: 15, carbsGrams: 50)],
-            uncertaintyFlags: []
-        )
+        // Edit flow: build a draft from the logged entry, bump the item's grams
+        // (200g base -> 220g, a 1.1x scale), and commit the update.
+        var draft = MealEditDraft(entry: first)
+        guard let itemID = draft.items.first?.id else {
+            XCTFail("Expected at least one item")
+            return
+        }
+        draft.setGrams(itemID: itemID, to: 220)
 
-        await vm.updateMeal(first, with: updated)
+        let updatedEntry = try draft.committedEntry()
+        await vm.updateMeal(updatedEntry)
 
-        XCTAssertEqual(vm.consumedToday.calories, 550)
-        XCTAssertEqual(vm.consumedToday.proteinGrams, 35)
+        XCTAssertEqual(vm.consumedToday.calories, 440, accuracy: 0.0001)
+        XCTAssertEqual(vm.consumedToday.proteinGrams, 27.5, accuracy: 0.0001)
     }
 }

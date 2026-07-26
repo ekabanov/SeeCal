@@ -22,15 +22,7 @@ final class FileBackedStoreCorruptionTests: XCTestCase {
         MealLogEntry(
             mealType: .lunch,
             imagePath: "/tmp/photo.jpg",
-            scanResult: FoodScanResult(
-                totalCalories: calories,
-                proteinGrams: 30,
-                fatGrams: 12,
-                carbsGrams: 50,
-                confidence: 0.8,
-                items: [ScanItem(name: "a", estimatedGrams: 100, calories: calories, proteinGrams: 30, fatGrams: 12, carbsGrams: 50)],
-                uncertaintyFlags: []
-            )
+            items: [MealItem(name: "a", grams: 100, base: MealItemBase(grams: 100, kcal: calories, protein: 30, fat: 12, carbs: 50))]
         )
     }
 

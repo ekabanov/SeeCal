@@ -108,11 +108,11 @@ public struct RootView: View {
                     ForEach(todaysEntries) { entry in
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
-                                Text(entry.mealType.rawValue.capitalized)
+                                Text(entry.name)
                                     .font(.headline)
-                                Text("\(Int(entry.scanResult.totalCalories)) kcal")
+                                Text("\(Int(entry.totals.calories)) kcal")
                                     .font(.subheadline)
-                                Text("P \(Int(entry.scanResult.proteinGrams))g • F \(Int(entry.scanResult.fatGrams))g • C \(Int(entry.scanResult.carbsGrams))g")
+                                Text("P \(Int(entry.totals.proteinGrams))g • F \(Int(entry.totals.fatGrams))g • C \(Int(entry.totals.carbsGrams))g")
                                     .font(.caption)
                                     .foregroundStyle(.secondary)
                             }
@@ -214,8 +214,8 @@ public struct RootView: View {
                         onSave: { savedDraft in
                             Task {
                                 do {
-                                    let updatedResult = try savedDraft.toFoodScanResult(basedOn: entry.scanResult)
-                                    await viewModel.updateMeal(entry, with: updatedResult)
+                                    let updatedEntry = try savedDraft.committedEntry()
+                                    await viewModel.updateMeal(updatedEntry)
                                 } catch {
                                     viewModel.lastError = error.localizedDescription
                                 }
@@ -310,14 +310,35 @@ private struct MealEditSheet: View {
     var body: some View {
         NavigationStack {
             Form {
-                Section("Adjust Nutrition") {
-                    TextField("Calories", text: $draft.caloriesText)
-                    TextField("Protein (g)", text: $draft.proteinText)
-                    TextField("Fat (g)", text: $draft.fatText)
-                    TextField("Carbs (g)", text: $draft.carbsText)
+                // Placeholder layout only — the real result/edit sheet (photo, hero
+                // total, macro chips, per-item gram steppers per spec §5) lands in P6.
+                // This just exercises MealEditDraft's per-item API well enough to
+                // keep RootView compiling.
+                Section("Detected Items") {
+                    ForEach(draft.items) { item in
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(item.name)
+                            HStack {
+                                Button("-5 g") { draft.stepGrams(itemID: item.id, by: -MealItem.gramStep) }
+                                Text("\(Int(item.grams)) g")
+                                Button("+5 g") { draft.stepGrams(itemID: item.id, by: MealItem.gramStep) }
+                            }
+                            Text("\(Int(item.kcal)) kcal")
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                }
+                Section("Totals") {
+                    let totals = draft.totals
+                    Text("\(Int(totals.calories)) kcal")
+                        .fontWeight(.semibold)
+                    Text("P \(Int(totals.proteinGrams))g • F \(Int(totals.fatGrams))g • C \(Int(totals.carbsGrams))g")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
                 }
             }
-            .navigationTitle("Edit Meal")
+            .navigationTitle(draft.name)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel", action: onCancel)

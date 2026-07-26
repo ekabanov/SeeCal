@@ -23,13 +23,7 @@ final class AppViewModelTodayFilterTests: XCTestCase {
             createdAt: Date(),
             mealType: .lunch,
             imagePath: "/tmp/today.jpg",
-            scanResult: FoodScanResult(
-                totalCalories: 500,
-                proteinGrams: 30,
-                fatGrams: 10,
-                carbsGrams: 40,
-                items: [ScanItem(name: "a", estimatedGrams: 100, calories: 500, proteinGrams: 30, fatGrams: 10, carbsGrams: 40)]
-            )
+            items: [MealItem(name: "a", grams: 100, base: MealItemBase(grams: 100, kcal: 500, protein: 30, fat: 10, carbs: 40))]
         )
 
         let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: Date())!
@@ -37,13 +31,7 @@ final class AppViewModelTodayFilterTests: XCTestCase {
             createdAt: yesterday,
             mealType: .dinner,
             imagePath: "/tmp/yesterday.jpg",
-            scanResult: FoodScanResult(
-                totalCalories: 900,
-                proteinGrams: 50,
-                fatGrams: 30,
-                carbsGrams: 80,
-                items: [ScanItem(name: "b", estimatedGrams: 200, calories: 900, proteinGrams: 50, fatGrams: 30, carbsGrams: 80)]
-            )
+            items: [MealItem(name: "b", grams: 200, base: MealItemBase(grams: 200, kcal: 900, protein: 50, fat: 30, carbs: 80))]
         )
 
         try await store.save(todayEntry)
@@ -65,13 +53,7 @@ final class AppViewModelTodayFilterTests: XCTestCase {
             createdAt: lastWeek,
             mealType: .breakfast,
             imagePath: "/tmp/old.jpg",
-            scanResult: FoodScanResult(
-                totalCalories: 300,
-                proteinGrams: 20,
-                fatGrams: 8,
-                carbsGrams: 30,
-                items: [ScanItem(name: "c", estimatedGrams: 80, calories: 300, proteinGrams: 20, fatGrams: 8, carbsGrams: 30)]
-            )
+            items: [MealItem(name: "c", grams: 80, base: MealItemBase(grams: 80, kcal: 300, protein: 20, fat: 8, carbs: 30))]
         )
         try await store.save(oldEntry)
 

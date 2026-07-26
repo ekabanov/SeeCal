@@ -18,15 +18,7 @@ final class FileBackedMealLogStoreTests: XCTestCase {
         MealLogEntry(
             mealType: .lunch,
             imagePath: "/tmp/photo.jpg",
-            scanResult: FoodScanResult(
-                totalCalories: calories,
-                proteinGrams: 30,
-                fatGrams: 12,
-                carbsGrams: 50,
-                confidence: 0.8,
-                items: [ScanItem(name: "a", estimatedGrams: 100, calories: calories, proteinGrams: 30, fatGrams: 12, carbsGrams: 50)],
-                uncertaintyFlags: []
-            )
+            items: [MealItem(name: "a", grams: 100, base: MealItemBase(grams: 100, kcal: calories, protein: 30, fat: 12, carbs: 50))]
         )
     }
 
@@ -53,7 +45,7 @@ final class FileBackedMealLogStoreTests: XCTestCase {
         let all = try await reloaded.fetchAll()
         XCTAssertEqual(all.count, 1)
         XCTAssertEqual(all.first?.id, entry.id)
-        XCTAssertEqual(all.first?.scanResult.totalCalories, 500)
+        XCTAssertEqual(all.first?.totals.calories, 500)
         XCTAssertEqual(all.first?.imagePath, "/tmp/photo.jpg")
     }
 
@@ -65,13 +57,13 @@ final class FileBackedMealLogStoreTests: XCTestCase {
         try await store.save(entry)
 
         var updated = entry
-        updated.scanResult.totalCalories = 640
+        updated.items[0].base.kcal = 640
         try await store.update(updated)
 
         let afterUpdate = FileBackedMealLogStore(fileURL: fileURL)
         var all = try await afterUpdate.fetchAll()
         XCTAssertEqual(all.count, 1)
-        XCTAssertEqual(all.first?.scanResult.totalCalories, 640)
+        XCTAssertEqual(all.first?.totals.calories, 640)
 
         try await afterUpdate.delete(id: entry.id)
 
