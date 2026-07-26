@@ -4,7 +4,7 @@ full training text == stripped infer prompt + assistant JSON + im_end.
 Mirrors mlx-vlm 0.6.7 trainer/datasets.py exactly:
   full text  = apply_chat_template(conv,      add_generation_prompt=False)
   mask prefix= apply_chat_template(conv[:-1], add_generation_prompt=True)
-03_infer.py builds apply_chat_template(processor, config, record_text, num_images=N)
+infer.py builds apply_chat_template(processor, config, record_text, num_images=N)
 (= mask prefix) and strips the trailing '<think>\n' before generation.
 """
 import json
@@ -16,7 +16,7 @@ from mlx_vlm.utils import load_config
 from transformers import AutoProcessor
 
 MODEL = "/Users/jevgenikabanov/.lmstudio/models/mlx-community/Qwen3.5-4B-MLX-4bit"
-REPO = Path("/Users/jevgenikabanov/Documents/Projects/Claude/SeeCal")
+REPO = Path(__file__).resolve().parent
 
 processor = AutoProcessor.from_pretrained(MODEL)
 config = load_config(MODEL)
@@ -38,7 +38,7 @@ def check(jsonl, n=5):
         trainer_prefix = tmpl(processor, config, conv[:-1],
                               add_generation_prompt=True, num_images=n_img)
 
-        # inference side (03_infer.run_inference)
+        # inference side (infer.run_inference)
         infer = tmpl(processor, config, text, num_images=n_img)
         infer_stripped = infer[:-len("<think>\n")] if infer.endswith("<think>\n") else infer
 

@@ -1,19 +1,15 @@
 """
-00_smoke_test.py
-----------------
+smoke_test.py
+-------------
 Fast pre-training validation: push real JSONL records through the installed
 mlx-vlm batch pipeline (processor + config only — NO model weights) and assert
 the training inputs are sane. Runs in ~1 minute and catches, at batch-construction
 time, every silent failure mode that previously cost multi-day training runs
 (CLAUDE.md issues 10, 14, 15, 17, 18).
 
-Run from the repo root (image paths in the JSONL are repo-root-relative):
+Run from ml/ (image paths in the JSONL are pipeline-root-relative):
 
-  # New stack (mlx-vlm 0.6.7):
-  .venv-vlm067/bin/python 00_smoke_test.py --data finetune_data_v2/train.jsonl
-
-  # Legacy stack (patched 0.4.0):
-  .venv/bin/python 00_smoke_test.py --data finetune_data/train.jsonl
+  .venv/bin/python smoke_test.py --data finetune_data_v2/train.jsonl
 
 Exit code 0 = safe to train; 1 = do NOT start a training run.
 """
@@ -62,12 +58,12 @@ def main():
     if not legacy and "images" not in hf_ds.column_names:
         failures.append(
             "JSONL has no top-level 'images' column — mlx-vlm >= 0.5 will train "
-            "text-only WITHOUT ERROR. Regenerate with 02_prepare_finetune.py."
+            "text-only WITHOUT ERROR. Regenerate with prepare_finetune.py."
         )
     for rec in hf_ds:
         for p in rec.get("images") or []:
             if p and not Path(p).exists():
-                failures.append(f"image path does not resolve from cwd: {p} (run from repo root)")
+                failures.append(f"image path does not resolve from cwd: {p} (run from ml/)")
 
     if failures:
         report(failures)

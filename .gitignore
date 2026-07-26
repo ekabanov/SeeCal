@@ -2,7 +2,7 @@
 .DS_Store
 
 # Python
-.venv*/
+ml/.venv*/
 __pycache__/
 *.pyc
 .cache/
@@ -13,18 +13,18 @@ ios/SeeCal/.build/
 ios/SeeCalApp/SeeCalApp/Models/
 ios/SeeCalApp/.git.disabled/
 
-# Raw + derived datasets (regenerable via 01/02 scripts)
-Nutrition5K/
-dataset_clean/
-dataset_clean_sample/
-finetune_data_sample/
+# Raw + derived datasets (regenerable via select_images.py/prepare_finetune.py)
+ml/Nutrition5K/
+ml/dataset_clean/
+ml/dataset_clean_sample/
+ml/finetune_data_sample/
 
 # Training outputs / model weights
 *.safetensors
-adapters*/
-fused-model/
-runs/
-*.log
+ml/adapters*/
+ml/fused-model/
+ml/runs/
+ml/*.log
 
 # Session scratch
 .superpowers/

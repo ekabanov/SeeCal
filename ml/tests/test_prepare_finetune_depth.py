@@ -1,5 +1,5 @@
 """
-Tests for the depth-variant support in 02_prepare_finetune.py (Task D2,
+Tests for the depth-variant support in prepare_finetune.py (Task D2,
 docs/design/2026-07-26-depth-design-brief.md section (f)).
 
 Run with:  .venv/bin/python -m pytest tests/test_prepare_finetune_depth.py
@@ -12,7 +12,7 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 
 _spec = importlib.util.spec_from_file_location(
-    "prepare_finetune", REPO_ROOT / "02_prepare_finetune.py"
+    "prepare_finetune", REPO_ROOT / "prepare_finetune.py"
 )
 pf = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(pf)

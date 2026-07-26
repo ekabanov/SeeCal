@@ -10,20 +10,20 @@ import XCTest
 /// LoRAContainer) produces the same nutrition JSON as the Python reference
 /// (mlx-vlm, base model + unfused adapter):
 ///
-/// 1. Convert the trained adapter (from the repo root):
+/// 1. Convert the trained adapter (from ml/, the pipeline root):
 ///        .venv/bin/python convert_adapter_for_swift.py \
 ///            --adapter-path adapters_v4 --output-path adapters_v4_swift
 ///
 /// 2. Produce the Python reference output for one test image:
-///        .venv/bin/python 03_infer.py \
+///        .venv/bin/python infer.py \
 ///            --image dataset_clean/dish_XXXX/overhead.jpg \
 ///            --adapter-path adapters_v4
 ///    Save the printed JSON to a file, e.g. /tmp/python_reference.json.
 ///
 /// 3. Run the Swift side on the same image (macOS, Apple silicon):
 ///        SEECAL_PARITY_MODEL_DIR=~/.lmstudio/models/mlx-community/Qwen3.5-4B-MLX-4bit \
-///        SEECAL_PARITY_ADAPTER_DIR=$PWD/../../adapters_v4_swift \
-///        SEECAL_PARITY_IMAGE=$PWD/../../dataset_clean/dish_XXXX/overhead.jpg \
+///        SEECAL_PARITY_ADAPTER_DIR=$PWD/../../ml/adapters_v4_swift \
+///        SEECAL_PARITY_IMAGE=$PWD/../../ml/dataset_clean/dish_XXXX/overhead.jpg \
 ///        swift test --filter AdapterParityTests/testAdapterInferenceParityScaffold
 ///    The test prints the generated JSON.
 ///
@@ -98,7 +98,7 @@ final class AdapterParityTests: XCTestCase {
     /// End-to-end scaffold: loads the real model + adapter and runs one inference.
     /// Skipped unless the SEECAL_PARITY_* environment variables are set (see the
     /// procedure in the type-level comment). This is a harness, not an assertion
-    /// of numeric parity — the comparison against 03_infer.py output is manual.
+    /// of numeric parity — the comparison against infer.py output is manual.
     func testAdapterInferenceParityScaffold() async throws {
         let env = ProcessInfo.processInfo.environment
         guard
@@ -119,7 +119,7 @@ final class AdapterParityTests: XCTestCase {
         let runner = try await MLXQwen35RunnerBuilder.makeRunner(config: config)
 
         // Same prompt the app sends — and byte-identical to the Python side
-        // (02_prepare_finetune.py / 03_infer.py), per the global prompt constraint.
+        // (prepare_finetune.py / infer.py), per the global prompt constraint.
         let prompt = QwenPromptBuilder().buildPrompt(
             request: FoodScanRequest(imagePath: imagePath, mealType: .lunch)
         )

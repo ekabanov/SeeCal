@@ -1,6 +1,6 @@
 """
-01_select_images.py
--------------------
+select_images.py
+-----------------
 Selects up to 3 images per dish from the Nutrition5K dataset and copies them
 to a clean output directory structure.
 
@@ -25,8 +25,8 @@ Output structure:
       side_a.jpg            ← renamed from camera_Aframe005.jpeg  (if exists)
       side_c.jpg            ← renamed from camera_Cframe005.jpeg  (if exists)
 
-Usage:
-  python 01_select_images.py [--src NUTRITION5K_DIR] [--dst OUTPUT_DIR] [--max-images 3]
+Usage (run from ml/):
+  python select_images.py [--src NUTRITION5K_DIR] [--dst OUTPUT_DIR] [--max-images 3]
 """
 
 import argparse

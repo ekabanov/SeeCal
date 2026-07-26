@@ -1,24 +1,24 @@
 """
-03_infer.py
------------
+infer.py
+--------
 Run inference on food images using the fine-tuned Qwen3.5-4B model with
 LoRA adapters via mlx-vlm.
 
 This avoids the need to fuse adapters — mlx-vlm loads the base model and
 applies LoRA weights on the fly.
 
-Usage:
+Usage (run from ml/):
   # Single image
-  python 03_infer.py --image dataset_clean/dish_1565370004/overhead.jpg
+  python infer.py --image dataset_clean/dish_1565370004/overhead.jpg
 
   # Multiple images
-  python 03_infer.py --image img1.jpg img2.jpg img3.jpg
+  python infer.py --image img1.jpg img2.jpg img3.jpg
 
   # Evaluate on test set (first N samples)
-  python 03_infer.py --test-set finetune_data/test.jsonl --limit 20
+  python infer.py --test-set finetune_data/test.jsonl --limit 20
 
   # Custom adapter/model paths
-  python 03_infer.py --image food.jpg \
+  python infer.py --image food.jpg \
     --model-path ~/models/Qwen3.5-4B-MLX-bf16 \
     --adapter-path adapters
 """
@@ -33,7 +33,7 @@ from mlx_vlm.utils import load_config
 from mlx_vlm.prompt_utils import apply_chat_template as mlx_apply_chat_template
 
 
-# Same prompts used during training (must match 02_prepare_finetune.py)
+# Same prompts used during training (must match prepare_finetune.py)
 SYSTEM_PROMPT = (
     "You are a nutrition expert. When shown a photo of a meal, "
     "you identify the ingredients with their weights and estimate the total "
@@ -50,13 +50,13 @@ USER_PROMPT = (
 
 
 def _load_prepare_module():
-    """Import 02_prepare_finetune.py (name starts with a digit, so importlib).
+    """Import prepare_finetune.py via importlib (same dir as this script).
 
     Single source of truth for the variant-B depth line format — inference must
     render the byte-identical line the training data carries.
     """
     import importlib.util
-    path = Path(__file__).parent / "02_prepare_finetune.py"
+    path = Path(__file__).parent / "prepare_finetune.py"
     spec = importlib.util.spec_from_file_location("prepare_finetune", path)
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -68,7 +68,7 @@ def depth_augment(image_paths: list, prompt_text: str, depth_image: str,
     """Ad-hoc single-photo depth support (--depth-mode + --depth-image).
 
     text  — compute volume/height via depth_features, append the exact
-            variant-B line (rendered by 02_prepare_finetune.format_depth_line).
+            variant-B line (rendered by prepare_finetune.format_depth_line).
     image — render the height image and append it as a second image.
     """
     import tempfile
@@ -385,8 +385,8 @@ def main():
             print()
 
     if args.test_set:
-        # Image paths in JSONL are relative to the project root (SeeCal/),
-        # not relative to finetune_data/ — see 02_prepare_finetune.py image_str().
+        # Image paths in JSONL are relative to the pipeline root (SeeCal/ml/),
+        # not relative to finetune_data/ — see prepare_finetune.py image_str().
         data_dir = Path(__file__).parent.resolve()
         evaluate_test_set(model, processor, args.test_set, args.limit, data_dir, config,
                           thinking_budget=args.thinking_budget,

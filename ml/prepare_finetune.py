@@ -1,8 +1,8 @@
 """
-02_prepare_finetune.py
-----------------------
+prepare_finetune.py
+--------------------
 Generates train / validation / test JSONL files for fine-tuning Qwen3.5
-with mlx-lm, using the cleaned image directory produced by 01_select_images.py.
+with mlx-lm, using the cleaned image directory produced by select_images.py.
 
 Each JSONL record uses the mlx-vlm multimodal chat format:
   {
@@ -26,8 +26,8 @@ The top-level "images" field is what mlx-vlm 0.6.7 actually reads for pixel
 loading; the content-embedded image entry is kept too for readability/older
 tooling but is ignored by the 0.6.7 loader.
 
-Image paths are stored relative to the project root (the directory containing
-this script, i.e. SeeCal/), which is also the CWD from which training is
+Image paths are stored relative to the pipeline root (the directory containing
+this script, i.e. SeeCal/ml/), which is also the CWD from which training is
 launched.  Example: "dataset_clean/dish_xxx/overhead.jpg".  Pass absolute
 paths via --image-root to override (produces file:// URIs).
 
@@ -40,10 +40,10 @@ Splits (stratified by dish, not image):
   valid : 10%
   test  : 10%
 
-Usage:
-  python 02_prepare_finetune.py [--clean-dir DATASET_CLEAN] [--nutrition CSV]
-                                [--out-dir FINETUNE_DATA] [--seed 42]
-                                [--image-root /abs/path/override]
+Usage (run from ml/):
+  python prepare_finetune.py [--clean-dir DATASET_CLEAN] [--nutrition CSV]
+                             [--out-dir FINETUNE_DATA] [--seed 42]
+                             [--image-root /abs/path/override]
 """
 
 import argparse
@@ -394,7 +394,7 @@ def main():
         "--clean-dir",
         type=Path,
         default=Path(__file__).parent / "dataset_clean",
-        help="Output of 01_select_images.py (default: ./dataset_clean).",
+        help="Output of select_images.py (default: ./dataset_clean).",
     )
     parser.add_argument(
         "--nutrition",
@@ -474,7 +474,7 @@ def main():
     if not args.clean_dir.exists():
         raise FileNotFoundError(
             f"Clean image directory not found: {args.clean_dir}\n"
-            "Run 01_select_images.py first."
+            "Run select_images.py first."
         )
 
     nutrition = load_nutrition(args.nutrition)

@@ -1,8 +1,8 @@
 #!/bin/bash
-# SeeCal v5 full training run — mlx-vlm 0.6.7 stack (.venv-vlm067, no patches).
+# SeeCal v5 full training run — mlx-vlm 0.6.7 stack (ml/.venv, no patches).
 #
 # BEFORE running, the validation ladder must be green (see CLAUDE.md Toolchain v2):
-#   .venv-vlm067/bin/python 00_smoke_test.py --data finetune_data_v2/train.jsonl
+#   .venv/bin/python smoke_test.py --data finetune_data_v2/train.jsonl
 #   (then the 32-dish overfit + probe gates if the stack or data changed)
 #
 # Notes:
@@ -19,7 +19,7 @@
 set -euo pipefail
 cd "$(dirname "$0")"
 
-.venv-vlm067/bin/python -m mlx_vlm.lora \
+.venv/bin/python -m mlx_vlm.lora \
   --model-path /Users/jevgenikabanov/.lmstudio/models/mlx-community/Qwen3.5-4B-MLX-4bit \
   --dataset finetune_data_v2 \
   --train-mode sft \
