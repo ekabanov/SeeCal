@@ -23,7 +23,7 @@ struct SeeCaliOSApp: App {
             ProductionRootView(
                 config: QwenRuntimeConfig(
                     modelPath: ModelAssetResolver.resolveModelPath(),
-                    adapterPath: nil,
+                    adapterPath: ModelAssetResolver.resolveAdapterPath(),
                     runtimePolicy: .mlxOnly,
                     maxOutputTokens: 1024,
                     temperature: 0.1,
