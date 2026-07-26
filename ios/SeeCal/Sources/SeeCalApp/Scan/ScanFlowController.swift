@@ -43,6 +43,13 @@ public struct CapturedPhotoStore: Sendable {
         try jpeg.write(to: url, options: .atomic)
         return url.path
     }
+
+    /// Removes an abandoned capture from disk (discard, new-scan-over-pending,
+    /// error abandonment). Best-effort: a leaked file is a nuisance, not a
+    /// failure worth surfacing.
+    public func delete(atPath path: String) {
+        try? FileManager.default.removeItem(atPath: path)
+    }
 }
 
 // MARK: - Scan flow controller
@@ -162,18 +169,26 @@ public final class ScanFlowController: ObservableObject {
 
     // MARK: Scan surface entry/exit
 
-    /// Scan FAB tap. During an in-flight analysis (or after an error) this
-    /// returns to the Analyzing screen rather than starting a parallel run;
+    /// Scan FAB tap. During an in-flight analysis this returns to the
+    /// Analyzing screen rather than starting a parallel run; after an error it
+    /// abandons the failed photo and opens the camera for a fresh capture;
     /// with a pending (banner) result it clears it and starts a fresh capture.
     public func scanTapped() {
         switch phase {
         case .idle:
             phase = .capturing
             isScanSurfaceVisible = true
-        case .capturing, .analyzing, .error:
+        case .capturing, .analyzing:
             isScanSurfaceVisible = true
-        case .ready:
+        case .error:
+            // A failed inference must not dead-end the flow: the FAB starts
+            // over instead of re-showing the same error screen forever.
+            newScanAfterError()
+        case let .ready(draft):
             // "Starting a new scan clears any pending banner/result" (spec §5).
+            if let imagePath = draft.imagePath {
+                photoStore.delete(atPath: imagePath)
+            }
             phase = .capturing
             isScanSurfaceVisible = true
         case .presentingResult:
@@ -181,11 +196,23 @@ public final class ScanFlowController: ObservableObject {
         }
     }
 
-    /// Camera ✕ — returns to the selected tab, abandoning the capture.
+    /// Error-state "New scan" (Analyzing screen's secondary affordance, and the
+    /// FAB while `.error`): abandon the failed photo — deleting its file — and
+    /// return to the camera for a fresh capture.
+    public func newScanAfterError() {
+        guard case let .error(_, photoPath) = phase else { return }
+        photoStore.delete(atPath: photoPath)
+        phase = .capturing
+        isScanSurfaceVisible = true
+    }
+
+    /// Camera ✕ — abandons the capture and lands on Today (spec §5: the
+    /// viewfinder's ✕ "returns to Today", not to whatever tab was selected).
     public func closeCamera() {
         guard case .capturing = phase else { return }
         phase = .idle
         isScanSurfaceVisible = false
+        onRequestTabSwitch?(.today)
     }
 
     /// Any tab tap while the scan surface is up. Leaving the camera abandons
@@ -205,9 +232,15 @@ public final class ScanFlowController: ObservableObject {
         guard case .capturing = phase else { return }
         do {
             let photo = try await captureService.capturePhoto()
+            // The camera may have been closed (✕ / tab tap) while the capture
+            // was in flight; an abandoned viewfinder must not start an analysis.
+            guard case .capturing = phase else { return }
             let path = try photoStore.save(photo.imageData)
             startAnalysis(photoPath: path)
         } catch {
+            // Same re-check on the failure path: a capture aborted BECAUSE the
+            // camera closed must not park a stale alert for the next open.
+            guard case .capturing = phase else { return }
             captureError = error.localizedDescription
         }
     }
@@ -269,22 +302,37 @@ public final class ScanFlowController: ObservableObject {
         phase = .ready(draft: draft)
     }
 
-    /// New-scan Discard: drop the result and return to the camera (prototype:
-    /// `discardBtn` → `show("camera")` when the draft isn't an edit).
+    /// Live draft edits from the result sheet (gram steppers). Keeping the
+    /// presented draft in sync means an interactive dismissal parks the
+    /// ADJUSTED draft behind the banner, not the pre-adjustment one.
+    public func presentedDraftChanged(_ draft: MealEditDraft) {
+        guard case .presentingResult = phase, !draft.isEditingExisting else { return }
+        phase = .presentingResult(draft: draft)
+    }
+
+    /// New-scan Discard: drop the result — deleting its photo file — and
+    /// return to the camera (prototype: `discardBtn` → `show("camera")` when
+    /// the draft isn't an edit).
     public func discardResult() {
-        guard case .presentingResult = phase else { return }
+        guard case let .presentingResult(draft) = phase else { return }
+        if let imagePath = draft.imagePath {
+            photoStore.delete(atPath: imagePath)
+        }
         phase = .capturing
         isScanSurfaceVisible = true
     }
 
     /// New-scan "Log meal": persist (the FIRST store write of the whole flow),
-    /// toast, land on Today scrolled to top.
+    /// toast, land on Today scrolled to top. Guarded against double-taps: the
+    /// phase flips off `.presentingResult` BEFORE the first suspension, so a
+    /// second rapid call no-ops instead of persisting twice.
     public func logMeal(_ draft: MealEditDraft) async {
+        guard case .presentingResult = phase else { return }
         do {
             let entry = try draft.committedEntry()
-            await viewModel.logMeal(entry)
             phase = .idle
             isScanSurfaceVisible = false
+            await viewModel.logMeal(entry)
             todayScrollToTopToken = UUID()
             onRequestTabSwitch?(.today)
             showToast("Logged to Today")

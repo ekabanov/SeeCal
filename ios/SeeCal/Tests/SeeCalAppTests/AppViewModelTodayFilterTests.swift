@@ -62,4 +62,30 @@ final class AppViewModelTodayFilterTests: XCTestCase {
 
         XCTAssertEqual(vm.consumedToday.calories, 0)
     }
+
+    /// "Today" is derived from the view model's injectable clock, not the wall
+    /// clock — pin `now` to another day and that day's entries count as today
+    /// (and drop out of History's "recent meals").
+    @MainActor
+    func testConsumedTodayAndRecentMealsFollowTheInjectedClock() async throws {
+        let store = InMemoryMealLogStore()
+        let yesterday = Calendar.current.date(byAdding: .day, value: -1, to: Date())!
+        let entry = MealLogEntry(
+            createdAt: yesterday,
+            mealType: .lunch,
+            imagePath: "/tmp/pinned.jpg",
+            items: [MealItem(name: "d", grams: 100, base: MealItemBase(grams: 100, kcal: 500, protein: 30, fat: 10, carbs: 40))]
+        )
+        try await store.save(entry)
+
+        let vm = AppViewModel(
+            orchestrator: RuntimeOrchestrator(runtimes: [NoopRuntime()]),
+            store: store,
+            now: { yesterday }
+        )
+        await vm.loadEntries()
+
+        XCTAssertEqual(vm.consumedToday.calories, 500, "With the clock pinned to the entry's day, it counts as today")
+        XCTAssertTrue(vm.recentMealEntries.isEmpty, "recentMealEntries must exclude the pinned 'today'")
+    }
 }

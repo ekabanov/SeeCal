@@ -121,6 +121,12 @@ public struct RootView: View {
                         } else {
                             scanController.discardResult()
                         }
+                    },
+                    onDraftChanged: { editedDraft in
+                        // New-scan drafts track the sheet's live edits so an
+                        // interactive dismissal parks the adjusted values
+                        // (edit mode ignores this — Cancel drops edits).
+                        scanController.presentedDraftChanged(editedDraft)
                     }
                 )
                 .resultSheetStyling()

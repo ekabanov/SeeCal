@@ -14,8 +14,6 @@ public final class AppViewModel: ObservableObject {
     /// Before a profile is loaded/set, this falls back to the constructor-supplied
     /// default, or to a legacy persisted target (see `loadEntries`).
     @Published public private(set) var dailyTarget: DailyNutritionTarget
-    @Published public private(set) var isScanning = false
-    @Published public private(set) var lastInferenceSeconds: Double?
     @Published public var lastError: String?
     /// Settings §8 "Capture" toggles (LiDAR depth, capture coaching). Defaults
     /// to both-on (`CapturePreferences.default`) until a persisted value loads
@@ -43,20 +41,21 @@ public final class AppViewModel: ObservableObject {
     private let weightStore: WeightLogStore
     private let now: @Sendable () -> Date
 
+    /// Today's entries, where "today" comes from the injectable clock (like
+    /// every other date-derived value here) so tests can pin it —
+    /// Calendar.current still supplies the user's day boundaries. Shared by
+    /// `consumedToday` and the Today screen's meals card.
+    public var todaysMealEntries: [MealLogEntry] {
+        let today = now()
+        return mealEntries.filter { Calendar.current.isDate($0.createdAt, inSameDayAs: today) }
+    }
+
     public var consumedToday: NutritionTotals {
-        let todaysEntries = mealEntries.filter { Calendar.current.isDateInToday($0.createdAt) }
-        return todaysEntries.reduce(NutritionTotals()) { $0 + $1.totals }
+        todaysMealEntries.reduce(NutritionTotals()) { $0 + $1.totals }
     }
 
     public var remainingToday: NutritionRemaining {
         NutritionTracker.remaining(target: dailyTarget, consumed: consumedToday)
-    }
-
-    public var weeklyProgress: [DailyProgressPoint] {
-        ProgressAggregator.dailyPoints(
-            from: mealEntries.map { AnyMealLogEntry(createdAt: $0.createdAt, totals: $0.totals) },
-            days: 7
-        )
     }
 
     /// History screen chart dataset for one range (spec §6) — see
@@ -75,9 +74,10 @@ public final class AppViewModel: ObservableObject {
     /// (today's own meals stay on the Today screen only), most recent first,
     /// capped at 10.
     public var recentMealEntries: [MealLogEntry] {
-        Array(
+        let today = now()
+        return Array(
             mealEntries
-                .filter { !Calendar.current.isDateInToday($0.createdAt) }
+                .filter { !Calendar.current.isDate($0.createdAt, inSameDayAs: today) }
                 .sorted { $0.createdAt > $1.createdAt }
                 .prefix(10)
         )
@@ -172,46 +172,32 @@ public final class AppViewModel: ObservableObject {
     /// "Every change recomputes the goal immediately"). Persists the profile and
     /// recomputes `dailyTarget` in the same step, so Today's ring reflects the
     /// edit as soon as the published values change.
+    ///
+    /// A weight change additionally appends a `WeightEntry` dated now — the
+    /// Profile weight stepper is the app's only weight input, so this is what
+    /// feeds the spec §7 weight-trend note ("−1.2 kg this month") and the
+    /// weekly weight trend. The very first profile save seeds the log's
+    /// baseline entry.
     public func updateProfile(_ profile: UserProfile) async {
         do {
+            let weightChanged = userProfile?.weightKg != profile.weightKg
             let target = GoalCalculator.dailyTarget(for: profile, now: now())
             userProfile = profile
             dailyTarget = target
             try await preferencesStore.saveUserProfile(profile)
+            if weightChanged {
+                try await weightStore.save(WeightEntry(date: now(), weightKg: profile.weightKg))
+                weightEntries = try await weightStore.fetchAll()
+            }
         } catch {
             lastError = error.localizedDescription
-        }
-    }
-
-    public func addMealPhoto(imagePath: String, mealType: MealType, userHint: String?) async {
-        guard !isScanning else {
-            print("[SeeCal][AppViewModel] addMealPhoto ignored: scan already in progress")
-            return
-        }
-        do {
-            isScanning = true
-            let started = Date()
-            print("[SeeCal][AppViewModel] addMealPhoto start mealType=\(mealType.rawValue) imagePath=\(imagePath)")
-            let request = FoodScanRequest(imagePath: imagePath, mealType: mealType, userHint: userHint)
-            let result = try await orchestrator.infer(request: request)
-            let items = result.items.map(MealItem.init(scanItem:))
-            let entry = MealLogEntry(mealType: mealType, imagePath: imagePath, items: items)
-            try await store.save(entry)
-            mealEntries = try await store.fetchAll()
-            lastInferenceSeconds = Date().timeIntervalSince(started)
-            isScanning = false
-            print("[SeeCal][AppViewModel] addMealPhoto success in \(String(format: "%.2f", lastInferenceSeconds ?? 0))s")
-        } catch {
-            isScanning = false
-            lastError = error.localizedDescription
-            print("[SeeCal][AppViewModel] addMealPhoto failed error=\(error.localizedDescription)")
         }
     }
 
     /// Persists a brand-new, already-inferred entry — the scan flow's explicit
-    /// "Log meal" confirmation (spec §5). Unlike `addMealPhoto` (which infers and
-    /// persists in one step), this is pure persistence: inference already happened
-    /// in `ScanFlowController`, and the user has reviewed/adjusted the draft.
+    /// "Log meal" confirmation (spec §5). This is pure persistence: inference
+    /// already happened in `ScanFlowController`, and the user has
+    /// reviewed/adjusted the draft.
     public func logMeal(_ entry: MealLogEntry) async {
         do {
             try await store.save(entry)
@@ -234,8 +220,15 @@ public final class AppViewModel: ObservableObject {
 
     public func deleteMeal(id: UUID) async {
         do {
+            // Capture the photo path BEFORE the store delete refreshes the list.
+            let imagePath = mealEntries.first(where: { $0.id == id })?.imagePath
             try await store.delete(id: id)
             mealEntries = try await store.fetchAll()
+            // The entry is gone, so its captured photo has no remaining reader
+            // (thumbnails only load for live entries). Best-effort cleanup.
+            if let imagePath {
+                try? FileManager.default.removeItem(atPath: imagePath)
+            }
         } catch {
             lastError = error.localizedDescription
         }

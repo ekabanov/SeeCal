@@ -178,6 +178,41 @@ private extension View {
     }
 }
 
+// MARK: - Chart geometry (pure, unit-testable)
+
+/// The chart's vertical math, extracted from the views so bar anchoring and the
+/// goal line share ONE coordinate convention (y measured from the TOP of the
+/// chart area, bars growing up from its BOTTOM) — and so a geometry regression
+/// (e.g. bars anchoring to the top while the goal line measures from the
+/// bottom, rendering the chart upside-down) is caught by unit tests.
+enum HistoryChartLayout {
+    /// Minimum sliver height so a zero/unlogged day still shows a mark.
+    static let minBarHeight: CGFloat = 3
+    /// Minimum height for a bar with a real (non-zero) value.
+    static let minValueBarHeight: CGFloat = 4
+
+    /// Bar height for `value` on an axis scaled to `axisMax`, in a chart area
+    /// `totalHeight` tall.
+    static func barHeight(value: Double, axisMax: Double, totalHeight: CGFloat) -> CGFloat {
+        guard axisMax > 0, value > 0 else { return minBarHeight }
+        return max(minValueBarHeight, CGFloat(value / axisMax) * totalHeight)
+    }
+
+    /// The bar's TOP edge, measured from the top of the chart area. Bars are
+    /// bottom-anchored: top edge = totalHeight − barHeight.
+    static func barTopY(value: Double, axisMax: Double, totalHeight: CGFloat) -> CGFloat {
+        totalHeight - barHeight(value: value, axisMax: axisMax, totalHeight: totalHeight)
+    }
+
+    /// The goal line's y, measured from the top of the chart area — the SAME
+    /// convention as `barTopY`, so a bar whose value equals the goal has its
+    /// top edge on the line.
+    static func goalLineY(goalCalories: Double, axisMax: Double, totalHeight: CGFloat) -> CGFloat {
+        let fraction = axisMax > 0 ? min(1, max(0, goalCalories / axisMax)) : 0
+        return totalHeight * (1 - CGFloat(fraction))
+    }
+}
+
 // MARK: - Chart (`.chart`/`.chart.dense`, `.cbar`, `.goal-line`)
 
 /// Renders one `HistoryChartData`: a fixed-height bar area (with the dashed
@@ -240,7 +275,12 @@ private struct BarColumn: View {
             RoundedRectangle(cornerRadius: isDense ? 2 : 6, style: .continuous)
                 .fill(fillColor)
                 .frame(width: isDense ? nil : min(26, geometry.size.width), height: barHeight(in: geometry.size.height))
-                .frame(maxWidth: .infinity, alignment: .bottom)
+                // maxHeight: .infinity makes this frame fill the chart area so
+                // `alignment: .bottom` actually anchors the bar to the BOTTOM —
+                // the same edge `GoalLineOverlay` measures from. (Width-only
+                // expansion left GeometryReader placing bars at the top,
+                // rendering the chart upside-down.)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 .overlay(alignment: .bottom) {
                     if bar.isToday {
                         RoundedRectangle(cornerRadius: isDense ? 2 : 6, style: .continuous)
@@ -252,9 +292,7 @@ private struct BarColumn: View {
     }
 
     private func barHeight(in totalHeight: CGFloat) -> CGFloat {
-        guard axisMax > 0 else { return 3 }
-        guard bar.value > 0 else { return 3 }
-        return max(4, CGFloat(bar.value / axisMax) * totalHeight)
+        HistoryChartLayout.barHeight(value: bar.value, axisMax: axisMax, totalHeight: totalHeight)
     }
 
     private var fillColor: Color {
@@ -277,8 +315,11 @@ private struct GoalLineOverlay: View {
 
     var body: some View {
         GeometryReader { geometry in
-            let fraction = axisMax > 0 ? min(1, max(0, goalCalories / axisMax)) : 0
-            let y = geometry.size.height * (1 - fraction)
+            let y = HistoryChartLayout.goalLineY(
+                goalCalories: goalCalories,
+                axisMax: axisMax,
+                totalHeight: geometry.size.height
+            )
             ZStack(alignment: .topTrailing) {
                 Path { path in
                     path.move(to: CGPoint(x: 0, y: y))

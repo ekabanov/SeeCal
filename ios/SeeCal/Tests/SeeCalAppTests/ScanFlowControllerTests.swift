@@ -1,4 +1,5 @@
 import XCTest
+import SwiftUI
 import SeeCalDomain
 import SeeCalInference
 import SeeCalPersistence
@@ -39,6 +40,42 @@ private actor GatedScanRunner: ScanInferenceRunning {
             continuation.resume(throwing: error)
         }
     }
+}
+
+// MARK: - Gated capture service
+
+/// A `CaptureService` whose `capturePhoto()` parks on a continuation until the
+/// test releases it — so tests can close the camera while a capture is still
+/// in flight and assert the aborted path.
+@MainActor
+private final class GatedCaptureService: CaptureService {
+    let supportsDepthCapture = false
+    private(set) var authorizationStatus: CameraAuthorization = .authorized
+    private var continuations: [CheckedContinuation<CapturedPhoto, Error>] = []
+
+    var pendingCaptureCount: Int { continuations.count }
+
+    func requestAccess() async -> CameraAuthorization { .authorized }
+    func startSession() {}
+    func stopSession() {}
+
+    func capturePhoto() async throws -> CapturedPhoto {
+        try await withCheckedThrowingContinuation { continuations.append($0) }
+    }
+
+    func finishCapture(with result: Result<CapturedPhoto, Error>) {
+        let pending = continuations
+        continuations.removeAll()
+        for continuation in pending {
+            continuation.resume(with: result)
+        }
+    }
+
+    func gravityUpdates() -> AsyncStream<GravityReading> {
+        AsyncStream { $0.finish() }
+    }
+
+    func makePreviewView() -> AnyView { AnyView(EmptyView()) }
 }
 
 // MARK: - Fixtures
@@ -216,12 +253,40 @@ final class ScanFlowControllerTests: XCTestCase {
         XCTAssertEqual(switchedTo, .today)
         XCTAssertNotEqual(controller.todayScrollToTopToken, tokenBefore, "Today must be told to scroll to top")
         XCTAssertEqual(viewModel.mealEntries.count, 1, "View model must refresh after logging")
+        XCTAssertTrue(
+            FileManager.default.fileExists(atPath: photoPath),
+            "A LOGGED meal keeps its photo file — thumbnails need it"
+        )
+    }
+
+    @MainActor
+    func testRapidDoubleLogMealPersistsExactlyOnce() async throws {
+        makeSUT()
+        _ = try await startAnalyzingScan()
+        await finishInference()
+
+        guard case let .presentingResult(draft) = controller.phase else {
+            return XCTFail("Expected result sheet, got \(controller.phase)")
+        }
+
+        // Two rapid taps on "Log meal": the phase flips off .presentingResult
+        // before the first suspension, so the second call must no-op. (Both
+        // tasks inherit the main actor, like two button-tap handlers.)
+        let controller = self.controller!
+        let first = Task { await controller.logMeal(draft) }
+        let second = Task { await controller.logMeal(draft) }
+        await first.value
+        await second.value
+
+        let entries = try await store.fetchAll()
+        XCTAssertEqual(entries.count, 1, "A double-tapped Log meal must persist exactly one entry")
+        XCTAssertEqual(viewModel.mealEntries.count, 1)
     }
 
     @MainActor
     func testStartingNewScanClearsPendingBannerResult() async throws {
         makeSUT()
-        _ = try await startAnalyzingScan()
+        let photoPath = try await startAnalyzingScan()
         controller.leaveScanSurface()
         await finishInference()
         XCTAssertTrue(controller.isBannerVisible)
@@ -235,6 +300,10 @@ final class ScanFlowControllerTests: XCTestCase {
         XCTAssertNil(controller.activeSheetDraft)
         let entries = try await store.fetchAll()
         XCTAssertTrue(entries.isEmpty, "Discarded pending result must never be persisted")
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: photoPath),
+            "The dropped pending result's photo file must be cleaned up"
+        )
     }
 
     // MARK: - Reentrancy
@@ -293,13 +362,122 @@ final class ScanFlowControllerTests: XCTestCase {
         }
     }
 
+    @MainActor
+    func testScanFABAfterErrorStartsFreshCaptureInsteadOfDeadEnding() async throws {
+        makeSUT()
+        let photoPath = try await startAnalyzingScan()
+
+        await runner.fail(with: InferenceError.runtimeFailed("model exploded"))
+        await controller.inferenceTask?.value
+        guard case .error = controller.phase else {
+            return XCTFail("Expected error phase, got \(controller.phase)")
+        }
+
+        // FAB tap after a failed inference: NOT the error screen again — a
+        // fresh capture, with the failed photo cleaned up.
+        controller.scanTapped()
+
+        XCTAssertEqual(controller.phase, .capturing, "The error phase must not be a dead end")
+        XCTAssertTrue(controller.isScanSurfaceVisible)
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: photoPath),
+            "The abandoned failed photo must be deleted"
+        )
+
+        // The camera is genuinely reachable: the shutter starts a new analysis.
+        await controller.shutterTapped()
+        guard case let .analyzing(newPath) = controller.phase else {
+            return XCTFail("Expected a new analysis after recapture, got \(controller.phase)")
+        }
+        XCTAssertNotEqual(newPath, photoPath, "New scan must capture a NEW photo")
+        XCTAssertEqual(capture.captureCount, 2)
+    }
+
+    @MainActor
+    func testNewScanAfterErrorAffordanceReturnsToCamera() async throws {
+        makeSUT()
+        let photoPath = try await startAnalyzingScan()
+        await runner.fail(with: InferenceError.runtimeFailed("boom"))
+        await controller.inferenceTask?.value
+
+        // The Analyzing screen's error-block secondary button.
+        controller.newScanAfterError()
+
+        XCTAssertEqual(controller.phase, .capturing)
+        XCTAssertTrue(controller.isScanSurfaceVisible)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: photoPath))
+    }
+
+    // MARK: - Close-during-capture (aborted capture must be inert)
+
+    @MainActor
+    private func makeGatedCaptureSUT() -> GatedCaptureService {
+        runner = GatedScanRunner()
+        store = InMemoryMealLogStore()
+        viewModel = AppViewModel(orchestrator: RuntimeOrchestrator(runtimes: []), store: store)
+        let gated = GatedCaptureService()
+        let photoDirectory = FileManager.default.temporaryDirectory
+            .appendingPathComponent("seecal-scanflow-tests-\(UUID().uuidString)", isDirectory: true)
+        controller = ScanFlowController(
+            viewModel: viewModel,
+            inference: runner,
+            captureService: gated,
+            photoStore: CapturedPhotoStore(directory: photoDirectory)
+        )
+        return gated
+    }
+
+    @MainActor
+    func testClosingCameraDuringInFlightCaptureStartsNoAnalysis() async {
+        let gated = makeGatedCaptureSUT()
+        controller.scanTapped()
+
+        let shutterTask = Task { await controller.shutterTapped() }
+        let captureStarted = await waitUntil { @MainActor [gated] in gated.pendingCaptureCount == 1 }
+        XCTAssertTrue(captureStarted)
+
+        // User closes the camera while the capture is still in flight…
+        controller.closeCamera()
+        XCTAssertEqual(controller.phase, .idle)
+
+        // …then the capture lands anyway. Nothing may happen with it.
+        gated.finishCapture(with: .success(CapturedPhoto(imageData: MockCaptureService.samplePhotoData())))
+        await shutterTask.value
+
+        XCTAssertEqual(controller.phase, .idle, "An abandoned capture must not start an analysis")
+        let requests = await runner.requestCount
+        XCTAssertEqual(requests, 0, "No inference may run for an abandoned capture")
+        XCTAssertNil(controller.captureError)
+    }
+
+    @MainActor
+    func testCaptureFailureAfterCameraClosedSetsNoStaleError() async {
+        let gated = makeGatedCaptureSUT()
+        controller.scanTapped()
+
+        let shutterTask = Task { await controller.shutterTapped() }
+        let captureStarted = await waitUntil { @MainActor [gated] in gated.pendingCaptureCount == 1 }
+        XCTAssertTrue(captureStarted)
+
+        controller.closeCamera()
+        gated.finishCapture(with: .failure(CaptureServiceError.captureFailed("session interrupted")))
+        await shutterTask.value
+
+        XCTAssertNil(
+            controller.captureError,
+            "A capture aborted BY closing the camera must not park an alert for the next open"
+        )
+        XCTAssertEqual(controller.phase, .idle)
+    }
+
     // MARK: - Discard / dismissal semantics
 
     @MainActor
-    func testDiscardNewScanReturnsToCameraWithoutPersisting() async throws {
+    func testDiscardNewScanReturnsToCameraWithoutPersistingAndDeletesPhoto() async throws {
         makeSUT()
-        _ = try await startAnalyzingScan()
+        let photoPath = try await startAnalyzingScan()
         await finishInference()
+        XCTAssertTrue(FileManager.default.fileExists(atPath: photoPath))
 
         controller.discardResult()
 
@@ -307,6 +485,10 @@ final class ScanFlowControllerTests: XCTestCase {
         XCTAssertTrue(controller.isScanSurfaceVisible)
         let entries = try await store.fetchAll()
         XCTAssertTrue(entries.isEmpty)
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: photoPath),
+            "Discard must clean up the captured photo file"
+        )
     }
 
     @MainActor
@@ -326,12 +508,46 @@ final class ScanFlowControllerTests: XCTestCase {
     }
 
     @MainActor
-    func testCloseCameraReturnsToIdle() {
+    func testSheetGramAdjustmentsSurviveInteractiveDismiss() async throws {
         makeSUT()
+        _ = try await startAnalyzingScan()
+        await finishInference()
+        guard case let .presentingResult(draft) = controller.phase else {
+            return XCTFail("Expected result sheet, got \(controller.phase)")
+        }
+
+        // The sheet edits a local copy and reports it via onDraftChanged →
+        // presentedDraftChanged. Simulate one +5 g step (180 → 185).
+        var edited = draft
+        edited.stepGrams(itemID: edited.items[0].id, by: MealItem.gramStep)
+        controller.presentedDraftChanged(edited)
+
+        // Swipe-dismiss parks the result; the banner reopens it.
+        controller.resultSheetDismissed()
+        XCTAssertTrue(controller.isBannerVisible)
+        controller.bannerTapped()
+
+        guard let reopened = controller.activeSheetDraft else {
+            return XCTFail("Banner tap should reopen the parked draft")
+        }
+        XCTAssertEqual(
+            reopened.items[0].grams, 185,
+            "The parked draft must carry the sheet's adjustments, not the pre-adjustment values"
+        )
+    }
+
+    @MainActor
+    func testCloseCameraReturnsToIdleAndLandsOnToday() {
+        makeSUT()
+        var switchedTo: AppTab?
+        controller.onRequestTabSwitch = { switchedTo = $0 }
+
         controller.scanTapped()
         controller.closeCamera()
+
         XCTAssertEqual(controller.phase, .idle)
         XCTAssertFalse(controller.isScanSurfaceVisible)
+        XCTAssertEqual(switchedTo, .today, "Camera ✕ returns to Today (spec §5), not the previously selected tab")
     }
 
     // MARK: - Edit mode (same sheet, Save changes semantics)

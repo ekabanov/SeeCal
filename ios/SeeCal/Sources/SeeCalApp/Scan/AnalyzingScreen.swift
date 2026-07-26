@@ -214,6 +214,22 @@ struct AnalyzingScreen: View {
             }
             .buttonStyle(.plain)
             .accessibilityHint("Runs the analysis again on the same photo")
+
+            // Secondary escape hatch: a failed analysis must never dead-end —
+            // abandon this photo and go back to the camera for a fresh capture.
+            Button {
+                controller.newScanAfterError()
+            } label: {
+                Text("New scan")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(Theme.appInk)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(Theme.appCard)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Discards this photo and opens the camera")
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

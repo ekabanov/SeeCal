@@ -4,33 +4,38 @@ import SeeCalInference
 import SeeCalPersistence
 @testable import SeeCalApp
 
-private struct SingleResultEngine: NativeQwenVisionEngine {
-    func run(imagePath: String, prompt: String) async throws -> String {
-        _ = imagePath
-        _ = prompt
-        return """
-        {
-          "total_calories": 400,
-          "protein_g": 25,
-          "fat_g": 12,
-          "carbs_g": 38,
-          "confidence": 0.85,
-          "items": [{"name": "meal", "estimated_grams": 200, "calories": 400, "protein_g": 25, "fat_g": 12, "carbs_g": 38}],
-          "uncertainty_flags": []
-        }
-        """
+private struct NoopRuntime: InferenceRuntime {
+    let name = "noop"
+    let modelFamily = "qwen3.5-native-multimodal"
+    func isAvailable() async -> Bool { false }
+    func infer(request: FoodScanRequest) async throws -> FoodScanResult {
+        _ = request
+        throw InferenceError.runtimeUnavailable("none")
     }
 }
 
 final class AppViewModelEditFlowTests: XCTestCase {
     @MainActor
-    func testEditFlowUpdatesTotals() async throws {
-        let runtime = MLXQwenRuntime(engine: SingleResultEngine())
-        let orchestrator = RuntimeOrchestrator(runtimes: [runtime])
-        let store = InMemoryMealLogStore()
-        let vm = AppViewModel(orchestrator: orchestrator, store: store)
+    private func makeViewModel(store: MealLogStore = InMemoryMealLogStore()) -> AppViewModel {
+        AppViewModel(orchestrator: RuntimeOrchestrator(runtimes: [NoopRuntime()]), store: store)
+    }
 
-        await vm.addMealPhoto(imagePath: "/tmp/meal.jpg", mealType: .lunch, userHint: nil)
+    @MainActor
+    func testEditFlowUpdatesTotals() async throws {
+        let vm = makeViewModel()
+
+        let entry = MealLogEntry(
+            mealType: .lunch,
+            imagePath: "/tmp/meal.jpg",
+            items: [
+                MealItem(
+                    name: "meal",
+                    grams: 200,
+                    base: MealItemBase(grams: 200, kcal: 400, protein: 25, fat: 12, carbs: 38)
+                )
+            ]
+        )
+        await vm.logMeal(entry)
         guard let first = vm.mealEntries.first else {
             XCTFail("Expected meal entry")
             return
@@ -50,5 +55,37 @@ final class AppViewModelEditFlowTests: XCTestCase {
 
         XCTAssertEqual(vm.consumedToday.calories, 440, accuracy: 0.0001)
         XCTAssertEqual(vm.consumedToday.proteinGrams, 27.5, accuracy: 0.0001)
+    }
+
+    @MainActor
+    func testDeleteMealRemovesItsPhotoFile() async throws {
+        let vm = makeViewModel()
+
+        // A real file standing in for the captured photo.
+        let photoURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("seecal-delete-test-\(UUID().uuidString).jpg")
+        try Data([0xFF, 0xD8, 0xFF]).write(to: photoURL)
+        XCTAssertTrue(FileManager.default.fileExists(atPath: photoURL.path))
+
+        let entry = MealLogEntry(
+            mealType: .dinner,
+            imagePath: photoURL.path,
+            items: [
+                MealItem(
+                    name: "meal",
+                    grams: 100,
+                    base: MealItemBase(grams: 100, kcal: 200, protein: 10, fat: 5, carbs: 20)
+                )
+            ]
+        )
+        await vm.logMeal(entry)
+
+        await vm.deleteMeal(id: entry.id)
+
+        XCTAssertTrue(vm.mealEntries.isEmpty)
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: photoURL.path),
+            "Deleting a meal must clean up its captured photo file"
+        )
     }
 }

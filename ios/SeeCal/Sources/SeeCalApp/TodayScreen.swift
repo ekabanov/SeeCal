@@ -94,7 +94,7 @@ public struct TodayScreen: View {
 
     @ViewBuilder
     private var mealsSection: some View {
-        let todaysEntries = viewModel.mealEntries.filter { Calendar.current.isDateInToday($0.createdAt) }
+        let todaysEntries = viewModel.todaysMealEntries
 
         if todaysEntries.isEmpty {
             Card {

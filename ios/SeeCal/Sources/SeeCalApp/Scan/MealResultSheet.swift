@@ -12,20 +12,29 @@ import SeeCalDomain
 /// meal] for a new scan, [Cancel]/[Save changes] in edit mode.
 struct MealResultSheet: View {
     @State private var draft: MealEditDraft
+    /// Flips on the moment the primary action fires, so a second rapid tap
+    /// can't commit the same draft twice while the first is persisting.
+    @State private var isCommitting = false
 
     /// Log meal / Save changes with the (possibly gram-adjusted) final draft.
     private let onPrimary: (MealEditDraft) -> Void
     /// Discard (new scan) / Cancel (edit).
     private let onSecondary: () -> Void
+    /// Fires on every draft edit (gram steppers), so the controller's
+    /// presented draft tracks the sheet's local copy — an interactive
+    /// dismissal then parks the ADJUSTED draft, not the original.
+    private let onDraftChanged: (MealEditDraft) -> Void
 
     init(
         draft: MealEditDraft,
         onPrimary: @escaping (MealEditDraft) -> Void,
-        onSecondary: @escaping () -> Void
+        onSecondary: @escaping () -> Void,
+        onDraftChanged: @escaping (MealEditDraft) -> Void = { _ in }
     ) {
         _draft = State(initialValue: draft)
         self.onPrimary = onPrimary
         self.onSecondary = onSecondary
+        self.onDraftChanged = onDraftChanged
     }
 
     var body: some View {
@@ -48,6 +57,9 @@ struct MealResultSheet: View {
             actions
         }
         .background(Theme.appCard.ignoresSafeArea())
+        .onChange(of: draft) { newValue in
+            onDraftChanged(newValue)
+        }
     }
 
     // MARK: - Grab handle (`.grab`)
@@ -258,15 +270,19 @@ struct MealResultSheet: View {
             sheetButton(
                 draft.isEditingExisting ? "Cancel" : "Discard",
                 background: Theme.appBg,
-                foreground: Theme.appInk
+                foreground: Theme.appInk,
+                disabled: isCommitting
             ) {
                 onSecondary()
             }
             sheetButton(
                 draft.isEditingExisting ? "Save changes" : "Log meal",
                 background: Theme.basil,
-                foreground: .white
+                foreground: .white,
+                disabled: isCommitting
             ) {
+                guard !isCommitting else { return }
+                isCommitting = true
                 onPrimary(draft)
             }
         }
@@ -282,6 +298,7 @@ struct MealResultSheet: View {
         _ title: String,
         background: Color,
         foreground: Color,
+        disabled: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
@@ -294,5 +311,7 @@ struct MealResultSheet: View {
                 .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
         }
         .buttonStyle(.plain)
+        .disabled(disabled)
+        .opacity(disabled ? 0.55 : 1)
     }
 }
