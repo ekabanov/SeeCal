@@ -45,6 +45,10 @@ public struct UserProfile: Codable, Equatable, Sendable {
     /// Spec §2: weeklyRateKg is clamped to this range, step 0.1, default −0.5.
     public static let weeklyRateRange: ClosedRange<Double> = -1.0...0.5
     public static let defaultWeeklyRateKg: Double = -0.5
+    /// Spec §3 step 3: height stepper ±1 cm within 120–230.
+    public static let heightRangeCm: ClosedRange<Int> = 120...230
+    /// Spec §3 step 3: weight stepper ±0.5 kg within 35–250.
+    public static let weightRangeKg: ClosedRange<Double> = 35...250
 
     public var sex: BiologicalSex
     public var dateOfBirth: Date
@@ -71,6 +75,14 @@ public struct UserProfile: Codable, Equatable, Sendable {
 
     public static func clampWeeklyRate(_ value: Double) -> Double {
         min(max(value, weeklyRateRange.lowerBound), weeklyRateRange.upperBound)
+    }
+
+    public static func clampHeight(_ value: Int) -> Int {
+        min(max(value, heightRangeCm.lowerBound), heightRangeCm.upperBound)
+    }
+
+    public static func clampWeight(_ value: Double) -> Double {
+        min(max(value, weightRangeKg.lowerBound), weightRangeKg.upperBound)
     }
 
     // MARK: - Migration-aware Codable

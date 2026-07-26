@@ -2,19 +2,20 @@ import SwiftUI
 import SeeCalDomain
 
 /// The app's five-slot scaffold (spec §1): Today / History / [Scan] / Profile /
-/// Settings, plus the full-screen onboarding flow and the current-scan-error alert,
-/// both of which apply app-wide rather than to any single tab.
+/// Settings, plus the full-screen onboarding wizard and the current-scan-error
+/// alert, both of which apply app-wide rather than to any single tab.
 ///
-/// Screen content is split into `TodayScreen`/`HistoryScreen`/`ProfileScreen`/
-/// `SettingsScreen` (each parking the pre-P3 functionality closest to its spec
-/// section); this container only owns tab selection, the custom `SeeCalTabBar`, and
-/// the two app-wide presentations (onboarding sheet, camera full-screen cover).
+/// Onboarding (spec §3) shows once, when no persisted profile exists — as a
+/// full-screen overlay covering the tabs, exactly like the prototype's
+/// `.onboard{position:absolute; inset:0}` layer. Finishing (or skipping)
+/// persists a profile and lands on Today. Profile editing no longer opens a
+/// modal: the Profile tab itself is the inline editor (P5).
 public struct RootView: View {
     @StateObject private var viewModel: AppViewModel
     @State private var selectedTab: AppTab = .today
     @State private var isShowingCamera = false
     @State private var isShowingOnboarding = false
-    @State private var onboardingDraft = OnboardingDraft()
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     public init(viewModel: AppViewModel) {
         _viewModel = StateObject(wrappedValue: viewModel)
@@ -31,7 +32,7 @@ public struct RootView: View {
                 case .history:
                     HistoryScreen(viewModel: viewModel)
                 case .profile:
-                    ProfileScreen(viewModel: viewModel, onEditProfile: presentOnboarding)
+                    ProfileScreen(viewModel: viewModel)
                 case .settings:
                     SettingsScreen()
                 }
@@ -45,10 +46,25 @@ public struct RootView: View {
                 }
             }
         }
+        .overlay {
+            if isShowingOnboarding {
+                OnboardingView { profile in
+                    Task {
+                        await viewModel.completeOnboarding(with: profile)
+                        selectedTab = .today
+                        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) {
+                            isShowingOnboarding = false
+                        }
+                    }
+                }
+                .transition(reduceMotion ? .identity : .opacity)
+                .zIndex(10)
+            }
+        }
         .task {
             await viewModel.loadEntries()
             if viewModel.requiresOnboarding {
-                presentOnboarding()
+                isShowingOnboarding = true
             }
         }
         .alert("Error", isPresented: Binding(
@@ -61,92 +77,8 @@ public struct RootView: View {
         } message: {
             Text(viewModel.lastError ?? "Unknown error")
         }
-        .sheet(isPresented: $isShowingOnboarding) {
-            OnboardingSheet(
-                draft: onboardingDraft,
-                isFirstRun: viewModel.requiresOnboarding,
-                onCancel: {
-                    if !viewModel.requiresOnboarding {
-                        isShowingOnboarding = false
-                    }
-                },
-                onSave: { savedDraft in
-                    Task {
-                        do {
-                            let profile = try savedDraft.toUserProfile()
-                            await viewModel.completeOnboarding(with: profile)
-                            onboardingDraft = savedDraft
-                            isShowingOnboarding = false
-                        } catch {
-                            viewModel.lastError = error.localizedDescription
-                        }
-                    }
-                }
-            )
-            .interactiveDismissDisabled(viewModel.requiresOnboarding)
-        }
         .cameraFullScreenCover(isPresented: $isShowingCamera) {
             ScanStubScreen(onClose: { isShowingCamera = false })
-        }
-    }
-
-    /// Shared by the first-run gate (`requiresOnboarding`, no profile yet — starts
-    /// from spec §2 defaults) and Profile's "Edit Profile" button (starts from the
-    /// existing profile) — same sheet serves both, as it did pre-P3.
-    private func presentOnboarding() {
-        onboardingDraft = viewModel.userProfile.map(OnboardingDraft.init(profile:)) ?? OnboardingDraft()
-        isShowingOnboarding = true
-    }
-}
-
-/// Full-screen 6-step wizard is P5's job (spec §3); this remains the placeholder
-/// single-form editor from pre-P3, still wired to `OnboardingDraft`/`UserProfile` so
-/// onboarding and profile-editing both keep working end to end.
-private struct OnboardingSheet: View {
-    @State var draft: OnboardingDraft
-    let isFirstRun: Bool
-    let onCancel: () -> Void
-    let onSave: (OnboardingDraft) -> Void
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("About You") {
-                    Picker("Sex", selection: $draft.sex) {
-                        Text("Male").tag(BiologicalSex.male)
-                        Text("Female").tag(BiologicalSex.female)
-                    }
-                    DatePicker("Birthday", selection: $draft.dateOfBirth, displayedComponents: .date)
-                    TextField("Height (cm)", text: $draft.heightCmText)
-                    TextField("Weight (kg)", text: $draft.weightKgText)
-                }
-
-                Section("Lifestyle") {
-                    Picker("Activity", selection: $draft.activity) {
-                        Text("Sedentary").tag(ActivityLevel.sedentary)
-                        Text("Light").tag(ActivityLevel.light)
-                        Text("Moderate").tag(ActivityLevel.moderate)
-                        Text("Active").tag(ActivityLevel.active)
-                    }
-                    Stepper(
-                        String(format: "Weekly target: %.1f kg/week", draft.weeklyRateKg),
-                        value: $draft.weeklyRateKg,
-                        in: UserProfile.weeklyRateRange,
-                        step: 0.1
-                    )
-                }
-            }
-            .navigationTitle("Setup")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    if !isFirstRun {
-                        Button("Cancel", action: onCancel)
-                    }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { onSave(draft) }
-                }
-            }
         }
     }
 }

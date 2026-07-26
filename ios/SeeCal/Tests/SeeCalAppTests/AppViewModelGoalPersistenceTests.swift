@@ -117,4 +117,35 @@ final class AppViewModelGoalPersistenceTests: XCTestCase {
         let persistedTarget = try await prefs.loadDailyTarget()
         XCTAssertNil(persistedTarget)
     }
+
+    @MainActor
+    func testInlineProfileEditRecomputesGoalImmediatelyAndPersists() async throws {
+        // Spec §7: every Profile-screen change writes through to the persisted
+        // profile and recomputes the goal immediately (Today's ring reads
+        // `dailyTarget`, so it reflects the edit on the next render).
+        let prefs = InMemoryUserPreferencesStore(initialUserProfile: Self.referenceProfile)
+        let vm = AppViewModel(
+            orchestrator: RuntimeOrchestrator(runtimes: [EmptyRuntime()]),
+            store: InMemoryMealLogStore(),
+            preferencesStore: prefs,
+            now: { Self.fixedNow }
+        )
+        await vm.loadEntries()
+        XCTAssertEqual(vm.dailyTarget.calories, 2150)
+
+        // Inline edit: weekly target −0.5 → 0 (maintain).
+        var edited = Self.referenceProfile
+        edited.weeklyRateKg = 0
+        await vm.updateProfile(edited)
+
+        XCTAssertEqual(vm.userProfile, edited)
+        XCTAssertEqual(vm.dailyTarget.calories, 2700)
+        XCTAssertEqual(
+            vm.dailyTarget,
+            GoalCalculator.dailyTarget(for: edited, now: Self.fixedNow)
+        )
+
+        let persisted = try await prefs.loadUserProfile()
+        XCTAssertEqual(persisted, edited)
+    }
 }

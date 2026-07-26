@@ -51,6 +51,22 @@ public final class AppViewModel: ObservableObject {
         userProfile == nil
     }
 
+    /// Earliest logged meal's date — drives the Profile header's
+    /// "Logging since <month year>" line (spec §7). `nil` before the first log.
+    public var loggingSinceDate: Date? {
+        mealEntries.map(\.createdAt).min()
+    }
+
+    /// Net weight change over the trailing 30 days, for the Profile weight row's
+    /// trend note ("−1.2 kg this month"). `nil` when the weight log has fewer
+    /// than two entries in the window.
+    public var monthWeightChangeKg: Double? {
+        WeightTrend.monthChangeKg(
+            weights: weightEntries.map { AnyWeightEntry(date: $0.date, weightKg: $0.weightKg) },
+            now: now()
+        )
+    }
+
     public init(
         orchestrator: RuntimeOrchestrator,
         store: MealLogStore,
@@ -88,6 +104,15 @@ public final class AppViewModel: ObservableObject {
     }
 
     public func completeOnboarding(with profile: UserProfile) async {
+        await updateProfile(profile)
+    }
+
+    /// Single write-through path for every profile change — onboarding finish,
+    /// onboarding skip, and each inline edit on the Profile screen (spec §7:
+    /// "Every change recomputes the goal immediately"). Persists the profile and
+    /// recomputes `dailyTarget` in the same step, so Today's ring reflects the
+    /// edit as soon as the published values change.
+    public func updateProfile(_ profile: UserProfile) async {
         do {
             let target = GoalCalculator.dailyTarget(for: profile, now: now())
             userProfile = profile
@@ -206,5 +231,67 @@ public extension AppViewModel {
         formatter.maximumFractionDigits = 0
         let rounded = value.rounded()
         return formatter.string(from: NSNumber(value: rounded)) ?? String(Int(rounded))
+    }
+}
+
+// MARK: - Onboarding + Profile display formatting (spec §3 step 6, §7)
+
+public extension AppViewModel {
+    /// The transparent goal-math line, byte-matching the prototype's
+    /// `renderProfile()` math string (with the typographic minus, matching the
+    /// on-screen copy), e.g. for the spec §2 reference vector:
+    /// "BMR 1,743 × 1.55 (moderate) = 2,701 kcal burned − 550 kcal (−0.5 kg/wk) = 2,150 kcal".
+    /// At maintain (rate 0) the adjustment segment is omitted entirely, exactly
+    /// as in the prototype: "… = 2,701 kcal burned = 2,700 kcal".
+    nonisolated static func goalMathString(
+        for profile: UserProfile,
+        now: Date = Date(),
+        calendar: Calendar = GoalCalculator.defaultCalendar
+    ) -> String {
+        let bmr = GoalCalculator.bmr(for: profile, now: now, calendar: calendar)
+        let tdee = GoalCalculator.tdee(for: profile, now: now, calendar: calendar)
+        let goal = GoalCalculator.goalCalories(for: profile, now: now, calendar: calendar)
+        let dailyAdjustment = Int((profile.weeklyRateKg * 7700 / 7).rounded())
+
+        var text = "BMR \(formattedKcal(bmr.rounded()))"
+            + " × \(activityFactorString(profile.activity)) (\(profile.activity.rawValue))"
+            + " = \(formattedKcal(tdee.rounded())) kcal burned"
+        if dailyAdjustment != 0 {
+            let sign = dailyAdjustment < 0 ? "−" : "+"
+            let rateSign = profile.weeklyRateKg > 0 ? "+" : "−"
+            let rate = rateSign + String(format: "%.1f", abs(profile.weeklyRateKg))
+            text += " \(sign) \(formattedKcal(Double(abs(dailyAdjustment)))) kcal (\(rate) kg/wk)"
+        }
+        text += " = \(formattedKcal(Double(goal))) kcal"
+        return text
+    }
+
+    /// TDEE multiplier rendered the way the prototype's JS renders the raw
+    /// number ("1.2", "1.375", "1.55", "1.725") — fixed strings, no float
+    /// formatting surprises.
+    nonisolated static func activityFactorString(_ activity: ActivityLevel) -> String {
+        switch activity {
+        case .sedentary: return "1.2"
+        case .light: return "1.375"
+        case .moderate: return "1.55"
+        case .active: return "1.725"
+        }
+    }
+
+    /// "March 2026" — the Profile header's "Logging since <month year>" value.
+    nonisolated static func loggingSinceString(for date: Date, calendar: Calendar = GoalCalculator.defaultCalendar) -> String {
+        let formatter = DateFormatter()
+        formatter.calendar = calendar
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "LLLL yyyy"
+        return formatter.string(from: date)
+    }
+
+    /// "−1.2 kg this month" / "+0.4 kg this month" (typographic minus), or `nil`
+    /// when there is no meaningful change to report (< 0.05 kg or no data).
+    nonisolated static func monthTrendString(deltaKg: Double?) -> String? {
+        guard let deltaKg, abs(deltaKg) >= 0.05 else { return nil }
+        let sign = deltaKg < 0 ? "−" : "+"
+        return sign + String(format: "%.1f", abs(deltaKg)) + " kg this month"
     }
 }

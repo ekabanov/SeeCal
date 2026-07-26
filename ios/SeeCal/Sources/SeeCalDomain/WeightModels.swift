@@ -38,6 +38,27 @@ public enum WeightTrend {
             return WeeklyWeightPoint(weekStart: week, averageWeightKg: avg)
         }
     }
+
+    /// Net weight change over the trailing 30 days (spec §7: the Profile weight
+    /// row's trend note, e.g. "−1.2 kg this month"). Returns the latest entry's
+    /// weight minus the earliest entry's weight within the window, or `nil` when
+    /// fewer than two entries fall inside it (no trend to report).
+    public static func monthChangeKg(
+        weights: [AnyWeightEntry],
+        now: Date = Date(),
+        calendar: Calendar = .current
+    ) -> Double? {
+        guard let windowStart = calendar.date(byAdding: .day, value: -30, to: now) else {
+            return nil
+        }
+        let window = weights
+            .filter { $0.date >= windowStart && $0.date <= now }
+            .sorted { $0.date < $1.date }
+        guard window.count >= 2, let first = window.first, let last = window.last else {
+            return nil
+        }
+        return last.weightKg - first.weightKg
+    }
 }
 
 public struct AnyWeightEntry: Sendable {
