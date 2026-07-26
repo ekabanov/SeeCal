@@ -1,23 +1,15 @@
-//
-//  SeeCalAppApp.swift
-//  SeeCalApp
-//
-//  Created by Jevgeni Kabanov on 09.03.2026.
-//
-
 import SwiftUI
 import SeeCalApp
 import SeeCalInference
-import Darwin
 
+/// Thin app shell around the SeeCal SwiftPM package (ios/SeeCal).
+///
+/// All screens, view models, and inference live in the package's `SeeCalApp`
+/// product; this target only hosts `ProductionRootView` and resolves where
+/// the model weights are (bundled, side-loaded, or simulator fallback paths —
+/// see `ModelAssetResolver`).
 @main
-struct SeeCaliOSApp: App {
-    init() {
-        setbuf(stdout, nil)
-        setbuf(stderr, nil)
-        print("[SeeCal][App] launch")
-    }
-
+struct SeeCalHostApp: App {
     var body: some Scene {
         WindowGroup {
             ProductionRootView(

@@ -1,0 +1,103 @@
+# SeeCal iOS app wrapper — XcodeGen spec.
+#
+# The generated SeeCal.xcodeproj (and the generated Info.plist /
+# SeeCal.entitlements below) are NOT committed; regenerate any time with
+#   scripts/build.sh          (runs `xcodegen generate` first)
+# or
+#   cd ios/App && xcodegen generate
+#
+# The app target is a thin shell: the entire app lives in the local SwiftPM
+# package at ios/SeeCal (product: SeeCalApp). This wrapper only adds what a
+# package cannot carry — Info.plist, entitlements, signing, and the bundled
+# model weights.
+#
+# Weights bundling: the "Bundle model weights" pre-build phase copies
+# $MODELS_DIR into the app bundle at Models/ (see copy_weights.sh for the
+# required layout). MODELS_DIR and SEECAL_ALLOW_NO_WEIGHTS are passed as
+# xcodebuild command-line build settings by scripts/build.sh and the release
+# scripts. Weights are never committed to git.
+#
+# Signing: bundle id defaults to the com.example placeholder below and no
+# DEVELOPMENT_TEAM is committed (this repo is public); scripts override
+# PRODUCT_BUNDLE_IDENTIFIER / DEVELOPMENT_TEAM on the xcodebuild command line
+# from the environment (BUNDLE_ID, DEVELOPMENT_TEAM) or .secrets/release.env
+# (created by scripts/release-setup.sh).
+name: SeeCal
+options:
+  createIntermediateGroups: true
+  defaultConfig: Debug
+  deploymentTarget:
+    iOS: "17.0"
+
+packages:
+  SeeCalPackage:
+    path: ../SeeCal
+
+settings:
+  base:
+    # Xcode 26 clang is stricter about consteval than the fmt vendored inside
+    # mlx-swift expects. This setting covers the app target; package targets
+    # do NOT inherit it, so scripts additionally pass the same flag as an
+    # xcodebuild command-line override (which applies to all targets).
+    OTHER_CPLUSPLUSFLAGS: "$(inherited) -DFMT_CONSTEVAL="
+    SWIFT_VERSION: "6.0"
+
+targets:
+  SeeCal:
+    type: application
+    platform: iOS
+    deploymentTarget: "17.0"
+    preBuildScripts:
+      - script: |
+          exec "${PROJECT_DIR}/copy_weights.sh"
+        name: Bundle model weights
+        basedOnDependencyAnalysis: false
+    sources:
+      - path: Sources
+      - path: Resources
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: SeeCal
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        ITSAppUsesNonExemptEncryption: false
+        LSSupportsOpeningDocumentsInPlace: true
+        NSCameraUsageDescription: "SeeCal photographs your meal to estimate calories, macros, and ingredients on-device."
+        NSMotionUsageDescription: "SeeCal uses device motion to steady the camera while you capture a meal photo."
+        UIFileSharingEnabled: true
+        UILaunchScreen: {}
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+    entitlements:
+      path: SeeCal.entitlements
+      properties:
+        # Loading a 4B-parameter model needs more than the default per-app
+        # memory ceiling. Available to all developer accounts on iOS 15+;
+        # effective on devices that support it (iPhone 15 Pro or newer
+        # recommended for SeeCal).
+        com.apple.developer.kernel.increased-memory-limit: true
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.example.seecal
+        PRODUCT_NAME: SeeCal
+        CODE_SIGN_STYLE: Automatic
+        TARGETED_DEVICE_FAMILY: "1"
+        MARKETING_VERSION: "0.1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+        ENABLE_USER_SCRIPT_SANDBOXING: NO
+    dependencies:
+      - package: SeeCalPackage
+        product: SeeCalApp
+
+schemes:
+  SeeCal:
+    build:
+      targets:
+        SeeCal: all
+    run:
+      config: Debug
+    archive:
+      config: Release
