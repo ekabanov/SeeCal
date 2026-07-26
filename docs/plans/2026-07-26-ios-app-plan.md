@@ -10,6 +10,11 @@
 Sonnet = well-specified tasks.
 
 ## Global rules
+- **Design fidelity (user directive): the committed prototype
+  `docs/design/prototype/seecal-prototype.html` is the binding visual spec.** Every
+  UI task (P3–P7) must read the prototype's HTML/CSS for its screen and match it —
+  layout, spacing, copy, colors, component appearance — noting any platform-forced
+  deviations in the task report.
 - Evolve existing types (ProfileModels, TrackingModels, MealEditDraft, AppViewModel,
   RootView…); no parallel-world files. GoalEditDraft is RETIRED by P1 (goal is computed).
 - Every task: run the FULL package test suite; all green before commit; one commit per
