@@ -2,24 +2,30 @@ import SwiftUI
 import SeeCalDomain
 import SeeCalPersistence
 
-#if canImport(PhotosUI)
-import PhotosUI
+#if canImport(UIKit)
+import UIKit
+#elseif canImport(AppKit)
+import AppKit
 #endif
 
-/// Spec §4 placeholder. The ring card + macro bars + polished meal rows are P4's
-/// job; for P3 this parks the existing add-meal / daily-target / meal-list
-/// functionality (previously the entirety of `RootView`) under the Today tab.
+/// Spec §4 / `#scr-today`: ring card (consumed/goal kcal + three macro bars),
+/// MEALS section, meal-row list, privacy chip. Matches the prototype's markup +
+/// CSS (`.pagehead`, `.card`, `.ringrow`, `.ring`, `.macros`/`.macro`/`.bar`,
+/// `.sectionlabel`, `.meal`, `.mealcard`, `.privchip`) — see
+/// `docs/design/prototype/seecal-prototype.html` lines 582-616 and `renderToday()`
+/// (~line 1139) for the exact text formats this file reproduces.
+///
+/// Deviation from the prototype: the pre-P4 "Add meal" card (meal-type picker +
+/// photo library picker, temporarily parked here since P3) is removed — it has no
+/// counterpart in `#scr-today`. Manually adding a meal photo is unavailable via UI
+/// until P6 wires the real camera → analyzing → result flow onto the tab bar's
+/// Scan FAB (`ScanStubScreen` is still just a stub); `AppViewModel.addMealPhoto`
+/// itself is untouched and already covered by `AppViewModelTrackingTests`.
 public struct TodayScreen: View {
     @ObservedObject private var viewModel: AppViewModel
 
     @State private var editingEntry: MealLogEntry?
     @State private var draft: MealEditDraft?
-    @State private var selectedMealType: MealType = .lunch
-    @State private var userHint = ""
-
-    #if canImport(PhotosUI)
-    @State private var selectedPhotoItem: PhotosPickerItem?
-    #endif
 
     public init(viewModel: AppViewModel) {
         self.viewModel = viewModel
@@ -28,23 +34,16 @@ public struct TodayScreen: View {
     public var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
-                PageHeader(subtitle: todayDateString, title: "Today")
+                PageHeader(subtitle: AppViewModel.dateSubtitle(for: Date()), title: "Today")
                     .padding(.top, 8)
 
-                SectionLabel("Add meal")
                 Card {
-                    addMealContent
-                }
-
-                SectionLabel("Daily target")
-                Card {
-                    dailyTargetContent
+                    ringRow
                 }
 
                 SectionLabel("Meals")
-                Card {
-                    mealsContent
-                }
+
+                mealsSection
 
                 PrivacyChip("Analyzed entirely on this iPhone.")
             }
@@ -52,12 +51,6 @@ public struct TodayScreen: View {
             .padding(.bottom, Theme.screenBottomInset)
         }
         .background(Theme.appBg)
-        #if canImport(PhotosUI)
-        .onChange(of: selectedPhotoItem) { _, newItem in
-            guard let newItem else { return }
-            Task { await processSelectedPhoto(newItem) }
-        }
-        #endif
         .sheet(item: $editingEntry) { entry in
             if let draft {
                 MealEditSheet(
@@ -83,121 +76,108 @@ public struct TodayScreen: View {
         }
     }
 
-    private var todayDateString: String {
-        let formatter = DateFormatter()
-        formatter.dateFormat = "EEEE, MMM d"
-        return formatter.string(from: Date())
-    }
+    // MARK: - Ring row (`.ringrow`)
 
     @ViewBuilder
-    private var addMealContent: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Picker("Meal Type", selection: $selectedMealType) {
-                ForEach(MealType.allCases, id: \.self) { type in
-                    Text(type.rawValue.capitalized).tag(type)
-                }
-            }
-
-            TextField("Optional hint (e.g. chicken rice bowl)", text: $userHint)
-                .textFieldStyle(.roundedBorder)
-
-            #if canImport(PhotosUI)
-            PhotosPicker(
-                selection: $selectedPhotoItem,
-                matching: .images,
-                photoLibrary: .shared()
-            ) {
-                Label("Choose Food Photo", systemImage: "camera.viewfinder")
-            }
-            .disabled(viewModel.isScanning)
-            .foregroundStyle(Theme.basil)
-            #else
-            Text("Photo picker is available in iOS app targets.")
-                .foregroundStyle(Theme.appInk2)
-            #endif
-
-            if viewModel.isScanning {
-                HStack(spacing: 8) {
-                    ProgressView()
-                    Text("Analyzing photo…")
-                        .foregroundStyle(Theme.appInk2)
-                }
-            }
-
-            if let seconds = viewModel.lastInferenceSeconds {
-                Text(String(format: "Last inference: %.1fs", seconds))
-                    .font(.caption)
-                    .foregroundStyle(Theme.appInk2)
-            }
-        }
-        // Scan errors surface through the app-wide error alert owned by `RootView`
-        // (bound to the same `viewModel.lastError`) rather than a second local
-        // alert here — two alert modifiers racing on one Bool would fight over
-        // presentation.
-    }
-
-    @ViewBuilder
-    private var dailyTargetContent: some View {
+    private var ringRow: some View {
         let consumed = viewModel.consumedToday
-        let remaining = viewModel.remainingToday
         let target = viewModel.dailyTarget
-        VStack(alignment: .leading, spacing: 4) {
-            Text("Target: \(Int(target.calories)) kcal")
-                .fontWeight(.medium)
-            Text("Consumed: \(Int(consumed.calories)) kcal")
-            Text("Remaining: \(Int(remaining.calories)) kcal")
-                .fontWeight(.semibold)
-            Text("P \(Int(remaining.proteinGrams))g • F \(Int(remaining.fatGrams))g • C \(Int(remaining.carbsGrams))g left")
-                .font(.caption)
-                .foregroundStyle(Theme.appInk2)
+        HStack(alignment: .center, spacing: 18) {
+            CalorieRing(consumedCalories: consumed.calories, goalCalories: target.calories)
+            VStack(spacing: 12) {
+                MacroBarRow(
+                    title: "Protein",
+                    color: Theme.protein,
+                    consumed: consumed.proteinGrams,
+                    target: target.proteinGrams
+                )
+                MacroBarRow(
+                    title: "Fat",
+                    color: Theme.fat,
+                    consumed: consumed.fatGrams,
+                    target: target.fatGrams
+                )
+                MacroBarRow(
+                    title: "Carbs",
+                    color: Theme.carbs,
+                    consumed: consumed.carbsGrams,
+                    target: target.carbsGrams
+                )
+            }
         }
-        .foregroundStyle(Theme.appInk)
     }
 
+    // MARK: - Meals (`.sectionlabel` + `.card.mealcard` of `.meal` rows)
+
     @ViewBuilder
-    private var mealsContent: some View {
+    private var mealsSection: some View {
         let todaysEntries = viewModel.mealEntries.filter { Calendar.current.isDateInToday($0.createdAt) }
 
         if todaysEntries.isEmpty {
-            Text("No meals logged yet")
-                .foregroundStyle(Theme.appInk2)
+            Card {
+                Text("No meals logged yet")
+                    .font(.system(size: 13.5))
+                    .foregroundStyle(Theme.appInk2)
+            }
         } else {
-            VStack(spacing: 0) {
-                ForEach(Array(todaysEntries.enumerated()), id: \.element.id) { index, entry in
-                    if index > 0 {
-                        Divider().overlay(Theme.appLine)
+            Card(padding: 2) {
+                VStack(spacing: 0) {
+                    ForEach(Array(todaysEntries.enumerated()), id: \.element.id) { index, entry in
+                        if index > 0 {
+                            Divider().overlay(Theme.appLine)
+                        }
+                        mealRow(entry)
                     }
-                    mealRow(entry)
                 }
             }
         }
     }
 
+    /// One `.meal` row: 52pt rounded thumb, name, "HH:mm · N g protein", kcal
+    /// (bold + small "kcal" unit), chevron. Tapping opens the existing edit-sheet
+    /// wiring (P6 will replace `MealEditSheet` with the real result/edit sheet).
     private func mealRow(_ entry: MealLogEntry) -> some View {
         Button {
             editingEntry = entry
             draft = MealEditDraft(entry: entry)
         } label: {
-            HStack {
-                VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 12) {
+                MealThumbnail(imagePath: entry.imagePath)
+
+                VStack(alignment: .leading, spacing: 1) {
                     Text(entry.name)
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(Theme.appInk)
-                    Text("\(Int(entry.totals.calories)) kcal")
-                        .font(.system(size: 13.5))
+                        .lineLimit(1)
+                    Text("\(Self.timeString(entry.createdAt)) · \(AppViewModel.roundedGrams(entry.totals.proteinGrams)) g protein")
+                        .font(.system(size: 12.5))
                         .foregroundStyle(Theme.appInk2)
-                    Text("P \(Int(entry.totals.proteinGrams))g • F \(Int(entry.totals.fatGrams))g • C \(Int(entry.totals.carbsGrams))g")
-                        .font(.caption)
-                        .foregroundStyle(Theme.appInk2)
+                        .lineLimit(1)
+                        .truncationMode(.tail)
                 }
-                Spacer()
+
+                Spacer(minLength: 8)
+
+                (
+                    Text(AppViewModel.formattedKcal(entry.totals.calories))
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundColor(Theme.appInk)
+                    + Text(" kcal")
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundColor(Theme.appInk2)
+                )
+                .monospacedDigit()
+
                 Image(systemName: "chevron.right")
-                    .foregroundStyle(Theme.appInk2)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(Theme.appInk2.opacity(0.7))
             }
-            .padding(.vertical, 8)
+            .padding(.vertical, 12)
+            .padding(.horizontal, 14)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .accessibilityLabel("Edit \(entry.name)")
         .contextMenu {
             // `.swipeActions` only has an effect inside a `List`; this VStack-based
             // layout (matching the prototype's card-based meal rows, not a system
@@ -208,40 +188,139 @@ public struct TodayScreen: View {
         }
     }
 
-    #if canImport(PhotosUI)
-    private func processSelectedPhoto(_ item: PhotosPickerItem) async {
-        do {
-            guard let data = try await item.loadTransferable(type: Data.self), !data.isEmpty else {
-                throw NSError(domain: "TodayScreen", code: 1, userInfo: [NSLocalizedDescriptionKey: "Could not load selected image"])
-            }
-            let imagePath = try persistMealImageData(data)
-            let hint = userHint.trimmingCharacters(in: .whitespacesAndNewlines)
-            await viewModel.addMealPhoto(
-                imagePath: imagePath,
-                mealType: selectedMealType,
-                userHint: hint.isEmpty ? nil : hint
-            )
-            selectedPhotoItem = nil
-        } catch {
-            viewModel.lastError = error.localizedDescription
-        }
+    /// "HH:mm", zero-padded 24-hour clock (matches the prototype's
+    /// `String(now.getHours()).padStart(2,"0")+":"+...`).
+    private static func timeString(_ date: Date) -> String {
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "HH:mm"
+        return formatter.string(from: date)
+    }
+}
+
+// MARK: - Calorie ring (`.ring`)
+
+/// `.ring{width:132px;height:132px}` + `#ringArc{stroke-width:12;stroke-linecap:round}`,
+/// `.ring svg{transform:rotate(-90deg)}` (starts at 12 o'clock). Center shows the
+/// consumed kcal (large, tabular) + "of N kcal" caption
+/// (`renderToday()`: `"of "+fmt(state.goal)+" kcal"`).
+private struct CalorieRing: View {
+    let consumedCalories: Double
+    let goalCalories: Double
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var fraction: Double {
+        AppViewModel.progressFraction(consumed: consumedCalories, target: goalCalories)
     }
 
-    private func persistMealImageData(_ data: Data) throws -> String {
-        let directory = FileBackedStoreLocations.imagesDirectory
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let url = directory.appendingPathComponent("seecal_\(UUID().uuidString).jpg")
-        do {
-            let processed = try InferenceImagePreprocessor.downsampledJPEG(from: data)
-            print("[SeeCal][ImagePreprocess] bytes original=\(data.count) processed=\(processed.count)")
-            try processed.write(to: url, options: .atomic)
-        } catch {
-            print("[SeeCal][ImagePreprocess] failed, using original image data. error=\(error)")
-            try data.write(to: url, options: .atomic)
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(Theme.appLine, lineWidth: 12)
+            Circle()
+                .trim(from: 0, to: fraction)
+                .stroke(Theme.basil, style: StrokeStyle(lineWidth: 12, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .animation(reduceMotion ? nil : .easeOut(duration: 0.7), value: fraction)
+
+            VStack(spacing: 2) {
+                Text(AppViewModel.formattedKcal(consumedCalories))
+                    .font(.system(size: 28, weight: .bold))
+                    .tracking(-0.56)
+                    .monospacedDigit()
+                    .foregroundStyle(Theme.appInk)
+                Text("of \(AppViewModel.formattedKcal(goalCalories)) kcal")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(Theme.appInk2)
+            }
         }
-        return url.path
+        .padding(6) // half the 12pt stroke width, so the arc doesn't clip past the 132pt tile.
+        .frame(width: 132, height: 132)
+        .accessibilityElement(children: .combine)
     }
-    #endif
+}
+
+// MARK: - Macro bar (`.macro`/`.bar`)
+
+/// One `.macro` row: label line ("Protein" bold in the macro color, "consumed /
+/// target g" in ink-2 at the trailing edge) over a 6pt rounded `.bar`.
+private struct MacroBarRow: View {
+    let title: String
+    let color: Color
+    let consumed: Double
+    let target: Double
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    private var fraction: Double {
+        AppViewModel.progressFraction(consumed: consumed, target: target)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack {
+                Text(title)
+                    .font(.system(size: 12.5, weight: .bold))
+                    .foregroundStyle(color)
+                Spacer()
+                Text("\(AppViewModel.roundedGrams(consumed)) / \(AppViewModel.roundedGrams(target)) g")
+                    .font(.system(size: 12.5, weight: .medium))
+                    .foregroundStyle(Theme.appInk2)
+                    .monospacedDigit()
+            }
+            GeometryReader { geometry in
+                ZStack(alignment: .leading) {
+                    Capsule().fill(Theme.appLine)
+                    Capsule()
+                        .fill(color)
+                        .frame(width: geometry.size.width * fraction)
+                        .animation(reduceMotion ? nil : .easeOut(duration: 0.5), value: fraction)
+                }
+            }
+            .frame(height: 6)
+        }
+        .accessibilityElement(children: .combine)
+    }
+}
+
+// MARK: - Meal thumbnail (`.meal .thumb`)
+
+/// `.meal .thumb{width:52px;height:52px;border-radius:12px;background:var(--app-line)}`
+/// — loads the entry's photo from disk (`imagePath`); falls back to a neutral
+/// (`app-line`-colored) placeholder glyph when the file is missing or unreadable.
+private struct MealThumbnail: View {
+    let imagePath: String
+
+    var body: some View {
+        ZStack {
+            Theme.appLine
+            if let image = Self.loadImage(imagePath) {
+                image
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } else {
+                Image(systemName: "photo")
+                    .font(.system(size: 18, weight: .regular))
+                    .foregroundStyle(Theme.appInk2)
+            }
+        }
+        .frame(width: 52, height: 52)
+        .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+    }
+
+    private static func loadImage(_ path: String) -> Image? {
+        guard !path.isEmpty, FileManager.default.fileExists(atPath: path) else { return nil }
+        #if canImport(UIKit)
+        guard let uiImage = UIImage(contentsOfFile: path) else { return nil }
+        return Image(uiImage: uiImage)
+        #elseif canImport(AppKit)
+        guard let nsImage = NSImage(contentsOfFile: path) else { return nil }
+        return Image(nsImage: nsImage)
+        #else
+        return nil
+        #endif
+    }
 }
 
 /// Placeholder layout only — the real result/edit sheet (photo, hero total, macro

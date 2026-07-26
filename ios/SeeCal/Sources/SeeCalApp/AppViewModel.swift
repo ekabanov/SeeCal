@@ -155,3 +155,56 @@ public final class AppViewModel: ObservableObject {
         }
     }
 }
+
+// MARK: - Today display formatting (spec §4)
+
+/// Pure formatting helpers shared by `TodayScreen` (and, later, other screens
+/// reading the same totals/targets). Kept as static functions on `AppViewModel`
+/// rather than embedded in the view so they're directly unit-testable without a
+/// live view hierarchy.
+public extension AppViewModel {
+    /// `docs/design/prototype/seecal-prototype.html:1579`:
+    /// `d.toLocaleDateString("en-US", {weekday:"long", month:"long", day:"numeric"})`
+    /// e.g. "Sunday, July 26" (full weekday, full month, numeric day, no year).
+    /// `PageHeader` upper-cases this at render time to match spec §4's
+    /// "SUNDAY, JULY 26". Locale/calendar are pinned to en-US/Gregorian so the
+    /// format is deterministic regardless of device locale, matching the
+    /// prototype's explicit `"en-US"` argument.
+    nonisolated static func dateSubtitle(for date: Date, calendar: Calendar = GoalCalculator.defaultCalendar) -> String {
+        var fixedCalendar = calendar
+        fixedCalendar.locale = Locale(identifier: "en_US_POSIX")
+        let formatter = DateFormatter()
+        formatter.calendar = fixedCalendar
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "EEEE, MMMM d"
+        return formatter.string(from: date)
+    }
+
+    /// Ratio of `consumed`/`target`, clamped to `[0, 1]`. Shared by the calorie
+    /// ring's arc and each macro bar's fill width (spec §4: "ring fraction clamp
+    /// at >100%" / "fill fraction clamped to 1"). Guards `target <= 0` to avoid
+    /// divide-by-zero before a profile/goal is loaded.
+    nonisolated static func progressFraction(consumed: Double, target: Double) -> Double {
+        guard target > 0 else { return 0 }
+        return min(1, max(0, consumed / target))
+    }
+
+    /// Nearest-integer gram display (matches the prototype's `Math.round(...)`
+    /// for macro values, e.g. `161`/`60`/`242` for the spec §2 reference goal).
+    nonisolated static func roundedGrams(_ value: Double) -> Int {
+        Int(value.rounded())
+    }
+
+    /// Thousands-grouped whole-number kcal display (matches the prototype's
+    /// `fmt = n => n.toLocaleString("en-US")`, e.g. "2,150"). Used for the ring's
+    /// center number, its "of N kcal" caption, and each meal row's kcal figure.
+    nonisolated static func formattedKcal(_ value: Double) -> String {
+        let formatter = NumberFormatter()
+        formatter.locale = Locale(identifier: "en_US")
+        formatter.numberStyle = .decimal
+        formatter.usesGroupingSeparator = true
+        formatter.maximumFractionDigits = 0
+        let rounded = value.rounded()
+        return formatter.string(from: NSNumber(value: rounded)) ?? String(Int(rounded))
+    }
+}

@@ -7,15 +7,20 @@ import SwiftUI
 /// stack cards in a `VStack(spacing: 12)` padded `.horizontal, 18`, matching the CSS flow
 /// layout rather than baking margins into every card instance.
 public struct Card<Content: View>: View {
+    private let padding: CGFloat
     private let content: Content
 
-    public init(@ViewBuilder content: () -> Content) {
+    /// - Parameter padding: matches `.card{padding:16px}` by default. Pass `2` for
+    ///   the `.mealcard` variant (`.mealcard{padding:2px 2px}`), which wraps a list
+    ///   of `.meal` rows that carry their own `12px 14px` padding.
+    public init(padding: CGFloat = 16, @ViewBuilder content: () -> Content) {
+        self.padding = padding
         self.content = content()
     }
 
     public var body: some View {
         content
-            .padding(16)
+            .padding(padding)
             .background(Theme.appCard)
             .clipShape(RoundedRectangle(cornerRadius: Theme.cardRadius, style: .continuous))
             .cardElevation()
