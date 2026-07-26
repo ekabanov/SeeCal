@@ -264,7 +264,11 @@ python -m mlx_lm.fuse \
 ## Toolchain v2 (2026-07-26)
 Runs 1–4 all trained against a hand-patched, ancient checkout of mlx-vlm on a Python 3.14 venv
 (`.venv/`). As of 2026-07-26 there is a second, parallel toolchain that supersedes it for all new
-training:
+training. **Legacy stack RETIRED later the same day (user decision)**: `.venv/` deleted from disk
+and `patches/` removed from the working tree (still in git history); all legacy adapters (v1–v4)
+are confirmed dead, so nothing needs the old stack anymore. `.venv-vlm067` is now the ONLY venv —
+it also runs the pytest suite (`.venv-vlm067/bin/python -m pytest`). References to `.venv` below
+are historical.
 
 - **New venv `.venv-vlm067`**: mlx-vlm 0.6.7 (unpatched, installed straight from PyPI/git tag — no
   local patches), mlx 0.32.0, mlx-lm 0.31.3, transformers 5.14.1, datasets 5.0.0, torch 2.13.0 /
