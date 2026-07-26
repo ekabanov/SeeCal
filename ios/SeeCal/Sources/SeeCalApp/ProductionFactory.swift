@@ -49,7 +49,9 @@ public enum SeeCalProductionFactory {
             orchestrator: orchestrator,
             store: store,
             preferencesStore: preferencesStore,
-            weightStore: weightStore
+            weightStore: weightStore,
+            modelPath: validatedConfig.modelPath,
+            adapterPath: validatedConfig.adapterPath
         )
     }
 }

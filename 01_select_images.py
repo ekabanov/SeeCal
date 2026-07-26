@@ -10,8 +10,13 @@ Selection strategy:
   2. side_angles/camera_Aframe005.jpeg — mid-sequence frame, camera A
   3. side_angles/camera_Cframe005.jpeg — mid-sequence frame, camera C (opposite angle)
 
-Depth images (depth_color.png, depth_raw.png) are excluded — not useful for
-a deployed system where users photograph food with a phone.
+Depth images (depth_color.png, depth_raw.png) are excluded by default — not
+useful for a deployed system where users photograph food with a phone.
+With --with-depth, an additional backfill pass copies
+imagery/realsense_overhead/<dish>/depth_raw.png → dataset_clean/<dish>/depth_raw.png
+for dishes already present in the output directory (idempotent: existing
+depth_raw.png files are skipped). Used by the depth track
+(docs/design/2026-07-26-depth-design-brief.md, section (f) item 1).
 
 Output structure:
   dataset_clean/
@@ -96,6 +101,14 @@ def main():
         help="Maximum images to keep per dish (default: 3). "
              "Use 1 to keep only the overhead shot — best for simulating real-world usage.",
     )
+    parser.add_argument(
+        "--with-depth",
+        action="store_true",
+        default=False,
+        help="After image selection, copy realsense_overhead depth_raw.png into "
+             "dataset_clean/<dish>/depth_raw.png for dishes already in the output "
+             "directory. Idempotent (skips existing files).",
+    )
     args = parser.parse_args()
 
     overhead_dir = args.src / "imagery" / "realsense_overhead"
@@ -132,6 +145,31 @@ def main():
 
         if i % 500 == 0:
             print(f"  Processed {i}/{len(dish_ids)} dishes...")
+
+    # ------------------------------------------------------------------
+    # Optional depth backfill (--with-depth): copy depth_raw.png for dishes
+    # already present in the output directory. Idempotent — skip existing.
+    # ------------------------------------------------------------------
+    if args.with_depth:
+        print("\nDepth backfill (--with-depth):")
+        existing_dishes = sorted(p.name for p in args.dst.iterdir() if p.is_dir())
+        depth_copied = depth_skipped = depth_missing_src = 0
+        for i, dish_id in enumerate(existing_dishes, 1):
+            dst = args.dst / dish_id / "depth_raw.png"
+            if dst.exists():
+                depth_skipped += 1
+            else:
+                src = overhead_dir / dish_id / "depth_raw.png"
+                if src.exists():
+                    shutil.copy2(src, dst)
+                    depth_copied += 1
+                else:
+                    depth_missing_src += 1
+            if i % 500 == 0:
+                print(f"  Depth backfill {i}/{len(existing_dishes)} dishes...")
+        print(f"  Depth maps copied      : {depth_copied}")
+        print(f"  Skipped (already there): {depth_skipped}")
+        print(f"  No source depth file   : {depth_missing_src}")
 
     total_images = sum(len(r["images"]) for r in results)
     print(f"\nDone.")

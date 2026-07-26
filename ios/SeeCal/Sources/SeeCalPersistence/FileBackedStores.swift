@@ -1,4 +1,5 @@
 import Foundation
+import os
 import SeeCalDomain
 
 /// Well-known on-disk locations for SeeCal's persisted state. All file-backed stores
@@ -31,13 +32,41 @@ public enum FileBackedStoreLocations {
 /// Shared JSON read/write helpers used by the file-backed stores below. Writes are
 /// atomic so a crash mid-write can never leave a half-written, corrupt file behind.
 enum FileBackedStoreIO {
+    private static let logger = Logger(subsystem: "SeeCal", category: "FileBackedStoreIO")
+
     static func read<T: Decodable>(_ type: T.Type, from fileURL: URL) -> T? {
         guard let data = try? Data(contentsOf: fileURL), !data.isEmpty else {
             return nil
         }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
-        return try? decoder.decode(T.self, from: data)
+        do {
+            return try decoder.decode(T.self, from: data)
+        } catch {
+            // Never silently discard an unreadable store file: the next save() would
+            // overwrite it, permanently destroying data a future app version might have
+            // been able to migrate. Preserve the original bytes as a timestamped backup
+            // and start fresh.
+            logger.error("Failed to decode \(fileURL.lastPathComponent, privacy: .public): \(String(describing: error), privacy: .public)")
+            backUpUnreadableFile(at: fileURL)
+            return nil
+        }
+    }
+
+    /// Renames an unreadable store file to `<name>.bak-<timestamp>` next to the
+    /// original, keeping its bytes for later recovery. The store then proceeds as if
+    /// no file existed, so subsequent saves write fresh state without clobbering the
+    /// backup.
+    private static func backUpUnreadableFile(at fileURL: URL) {
+        let timestamp = Int(Date().timeIntervalSince1970 * 1000)
+        let backupURL = fileURL.deletingLastPathComponent()
+            .appendingPathComponent("\(fileURL.lastPathComponent).bak-\(timestamp)")
+        do {
+            try FileManager.default.moveItem(at: fileURL, to: backupURL)
+            logger.error("Preserved unreadable store file as \(backupURL.lastPathComponent, privacy: .public)")
+        } catch {
+            logger.error("Failed to back up unreadable store file \(fileURL.lastPathComponent, privacy: .public): \(String(describing: error), privacy: .public)")
+        }
     }
 
     static func write<T: Encodable>(_ value: T, to fileURL: URL) throws {
@@ -92,6 +121,7 @@ public actor FileBackedMealLogStore: MealLogStore {
 private struct PersistedPreferences: Codable {
     var dailyTarget: DailyNutritionTarget? = nil
     var userProfile: UserProfile? = nil
+    var capturePreferences: CapturePreferences? = nil
 }
 
 /// JSON-file backed `UserPreferencesStore`. Both the daily target and the user
@@ -120,6 +150,15 @@ public actor FileBackedUserPreferencesStore: UserPreferencesStore {
 
     public func saveUserProfile(_ profile: UserProfile) async throws {
         payload.userProfile = profile
+        try FileBackedStoreIO.write(payload, to: fileURL)
+    }
+
+    public func loadCapturePreferences() async throws -> CapturePreferences? {
+        payload.capturePreferences
+    }
+
+    public func saveCapturePreferences(_ preferences: CapturePreferences) async throws {
+        payload.capturePreferences = preferences
         try FileBackedStoreIO.write(payload, to: fileURL)
     }
 }

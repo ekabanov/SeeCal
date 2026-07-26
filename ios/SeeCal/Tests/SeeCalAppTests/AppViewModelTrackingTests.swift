@@ -4,36 +4,38 @@ import SeeCalInference
 import SeeCalPersistence
 @testable import SeeCalApp
 
-private struct StubRunnerEngine: NativeQwenVisionEngine {
-    let json: String
-    func run(imagePath: String, prompt: String) async throws -> String {
-        _ = imagePath
-        _ = prompt
-        return json
+private struct NoopRuntime: InferenceRuntime {
+    let name = "noop"
+    let modelFamily = "qwen3.5-native-multimodal"
+    func isAvailable() async -> Bool { false }
+    func infer(request: FoodScanRequest) async throws -> FoodScanResult {
+        _ = request
+        throw InferenceError.runtimeUnavailable("none")
     }
 }
 
 final class AppViewModelTrackingTests: XCTestCase {
     @MainActor
-    func testConsumedAndRemainingAfterAdd() async {
-        let json = """
-        {
-          "total_calories": 700,
-          "protein_g": 40,
-          "fat_g": 20,
-          "carbs_g": 70,
-          "confidence": 0.88,
-          "items": [{"name": "meal", "estimated_grams": 250, "calories": 700, "protein_g": 40, "fat_g": 20, "carbs_g": 70}],
-          "uncertainty_flags": []
-        }
-        """
-
-        let runtime = MLXQwenRuntime(engine: StubRunnerEngine(json: json))
-        let orchestrator = RuntimeOrchestrator(runtimes: [runtime])
+    func testConsumedAndRemainingAfterLog() async {
         let target = DailyNutritionTarget(calories: 2000, proteinGrams: 150, fatGrams: 70, carbsGrams: 220)
-        let viewModel = AppViewModel(orchestrator: orchestrator, store: InMemoryMealLogStore(), dailyTarget: target)
+        let viewModel = AppViewModel(
+            orchestrator: RuntimeOrchestrator(runtimes: [NoopRuntime()]),
+            store: InMemoryMealLogStore(),
+            dailyTarget: target
+        )
 
-        await viewModel.addMealPhoto(imagePath: "/tmp/meal.jpg", mealType: .dinner, userHint: nil)
+        let entry = MealLogEntry(
+            mealType: .dinner,
+            imagePath: "/tmp/meal.jpg",
+            items: [
+                MealItem(
+                    name: "meal",
+                    grams: 250,
+                    base: MealItemBase(grams: 250, kcal: 700, protein: 40, fat: 20, carbs: 70)
+                )
+            ]
+        )
+        await viewModel.logMeal(entry)
 
         XCTAssertEqual(viewModel.consumedToday.calories, 700)
         XCTAssertEqual(viewModel.remainingToday.calories, 1300)

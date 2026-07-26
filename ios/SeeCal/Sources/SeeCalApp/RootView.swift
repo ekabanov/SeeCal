@@ -2,441 +2,206 @@ import SwiftUI
 import SeeCalDomain
 import SeeCalPersistence
 
-#if canImport(PhotosUI)
-import PhotosUI
-#endif
-
+/// The app's five-slot scaffold (spec §1): Today / History / [Scan] / Profile /
+/// Settings, plus the full-screen onboarding wizard, the scan → analyzing →
+/// result flow (spec §5), and the current-scan-error alert.
+///
+/// Scan-flow architecture mirrors the prototype's navigation exactly:
+/// - The scan surface (camera or analyzing screen) renders IN PLACE of the
+///   selected tab while `ScanFlowController.isScanSurfaceVisible`. The tab bar
+///   hides only for the camera (`.tabbar.hidden` when screen == "camera");
+///   the analyzing screen keeps it, so any tab tap navigates away WITHOUT
+///   cancelling inference.
+/// - Completion auto-presents the result sheet when the analyzing screen is
+///   frontmost, else parks it behind the `.ready-banner` above the tab bar.
+/// - One `MealResultSheet` serves fresh scans and meal-row edits alike, fed by
+///   `ScanFlowController.activeSheetDraft`.
+///
+/// Onboarding (spec §3) shows once, when no persisted profile exists — as a
+/// full-screen overlay covering the tabs, exactly like the prototype's
+/// `.onboard{position:absolute; inset:0}` layer.
 public struct RootView: View {
     @StateObject private var viewModel: AppViewModel
-    @State private var editingEntry: MealLogEntry?
-    @State private var draft: MealEditDraft?
-    @State private var isEditingGoal = false
-    @State private var goalDraft = GoalEditDraft(target: .defaultTarget)
+    @StateObject private var scanController: ScanFlowController
+    @State private var selectedTab: AppTab = .today
     @State private var isShowingOnboarding = false
-    @State private var onboardingDraft = OnboardingDraft()
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
-    @State private var selectedMealType: MealType = .lunch
-    @State private var userHint = ""
-
-    #if canImport(PhotosUI)
-    @State private var selectedPhotoItem: PhotosPickerItem?
-    #endif
-
-    public init(viewModel: AppViewModel) {
+    /// - Parameter captureService: override for previews/tests; `nil` picks the
+    ///   platform default (real camera on an iOS device, mock elsewhere).
+    public init(viewModel: AppViewModel, captureService: CaptureService? = nil) {
         _viewModel = StateObject(wrappedValue: viewModel)
+        _scanController = StateObject(wrappedValue: ScanFlowController(
+            viewModel: viewModel,
+            inference: viewModel.scanInferenceRunner,
+            captureService: captureService ?? makeDefaultCaptureService()
+        ))
     }
 
     public var body: some View {
-        NavigationStack {
-            List {
-                Section("Add Meal") {
-                    Picker("Meal Type", selection: $selectedMealType) {
-                        ForEach(MealType.allCases, id: \.self) { type in
-                            Text(type.rawValue.capitalized).tag(type)
-                        }
-                    }
+        ZStack(alignment: .bottom) {
+            Theme.appBg.ignoresSafeArea()
 
-                    TextField("Optional hint (e.g. chicken rice bowl)", text: $userHint)
+            content
 
-                    #if canImport(PhotosUI)
-                    PhotosPicker(
-                        selection: $selectedPhotoItem,
-                        matching: .images,
-                        photoLibrary: .shared()
-                    ) {
-                        Label("Choose Food Photo", systemImage: "camera.viewfinder")
-                    }
-                    .disabled(viewModel.isScanning)
-                    #else
-                    Text("Photo picker is available in iOS app targets.")
-                        .foregroundStyle(.secondary)
-                    #endif
-
-                    if viewModel.isScanning {
-                        HStack {
-                            ProgressView()
-                            Text("Analyzing photo…")
-                        }
-                    }
-
-                    if let seconds = viewModel.lastInferenceSeconds {
-                        Text(String(format: "Last inference: %.1fs", seconds))
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-
-                Section("Daily Target") {
-                    let consumed = viewModel.consumedToday
-                    let remaining = viewModel.remainingToday
-                    let target = viewModel.dailyTarget
-                    Text("Target: \(Int(target.calories)) kcal")
-                        .fontWeight(.medium)
-                    Text("Consumed: \(Int(consumed.calories)) kcal")
-                    Text("Remaining: \(Int(remaining.calories)) kcal")
-                        .fontWeight(.semibold)
-                    Text("P \(Int(remaining.proteinGrams))g • F \(Int(remaining.fatGrams))g • C \(Int(remaining.carbsGrams))g left")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Button("Edit Goal") {
-                        goalDraft = GoalEditDraft(target: target)
-                        isEditingGoal = true
-                    }
-                }
-
-                if let profile = viewModel.userProfile {
-                    Section("Profile") {
-                        Text("Sex: \(profile.biologicalSex.rawValue.capitalized)")
-                        Text("Age: \(profile.ageYears)")
-                        Text("Height: \(Int(profile.heightCm)) cm")
-                        Text(String(format: "Weight: %.1f kg", profile.weightKg))
-                        Text("Activity: \(activityTitle(profile.activityLevel))")
-                        Text("Goal Pace: \(goalPaceTitle(profile.goalPace))")
-                        Button("Edit Profile") {
-                            onboardingDraft = OnboardingDraft(profile: profile)
-                            isShowingOnboarding = true
-                        }
-                    }
-                }
-
-                Section("Today") {
-                    // Match the totals above (which use `consumedToday`): only show
-                    // entries actually logged today, not the full history.
-                    let todaysEntries = viewModel.mealEntries.filter { Calendar.current.isDateInToday($0.createdAt) }
-
-                    if todaysEntries.isEmpty {
-                        Text("No meals logged yet")
-                            .foregroundStyle(.secondary)
-                    }
-
-                    ForEach(todaysEntries) { entry in
-                        HStack {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text(entry.mealType.rawValue.capitalized)
-                                    .font(.headline)
-                                Text("\(Int(entry.scanResult.totalCalories)) kcal")
-                                    .font(.subheadline)
-                                Text("P \(Int(entry.scanResult.proteinGrams))g • F \(Int(entry.scanResult.fatGrams))g • C \(Int(entry.scanResult.carbsGrams))g")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            Spacer()
-                            Button("Edit") {
-                                editingEntry = entry
-                                draft = MealEditDraft(entry: entry)
-                            }
-                            .buttonStyle(.bordered)
-                        }
-                    }
-                    .onDelete { indexSet in
-                        // Capture the entries to delete up front: `deleteMeal` refetches
-                        // and re-sorts `mealEntries` after each mutation, so re-reading
-                        // `viewModel.mealEntries[index]` inside the loop would apply
-                        // stale indices to a shifted array. Indices here refer to
-                        // `todaysEntries` (the filtered, displayed array), not the
-                        // unfiltered `viewModel.mealEntries`, so map through that array.
-                        let entriesToDelete = indexSet.map { todaysEntries[$0] }
-                        Task {
-                            for entry in entriesToDelete {
-                                await viewModel.deleteMeal(id: entry.id)
-                            }
-                        }
-                    }
-                }
-
-                Section("7-Day Progress") {
-                    ForEach(viewModel.weeklyProgress, id: \.dayStart) { point in
-                        HStack {
-                            Text(point.dayStart, style: .date)
-                            Spacer()
-                            Text("\(Int(point.calories)) kcal")
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-
-                Section("Weight") {
-                    Button("Add Sample Weight (kg)") {
-                        Task { await viewModel.addWeightEntry(kg: 78.4) }
-                    }
-
-                    ForEach(viewModel.weightEntries) { entry in
-                        HStack {
-                            Text(entry.date, style: .date)
-                            Spacer()
-                            Text(String(format: "%.1f kg", entry.weightKg))
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-
-                Section("8-Week Weight Trend") {
-                    ForEach(viewModel.weeklyWeightTrend, id: \.weekStart) { point in
-                        HStack {
-                            Text(point.weekStart, style: .date)
-                            Spacer()
-                            Text(point.averageWeightKg > 0 ? String(format: "%.1f kg", point.averageWeightKg) : "-")
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                }
-            }
-            .navigationTitle("SeeCal")
-            .task {
-                await viewModel.loadEntries()
-                if viewModel.requiresOnboarding {
-                    onboardingDraft = OnboardingDraft()
-                    isShowingOnboarding = true
-                }
-            }
-            #if canImport(PhotosUI)
-            .onChange(of: selectedPhotoItem) { _, newItem in
-                guard let newItem else { return }
-                Task {
-                    await processSelectedPhoto(newItem)
-                }
-            }
-            #endif
-            .alert("Scan Error", isPresented: Binding(
-                get: { viewModel.lastError != nil },
-                set: { newValue in
-                    if !newValue { viewModel.lastError = nil }
-                }
-            )) {
-                Button("OK", role: .cancel) { viewModel.lastError = nil }
-            } message: {
-                Text(viewModel.lastError ?? "Unknown error")
-            }
-            .sheet(item: $editingEntry) { entry in
-                if let draft {
-                    MealEditSheet(
-                        draft: draft,
-                        onCancel: {
-                            editingEntry = nil
-                            self.draft = nil
-                        },
-                        onSave: { savedDraft in
-                            Task {
-                                do {
-                                    let updatedResult = try savedDraft.toFoodScanResult(basedOn: entry.scanResult)
-                                    await viewModel.updateMeal(entry, with: updatedResult)
-                                } catch {
-                                    viewModel.lastError = error.localizedDescription
-                                }
-                                editingEntry = nil
-                                self.draft = nil
-                            }
-                        }
-                    )
-                }
-            }
-            .sheet(isPresented: $isEditingGoal) {
-                GoalEditSheet(
-                    draft: goalDraft,
-                    onCancel: { isEditingGoal = false },
-                    onSave: { savedDraft in
-                        Task {
-                            do {
-                                let newTarget = try savedDraft.toDailyTarget()
-                                await viewModel.updateDailyTarget(newTarget)
-                            } catch {
-                                viewModel.lastError = error.localizedDescription
-                            }
-                            isEditingGoal = false
-                        }
-                    }
+            if !scanController.isTabBarHidden {
+                SeeCalTabBar(
+                    selection: $selectedTab,
+                    onScanTapped: { scanController.scanTapped() },
+                    onTabTapped: { _ in scanController.leaveScanSurface() }
                 )
             }
-            .sheet(isPresented: $isShowingOnboarding) {
-                OnboardingSheet(
-                    draft: onboardingDraft,
-                    isFirstRun: viewModel.requiresOnboarding,
-                    onCancel: {
-                        if !viewModel.requiresOnboarding {
+
+            if scanController.isBannerVisible {
+                ReadyBannerView {
+                    scanController.bannerTapped()
+                }
+                .padding(.bottom, Theme.tabBarHeight + 70) // `.ready-banner{bottom:158px}`
+                .transition(reduceMotion ? .identity : .opacity.combined(with: .move(edge: .bottom)))
+            }
+
+            if let toast = scanController.toastMessage {
+                ToastView(text: toast)
+                    .padding(.bottom, Theme.tabBarHeight + 72) // `.toast{bottom:160px}`
+                    .transition(reduceMotion ? .identity : .opacity.combined(with: .move(edge: .bottom)))
+            }
+        }
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.3), value: scanController.isBannerVisible)
+        .animation(reduceMotion ? nil : .easeOut(duration: 0.3), value: scanController.toastMessage)
+        .overlay {
+            if isShowingOnboarding {
+                OnboardingView { profile in
+                    Task {
+                        await viewModel.completeOnboarding(with: profile)
+                        selectedTab = .today
+                        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) {
                             isShowingOnboarding = false
                         }
-                    },
-                    onSave: { savedDraft in
+                    }
+                }
+                .transition(reduceMotion ? .identity : .opacity)
+                .zIndex(10)
+            }
+        }
+        .task {
+            scanController.onRequestTabSwitch = { tab in
+                selectedTab = tab
+            }
+            await viewModel.loadEntries()
+            if viewModel.requiresOnboarding {
+                isShowingOnboarding = true
+            }
+        }
+        .alert("Error", isPresented: Binding(
+            get: { viewModel.lastError != nil },
+            set: { newValue in
+                if !newValue { viewModel.lastError = nil }
+            }
+        )) {
+            Button("OK", role: .cancel) { viewModel.lastError = nil }
+        } message: {
+            Text(viewModel.lastError ?? "Unknown error")
+        }
+        .sheet(isPresented: resultSheetPresented) {
+            if let draft = scanController.activeSheetDraft {
+                MealResultSheet(
+                    draft: draft,
+                    onPrimary: { finalDraft in
                         Task {
-                            do {
-                                let profile = try savedDraft.toUserProfile()
-                                await viewModel.completeOnboarding(with: profile)
-                                onboardingDraft = savedDraft
-                                isShowingOnboarding = false
-                            } catch {
-                                viewModel.lastError = error.localizedDescription
+                            if finalDraft.isEditingExisting {
+                                await scanController.saveChanges(finalDraft)
+                            } else {
+                                await scanController.logMeal(finalDraft)
                             }
                         }
+                    },
+                    onSecondary: {
+                        if draft.isEditingExisting {
+                            scanController.cancelEdit()
+                        } else {
+                            scanController.discardResult()
+                        }
+                    },
+                    onDraftChanged: { editedDraft in
+                        // New-scan drafts track the sheet's live edits so an
+                        // interactive dismissal parks the adjusted values
+                        // (edit mode ignores this — Cancel drops edits).
+                        scanController.presentedDraftChanged(editedDraft)
                     }
                 )
-                .interactiveDismissDisabled(viewModel.requiresOnboarding)
+                .resultSheetStyling()
             }
         }
     }
 
-    private func activityTitle(_ level: ActivityLevel) -> String {
-        switch level {
-        case .sedentary:
-            return "Sedentary"
-        case .lightlyActive:
-            return "Lightly Active"
-        case .moderatelyActive:
-            return "Moderately Active"
-        case .veryActive:
-            return "Very Active"
-        }
-    }
-
-    private func goalPaceTitle(_ pace: GoalPace) -> String {
-        switch pace {
-        case .loseSlow:
-            return "Lose 0.25 kg/week"
-        case .loseModerate:
-            return "Lose 0.5 kg/week"
-        case .maintain:
-            return "Maintain"
-        case .gainSlow:
-            return "Gain 0.25 kg/week"
-        }
-    }
-
-    #if canImport(PhotosUI)
-    private func processSelectedPhoto(_ item: PhotosPickerItem) async {
-        do {
-            guard let data = try await item.loadTransferable(type: Data.self), !data.isEmpty else {
-                throw NSError(domain: "RootView", code: 1, userInfo: [NSLocalizedDescriptionKey: "Could not load selected image"])
+    /// The scan surface replaces the selected tab's screen while visible
+    /// (prototype: camera/analyzing are screens at the same level as the tabs).
+    @ViewBuilder
+    private var content: some View {
+        if scanController.isScanSurfaceVisible {
+            switch scanController.phase {
+            case .capturing:
+                CameraScreen(controller: scanController)
+            default:
+                // .analyzing, .error, and the completed states while the sheet
+                // (or banner) sits above the analyzing screen.
+                AnalyzingScreen(controller: scanController)
             }
-            let imagePath = try persistMealImageData(data)
-            let hint = userHint.trimmingCharacters(in: .whitespacesAndNewlines)
-            await viewModel.addMealPhoto(
-                imagePath: imagePath,
-                mealType: selectedMealType,
-                userHint: hint.isEmpty ? nil : hint
-            )
-            selectedPhotoItem = nil
-        } catch {
-            viewModel.lastError = error.localizedDescription
+        } else {
+            switch selectedTab {
+            case .today:
+                TodayScreen(
+                    viewModel: viewModel,
+                    scrollToTopToken: scanController.todayScrollToTopToken,
+                    onEditMeal: { entry in scanController.beginEdit(entry: entry) }
+                )
+            case .history:
+                HistoryScreen(
+                    viewModel: viewModel,
+                    onEditMeal: { entry in scanController.beginEdit(entry: entry) }
+                )
+            case .profile:
+                ProfileScreen(viewModel: viewModel)
+            case .settings:
+                SettingsScreen(viewModel: viewModel)
+            }
         }
     }
 
-    private func persistMealImageData(_ data: Data) throws -> String {
-        let directory = FileBackedStoreLocations.imagesDirectory
-        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
-        let url = directory.appendingPathComponent("seecal_\(UUID().uuidString).jpg")
-        do {
-            let processed = try InferenceImagePreprocessor.downsampledJPEG(from: data)
-            print("[SeeCal][ImagePreprocess] bytes original=\(data.count) processed=\(processed.count)")
-            try processed.write(to: url, options: .atomic)
-        } catch {
-            print("[SeeCal][ImagePreprocess] failed, using original image data. error=\(error)")
-            try data.write(to: url, options: .atomic)
-        }
-        return url.path
-    }
-    #endif
-}
-
-private struct MealEditSheet: View {
-    @State var draft: MealEditDraft
-    let onCancel: () -> Void
-    let onSave: (MealEditDraft) -> Void
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("Adjust Nutrition") {
-                    TextField("Calories", text: $draft.caloriesText)
-                    TextField("Protein (g)", text: $draft.proteinText)
-                    TextField("Fat (g)", text: $draft.fatText)
-                    TextField("Carbs (g)", text: $draft.carbsText)
+    /// Presentation binding for the shared result/edit sheet. A `false` write
+    /// while state still says "presenting" is an interactive dismissal
+    /// (swipe-down): edit mode cancels; a fresh result parks behind the ready
+    /// banner instead of being lost. Programmatic closes (log/discard/save)
+    /// change state first, so those writes no-op here.
+    private var resultSheetPresented: Binding<Bool> {
+        Binding(
+            get: { scanController.activeSheetDraft != nil },
+            set: { isPresented in
+                guard !isPresented else { return }
+                if scanController.editDraft != nil {
+                    scanController.cancelEdit()
+                } else {
+                    scanController.resultSheetDismissed()
                 }
             }
-            .navigationTitle("Edit Meal")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel", action: onCancel)
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { onSave(draft) }
-                }
-            }
-        }
+        )
     }
 }
 
-private struct OnboardingSheet: View {
-    @State var draft: OnboardingDraft
-    let isFirstRun: Bool
-    let onCancel: () -> Void
-    let onSave: (OnboardingDraft) -> Void
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("About You") {
-                    Picker("Sex", selection: $draft.biologicalSex) {
-                        Text("Male").tag(BiologicalSex.male)
-                        Text("Female").tag(BiologicalSex.female)
-                    }
-                    TextField("Age (years)", text: $draft.ageYearsText)
-                    TextField("Height (cm)", text: $draft.heightCmText)
-                    TextField("Weight (kg)", text: $draft.weightKgText)
-                }
-
-                Section("Lifestyle") {
-                    Picker("Activity", selection: $draft.activityLevel) {
-                        Text("Sedentary").tag(ActivityLevel.sedentary)
-                        Text("Lightly Active").tag(ActivityLevel.lightlyActive)
-                        Text("Moderately Active").tag(ActivityLevel.moderatelyActive)
-                        Text("Very Active").tag(ActivityLevel.veryActive)
-                    }
-                    Picker("Goal Pace", selection: $draft.goalPace) {
-                        Text("Lose 0.25 kg/week").tag(GoalPace.loseSlow)
-                        Text("Lose 0.5 kg/week").tag(GoalPace.loseModerate)
-                        Text("Maintain").tag(GoalPace.maintain)
-                        Text("Gain 0.25 kg/week").tag(GoalPace.gainSlow)
-                    }
-                }
-            }
-            .navigationTitle("Setup")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    if !isFirstRun {
-                        Button("Cancel", action: onCancel)
-                    }
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { onSave(draft) }
-                }
-            }
-        }
-    }
-}
-
-private struct GoalEditSheet: View {
-    @State var draft: GoalEditDraft
-    let onCancel: () -> Void
-    let onSave: (GoalEditDraft) -> Void
-
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section("Daily Goal") {
-                    TextField("Calories", text: $draft.caloriesText)
-                    TextField("Protein (g)", text: $draft.proteinText)
-                    TextField("Fat (g)", text: $draft.fatText)
-                    TextField("Carbs (g)", text: $draft.carbsText)
-                }
-            }
-            .navigationTitle("Edit Goal")
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel", action: onCancel)
-                }
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Save") { onSave(draft) }
-                }
-            }
-        }
+private extension View {
+    /// Prototype `.sheet`: 26pt top corner radius, max-height 86%, custom grab
+    /// handle (the sheet draws its own, so the system indicator is hidden).
+    /// These presentation modifiers are iOS-only; the macOS test host uses the
+    /// default sheet chrome.
+    @ViewBuilder
+    func resultSheetStyling() -> some View {
+        #if os(iOS)
+        self
+            .presentationDetents([.fraction(0.86)])
+            .presentationDragIndicator(.hidden)
+            .presentationCornerRadius(26)
+        #else
+        self
+        #endif
     }
 }
