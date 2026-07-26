@@ -80,7 +80,7 @@ per-item macros, matching the iOS-side schema in `ios/SeeCal/README.md`):
 {"total_calories": 246.0, "protein_g": 33.1, "fat_g": 5.6, "carbs_g": 16.3, "items": [{"name": "broccoli", "estimated_grams": 129.0, "calories": 44.0, "protein_g": 3.6, "fat_g": 0.5, "carbs_g": 8.6}, {"name": "chicken breast", "estimated_grams": 89.5, "calories": 148.0, "protein_g": 27.7, "fat_g": 3.2, "carbs_g": 0.0}, ...]}
 ```
 
-## Training Command
+## Training Command (SUPERSEDED — historical; use ./train.sh (0.6.7 stack))
 ```bash
 python -m mlx_vlm.lora \
   --model-path ~/models/Qwen3.5-4B-MLX-bf16 \
@@ -118,9 +118,11 @@ reconstructed from file timestamps and `train.sh`):
   training only ever iterated over the first 1000 of 2594 available training examples (< 1 epoch,
   and never reaching the back ~60% of the dataset) — on top of dying before iter 1000 anyway.
 - A Swift-side parity probe on 2026-07-26 found the v4 adapter's output still garbled (see
-  `ios/SeeCal/README.md` for the LoRA-loading path used to test it). Python-side eval via
-  `03_infer.py` against `finetune_data/test.jsonl` is pending — do not assume v4 is usable until
-  that eval runs.
+  `ios/SeeCal/README.md` for the LoRA-loading path used to test it). **Verdict (2026-07-26)**:
+  Python-side eval via `03_infer.py` on 50 test dishes confirms v4 is dead — 50/50 parse
+  failures (0/50 valid JSON). The base 4-bit model (no adapter) on the same 50 dishes: calories
+  MAE 83.4 / median 63.9, protein MAE 6.7, fat MAE 4.9, carbs MAE 12.4, 0 parse failures. Do not
+  use `adapters_v4/` for anything; it is superseded by the v5 effort below.
 
 ### Run 2 (BROKEN — training without images, do not use `adapters_v2/`)
 - LoRA training completed (1000 iterations) with mlx-vlm
@@ -301,14 +303,20 @@ training:
   rather than the `alpha/rank` convention the new stack uses — new-stack adapters convert directly.
   `mlx_lm.fuse` still drops the vision tower on this toolchain too (see fix #9) — do not fuse via
   mlx-lm for either stack; serve base model + adapter directly.
+- **Pair adapter and venv, or numbers are silently wrong**: adapters must be evaluated with the
+  venv matching their training stack — legacy-format adapters (v4, effective scale 32) load with
+  the wrong scale (2) under 0.6.7, and new-format adapters must not be evaluated under `.venv`.
 
 ## Next Steps
-1. **Train v5** on the new `.venv-vlm067` stack using `finetune_data_v2/`: 2–3 epochs, batch size 1,
-   `--max-seq-length 2048`, `--output-path adapters_v5`. Run the validation ladder above first.
-2. **Baseline v4@800** properly before drawing conclusions from it: run `03_infer.py --test-set
-   finetune_data/test.jsonl` against the iter-800 `adapters_v4/` checkpoint and save results to
-   `runs/eval_v4_baseline/` — the Swift parity probe saw garbled output, but there is no Python-side
-   MAE/quality number for v4 yet.
+1. **Baseline v4 — DONE.** Ran `03_infer.py --test-set finetune_data/test.jsonl` against the
+   iter-800 `adapters_v4/` checkpoint; results in `runs/eval_v4_baseline/`. Verdict: 50/50 parse
+   failures, adapter is dead (see Run 4 entry above). Base model on the same 50 dishes: calories
+   MAE 83.4 / median 63.9, protein 6.7, fat 4.9, carbs 12.4, 0 parse failures — this is the number
+   v5 needs to beat.
+2. **Train v5 — launched 2026-07-26** on the `.venv-vlm067` stack using `finetune_data_v2/`:
+   2 epochs, LR 1e-4, `--output-path adapters_v5`. Probe checkpoint at 1000 iters: 1/50 parse
+   failures, calories MAE 102.3 / median 55.3, carbs MAE 7.2 (vs. base 12.4). Full run in progress;
+   re-evaluate at completion.
 3. **iOS integration is now wired**: LoRA loading via `LoRAContainer` and `convert_adapter_for_swift.py`
    are in place (see `ios/SeeCal/README.md`). Once v5 lands, convert it with
    `convert_adapter_for_swift.py` and point the app config at `adapters_v5_swift/`.

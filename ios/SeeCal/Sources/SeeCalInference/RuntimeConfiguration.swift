@@ -16,7 +16,7 @@ public enum RuntimeConfigError: Error, Equatable, CustomStringConvertible {
         case let .invalidTemperature(value):
             return "temperature must be in 0...2, got \(value)"
         case let .invalidTimeoutSeconds(value):
-            return "timeoutSeconds must be in 1...30, got \(value)"
+            return "timeoutSeconds must be in 1...300, got \(value)"
         case let .invalidMaxAttemptsPerRuntime(value):
             return "maxAttemptsPerRuntime must be in 1...3, got \(value)"
         }

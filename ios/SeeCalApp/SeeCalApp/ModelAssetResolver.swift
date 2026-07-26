@@ -81,8 +81,13 @@ enum ModelAssetResolver {
         }
 
 #if targetEnvironment(simulator)
-        let localDevPath = "/Users/jevgenikabanov/Documents/Projects/Claude/SeeCal/adapters_v4_swift"
-        if isAdapterDirectory(localDevPath) {
+        // v4 is a dead adapter (50/50 parse failures) kept only until v5 is converted;
+        // prefer v5 — try it first, then fall back to v4 if v5 hasn't been converted yet.
+        let localDevPaths = [
+            "/Users/jevgenikabanov/Documents/Projects/Claude/SeeCal/adapters_v5_swift",
+            "/Users/jevgenikabanov/Documents/Projects/Claude/SeeCal/adapters_v4_swift"
+        ]
+        for localDevPath in localDevPaths where isAdapterDirectory(localDevPath) {
             logger.log("Bundled adapter not found; using simulator fallback adapter path: \(localDevPath, privacy: .public)")
             print("[SeeCal][ModelAssetResolver] using simulator fallback adapter path: \(localDevPath)")
             return localDevPath

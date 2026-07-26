@@ -100,12 +100,16 @@ public struct RootView: View {
                 }
 
                 Section("Today") {
-                    if viewModel.mealEntries.isEmpty {
+                    // Match the totals above (which use `consumedToday`): only show
+                    // entries actually logged today, not the full history.
+                    let todaysEntries = viewModel.mealEntries.filter { Calendar.current.isDateInToday($0.createdAt) }
+
+                    if todaysEntries.isEmpty {
                         Text("No meals logged yet")
                             .foregroundStyle(.secondary)
                     }
 
-                    ForEach(viewModel.mealEntries) { entry in
+                    ForEach(todaysEntries) { entry in
                         HStack {
                             VStack(alignment: .leading, spacing: 4) {
                                 Text(entry.mealType.rawValue.capitalized)
@@ -128,8 +132,10 @@ public struct RootView: View {
                         // Capture the entries to delete up front: `deleteMeal` refetches
                         // and re-sorts `mealEntries` after each mutation, so re-reading
                         // `viewModel.mealEntries[index]` inside the loop would apply
-                        // stale indices to a shifted array.
-                        let entriesToDelete = indexSet.map { viewModel.mealEntries[$0] }
+                        // stale indices to a shifted array. Indices here refer to
+                        // `todaysEntries` (the filtered, displayed array), not the
+                        // unfiltered `viewModel.mealEntries`, so map through that array.
+                        let entriesToDelete = indexSet.map { todaysEntries[$0] }
                         Task {
                             for entry in entriesToDelete {
                                 await viewModel.deleteMeal(id: entry.id)
