@@ -11,6 +11,11 @@
 #   LR 1e-4 validated by the overfit/probe gates on 2026-07-26.
 # - completion masking is prefix-based; no --assistant-id needed.
 # - Resume after interruption: add --adapter-path adapters_v5 and reduce --epochs.
+# - NO --grad-checkpoint: +15% throughput (benchmarked 2026-07-26) but peaks
+#   ~47GB Metal memory. Do NOT load other models (LM Studio!) or run evals
+#   while training — Metal memory doesn't swap; co-tenancy = OOM-killed run.
+#   If the machine must stay usable during a run, add --grad-checkpoint back
+#   (drops to ~13GB for ~15% slower).
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -27,6 +32,5 @@ cd "$(dirname "$0")"
   --epochs 2 \
   --steps-per-report 50 \
   --steps-per-save 500 \
-  --grad-checkpoint \
   --output-path adapters_v5 \
   2>&1 | tee adapters_v5_train.log
