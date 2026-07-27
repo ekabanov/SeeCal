@@ -194,9 +194,16 @@ kcal mean gap is entirely outlier-driven — the 5 worst dishes alone account fo
 +3.84 kcal of it, meaning v7b is *better* than v5 across the rest of the
 distribution. v7's regression (t=2.49) was real; v7b's is not.
 
-**v7b is the ship candidate.** Remaining: convert for Swift
-(`convert_adapter_for_swift.py`), real-world spot check on device (gate 4), then
-swap `SHIPPING_ADAPTER` in `ios/App/copy_weights.sh`.
+**Gate 4 (real-world device spot check) PASSED 2026-07-28** — user-verified on
+an iPhone build bundling `adapters_v7b_swift`: non-food photos surface the "No
+food detected" state and real meals still analyse normally. This was the one gate
+the held-out set cannot answer, since all 325 test dishes are cafeteria trays shot
+on the same RealSense rig.
+
+**v7b is SHIPPED**: converted (`adapters_v7b_swift`), `SHIPPING_ADAPTER` swapped in
+`ios/App/copy_weights.sh`, dev-fallback order updated in `ModelAssetResolver.swift`.
+
+**TRACK COMPLETE.** All five gates green.
 
 Raw: `ml/runs/eval_v7b_food325.json`, `ml/runs/eval_v7b_neg.json`.
 ```
