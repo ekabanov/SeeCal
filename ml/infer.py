@@ -198,6 +198,14 @@ def evaluate_test_set(model, processor, test_jsonl: Path, limit: int, data_dir: 
     errors_carbs = []
     parse_failures = 0
     schema_failures = 0
+    # v7 not-food accounting. A refusal is a valid JSON `{"not_food": true}`.
+    #   refusals_correct : gt is non-food AND pred refused  (true positive)
+    #   refusals_missed  : gt is non-food but pred gave food (false negative)
+    #   false_refusals   : gt IS food but pred refused       (over-refusal — the
+    #                      critical failure mode; must stay ~0 on the food test set)
+    refusals_correct = 0
+    refusals_missed = 0
+    false_refusals = 0
 
     for i, rec in enumerate(records):
         # Get ground truth from assistant message
@@ -230,6 +238,23 @@ def evaluate_test_set(model, processor, test_jsonl: Path, limit: int, data_dir: 
             print(f" — PARSE ERROR")
             continue
 
+        # v7 refusal handling: route not_food predictions/ground-truth through
+        # refusal accounting instead of the calorie-MAE path (a refusal has no
+        # total_calories, so without this it would count as a schema failure).
+        gt_refusal = bool(gt.get("not_food"))
+        pred_refusal = bool(pred.get("not_food"))
+        if gt_refusal or pred_refusal:
+            if gt_refusal and pred_refusal:
+                refusals_correct += 1
+                print(" — REFUSED (correct)")
+            elif gt_refusal and not pred_refusal:
+                refusals_missed += 1
+                print(" — MISSED refusal (predicted food)")
+            else:  # pred_refusal and not gt_refusal
+                false_refusals += 1
+                print(" — FALSE REFUSAL (ground truth is food)")
+            continue
+
         # Valid JSON but wrong/missing/non-numeric keys must not kill the run:
         # count separately so MAE is only over schema-conforming predictions.
         try:
@@ -254,6 +279,15 @@ def evaluate_test_set(model, processor, test_jsonl: Path, limit: int, data_dir: 
           f"({parse_failures} parse failures, {schema_failures} schema failures):")
     print(f"{'='*60}")
 
+    if refusals_correct or refusals_missed or false_refusals:
+        n_neg_gt = refusals_correct + refusals_missed
+        print("  Not-food (v7):")
+        if n_neg_gt:
+            print(f"    refusal recall : {refusals_correct}/{n_neg_gt} "
+                  f"({100.0 * refusals_correct / n_neg_gt:.1f}%) correctly refused")
+        print(f"    false refusals : {false_refusals} "
+              f"(food wrongly refused — target 0)")
+
     import statistics
 
     def stats(name, errs):
@@ -269,6 +303,9 @@ def evaluate_test_set(model, processor, test_jsonl: Path, limit: int, data_dir: 
         "samples": len(records),
         "parse_failures": parse_failures,
         "schema_failures": schema_failures,
+        "refusals_correct": refusals_correct,
+        "refusals_missed": refusals_missed,
+        "false_refusals": false_refusals,
         "calories": stats("Calories (kcal)", errors_cal),
         "protein_g": stats("Protein (g)", errors_protein),
         "fat_g": stats("Fat (g)", errors_fat),

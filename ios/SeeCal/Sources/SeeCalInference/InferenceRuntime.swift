@@ -6,6 +6,11 @@ public enum InferenceError: Error, Equatable, CustomStringConvertible, Localized
     case runtimeFailed(String)
     case parsingFailed(String)
     case allRuntimesFailed([RuntimeFailure])
+    /// The model returned the v7 not-food refusal (`{"not_food": true}`) — the
+    /// photo isn't food. A *definitive* answer, not a failure: the orchestrator
+    /// surfaces it immediately (no retry, no fallback runtime) and the scan flow
+    /// renders a "No food detected" state rather than the error/Retry screen.
+    case notFood
 
     /// A single runtime's failure, captured so callers can surface a real message
     /// instead of a generic "no runtime available" string.
@@ -35,6 +40,8 @@ public enum InferenceError: Error, Equatable, CustomStringConvertible, Localized
                 .map { "\($0.runtimeName): \($0.errorDescription)" }
                 .joined(separator: "; ")
             return "All runtimes failed — \(details)"
+        case .notFood:
+            return "No food detected in the photo"
         }
     }
 
@@ -80,6 +87,11 @@ public actor RuntimeOrchestrator {
                     return try await withTimeout(timeoutNanoseconds) {
                         try await runtime.infer(request: request)
                     }
+                } catch InferenceError.notFood {
+                    // Definitive "this isn't food" — surface it as-is. Retrying or
+                    // falling through to another runtime would only re-derive the
+                    // same answer (or, worse, let a weaker runtime hallucinate food).
+                    throw InferenceError.notFood
                 } catch {
                     lastError = error
                     continue

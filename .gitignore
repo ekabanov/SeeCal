@@ -27,6 +27,13 @@ ml/Nutrition5K/
 ml/dataset_clean/
 ml/dataset_clean_sample/
 ml/finetune_data_sample/
+# v7 not-food negatives: COCO annotations cache + sampled negative images
+# (regenerable via download_negatives.sh; never redistributed — like Nutrition5K).
+ml/coco/
+ml/negatives/
+# v7 combined training data (food + negatives) — regenerable via make_v7_data.py,
+# references the gitignored negatives images.
+ml/finetune_data_v7*/
 
 # Training outputs / model weights
 *.safetensors

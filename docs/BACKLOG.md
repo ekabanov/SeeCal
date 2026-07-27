@@ -2,6 +2,45 @@
 
 Deferred work items. Not scheduled; picked up when prioritized. Dated when added.
 
+## Fully editable food data — ingredients, amounts, nutrition (added 2026-07-27)
+
+**Goal:** every aspect of a scan result should be user-editable — ingredient
+names, the ingredient list itself (add / remove), amounts, and the nutrition
+numbers. The model is an estimator, not an authority; when it misidentifies or
+misjudges something the user must be able to correct it rather than log a number
+they know is wrong (or discard the scan).
+
+**What works today** (`MealEditDraft`, `MealResultSheet`):
+- Grams only, via `stepGrams` (±5 g, floored at 5 g) and `setGrams`.
+- Nutrition is **derived**: per-item calories/macros are scaled proportionally
+  from grams, and dish totals are the sum over items (`totals`).
+
+**Missing:** editing an ingredient's name, adding an ingredient, removing an
+ingredient, and setting calories/macros directly.
+
+**The load-bearing design decision — derived vs. overridden.** Because nutrition
+is currently a pure function of grams, letting the user type a calorie value
+creates a conflict: the next gram step would silently recompute and destroy their
+edit. Options:
+1. **Per-field override flags** — a manually-set field stops tracking grams
+   (needs a visible "edited" affordance so the user knows it detached, and a way
+   to revert to the estimate).
+2. **Edit grams-per-100g instead** — the user corrects the *density*, nutrition
+   stays derived. Keeps one source of truth; less direct.
+3. **Free-form totals** — dish totals become independently editable and stop
+   being the item sum. Simplest UI, but then items and totals can disagree.
+
+Recommend (1) with an explicit revert, and totals staying the item sum.
+
+**Also needs deciding:** whether an added ingredient requires a nutrition lookup
+(a per-100g food table shipped in-app — Nutrition5K's `ingredients_metadata.csv`
+is a candidate source) or the user types its macros directly.
+
+**Touches:** `MealEditDraft` (mutation API + override state), `MealResultSheet`
+(name field, add/remove rows, numeric entry), `MealLogEntry` persistence (must
+round-trip overrides), and `docs/specs/2026-07-26-app-spec.md` — the spec only
+describes gram steppers today, so it needs updating first (spec wins over code).
+
 ## On-device depth (v6) — real-life depth test (added 2026-07-27)
 
 **Goal:** ship both the v5 (plain) and v6 (depth-augmented) adapters and let the

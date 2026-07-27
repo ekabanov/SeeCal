@@ -20,6 +20,24 @@ final class FoodScanResultTests: XCTestCase {
         }
     }
 
+    // MARK: - v7 not-food refusal detection
+
+    func testDetectsNotFoodRefusal() {
+        XCTAssertTrue(ScanJSONParser.isNotFood(#"{"not_food": true}"#))
+        // Tolerant of surrounding prose / whitespace.
+        XCTAssertTrue(ScanJSONParser.isNotFood("\n {\"not_food\": true} \n"))
+        XCTAssertTrue(ScanJSONParser.isNotFood(#"Sure: {"not_food": true}"#))
+    }
+
+    func testFoodResultIsNotDetectedAsRefusal() throws {
+        let data = try fixture(named: "valid_scan_result.json")
+        let json = String(decoding: data, as: UTF8.self)
+        XCTAssertFalse(ScanJSONParser.isNotFood(json))
+        // not_food:false and a missing key are both "this is food".
+        XCTAssertFalse(ScanJSONParser.isNotFood(#"{"not_food": false, "total_calories": 100}"#))
+        XCTAssertFalse(ScanJSONParser.isNotFood(#"{"total_calories": 100, "items": []}"#))
+    }
+
     private func fixture(named: String) throws -> Data {
         #if SWIFT_PACKAGE
         let url = Bundle.module.url(forResource: named.replacingOccurrences(of: ".json", with: ""), withExtension: "json")

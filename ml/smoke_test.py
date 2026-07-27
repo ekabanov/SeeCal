@@ -117,6 +117,17 @@ def main():
             pos = np.where(row == ASSISTANT_ID)[0]
             if len(pos):
                 completion_lens.append(int(seq_lens[i] - pos[0] - 1))
+    # Per-row decoded completion text, so the short-completion check can exempt
+    # the v7 not-food refusal (`{"not_food": true}`), whose target is
+    # legitimately ~8 tokens — not a truncation.
+    completion_texts = ["" for _ in range(ids.shape[0])]
+
+    if legacy:
+        for i, row in enumerate(ids):
+            pos = np.where(row == ASSISTANT_ID)[0]
+            if len(pos):
+                completion_texts[i] = processor.tokenizer.decode(
+                    row[pos[0] + 1:int(seq_lens[i])].tolist())
     else:
         cm = batch.get("completion_mask")
         if cm is None:
@@ -125,6 +136,9 @@ def main():
         else:
             cm = np.array(cm)
             completion_lens = [int((cm[i] * attn[i]).sum()) for i in range(cm.shape[0])]
+            for i in range(cm.shape[0]):
+                mask_i = (cm[i] * attn[i]).astype(bool)
+                completion_texts[i] = processor.tokenizer.decode(ids[i][mask_i].tolist())
             # The mask must exclude the image tokens (loss over image tokens caused
             # the v1-v3 olive-oil mode collapse).
             img_positions = ids == image_pad_id
@@ -135,8 +149,12 @@ def main():
 
     for i, clen in enumerate(completion_lens):
         frac = clen / int(seq_lens[i])
-        print(f"row {i}: seq={int(seq_lens[i])} completion={clen} ({frac:.0%} of seq carries loss)")
-        if clen < 20:
+        is_refusal = "not_food" in completion_texts[i]
+        label = " [not-food refusal]" if is_refusal else ""
+        print(f"row {i}: seq={int(seq_lens[i])} completion={clen} "
+              f"({frac:.0%} of seq carries loss){label}")
+        # A refusal target is ~8 tokens by design; only flag short FOOD targets.
+        if clen < 20 and not is_refusal:
             failures.append(f"row {i}: only {clen} completion tokens — target truncated "
                             f"(raise --max-seq-length) or mask broken")
         if frac > 0.95:

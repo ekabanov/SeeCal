@@ -87,6 +87,11 @@ public final class ScanFlowController: ObservableObject {
         /// Inference failed; the analyzing screen shows the runtime's message
         /// with a Retry affordance bound to the same photo.
         case error(message: String, photoPath: String)
+        /// The model refused: the photo isn't food (v7 `{"not_food": true}`).
+        /// A correct terminal answer — the analyzing screen shows a friendly
+        /// "No food detected" state (New scan / Try again on the same photo),
+        /// NOT the red error screen.
+        case notFood(photoPath: String)
     }
 
     @Published public private(set) var phase: Phase = .idle
@@ -180,9 +185,9 @@ public final class ScanFlowController: ObservableObject {
             isScanSurfaceVisible = true
         case .capturing, .analyzing:
             isScanSurfaceVisible = true
-        case .error:
-            // A failed inference must not dead-end the flow: the FAB starts
-            // over instead of re-showing the same error screen forever.
+        case .error, .notFood:
+            // A failed inference (or a not-food refusal) must not dead-end the
+            // flow: the FAB starts over instead of re-showing the same screen.
             newScanAfterError()
         case let .ready(draft):
             // "Starting a new scan clears any pending banner/result" (spec §5).
@@ -196,11 +201,17 @@ public final class ScanFlowController: ObservableObject {
         }
     }
 
-    /// Error-state "New scan" (Analyzing screen's secondary affordance, and the
-    /// FAB while `.error`): abandon the failed photo — deleting its file — and
-    /// return to the camera for a fresh capture.
+    /// "New scan" from a terminal analyzing state (`.error` or `.notFood`), and
+    /// the FAB while in one: abandon that photo — deleting its file — and return
+    /// to the camera for a fresh capture.
     public func newScanAfterError() {
-        guard case let .error(_, photoPath) = phase else { return }
+        let photoPath: String
+        switch phase {
+        case let .error(_, path), let .notFood(path):
+            photoPath = path
+        default:
+            return
+        }
         photoStore.delete(atPath: photoPath)
         phase = .capturing
         isScanSurfaceVisible = true
@@ -245,9 +256,16 @@ public final class ScanFlowController: ObservableObject {
         }
     }
 
-    /// Retry after an inference error: re-runs on the SAME photo, no recapture.
+    /// Retry after an inference error, or "Try again" after a not-food refusal:
+    /// re-runs on the SAME photo, no recapture.
     public func retry() {
-        guard case let .error(_, photoPath) = phase else { return }
+        let photoPath: String
+        switch phase {
+        case let .error(_, path), let .notFood(path):
+            photoPath = path
+        default:
+            return
+        }
         startAnalysis(photoPath: photoPath)
     }
 
@@ -264,6 +282,12 @@ public final class ScanFlowController: ObservableObject {
                 let result = try await self.inference.infer(request: request)
                 self.inferenceTask = nil
                 self.finishAnalysis(result: result, photoPath: photoPath, mealType: mealType)
+            } catch InferenceError.notFood {
+                // Definitive refusal — a correct answer, not a failure. Distinct
+                // terminal state so the UI reads "No food detected", never the
+                // red error/Retry screen.
+                self.inferenceTask = nil
+                self.phase = .notFood(photoPath: photoPath)
             } catch {
                 self.inferenceTask = nil
                 self.phase = .error(message: error.localizedDescription, photoPath: photoPath)

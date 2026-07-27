@@ -76,13 +76,24 @@ with the flag.
 
 ## Current state (see `docs/` for detail, not this file)
 
-- Shipping adapter: `adapters_v5` (calories MAE 59.0 / median 31.4 on the
-  full 325-dish held-out test set — see `ml/README.md` for the full table).
-  `adapters_v6` (depth-augmented) is a statistical tie that trends slightly
+- Shipping adapter: **`adapters_v7b`** (as of 2026-07-27) — v5 + a not-food
+  refusal. Adds `{"not_food": true}` on non-food photos: 100% refusal recall on
+  29 held-out negatives, 0 over-refusal on all 324 real-food dishes. Food
+  accuracy is a statistical tie with v5 (paired v7b−v5 = +0.87 kcal, t=0.23 on
+  324 shared dishes) with a BETTER median (30.5 vs 35.2) and fewer parse
+  failures (1 vs 3). See `docs/plans/2026-07-27-v7-notfood-plan.md`.
+- **When comparing adapters, always pair by dish id.** The raw MAE headlines are
+  computed over different n (parse failures are excluded per-adapter), so
+  v5's "59.0 (n=322)" vs v7b's "63.4 (n=324)" is an unlike-set comparison — on
+  the 324 shared dishes v5 is 62.5. `ml/runs/eval_full/eval.log` has per-dish
+  errors for pairing.
+- `adapters_v7` (221 negatives) is dead: same perfect refusal, but a REAL food
+  regression (paired +10.48 kcal, t=2.49). 100 negatives (v7b) is the right dose.
+- `adapters_v6` (depth-augmented) is a statistical tie that trends slightly
   worse (MAE 62.5; paired v6−v5 = +3.5 kcal, t=0.89 on 322 shared dishes)
   and is not shipped. `adapters_v1`–`v4` are all confirmed dead — see
   `docs/training-history.md`.
-- Full 325-dish v5-vs-v6 evaluation is DONE (2026-07-27); depth track closed,
-  v5 confirmed as the shipping adapter. Raw results in `ml/runs/eval_full/`.
+- Full 325-dish v5-vs-v6 evaluation is DONE (2026-07-27); depth track closed.
+  Raw results in `ml/runs/eval_full/`.
 - iOS app: full product build-out complete against the prototype spec;
   `scripts/build.sh`/`scripts/test.sh` are green.

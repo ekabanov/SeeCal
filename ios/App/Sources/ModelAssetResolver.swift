@@ -81,9 +81,12 @@ enum ModelAssetResolver {
         }
 
 #if targetEnvironment(simulator)
-        // v4 is a dead adapter (50/50 parse failures) kept only until v5 is converted;
-        // prefer v5 — try it first, then fall back to v4 if v5 hasn't been converted yet.
+        // Shipping order, most-preferred first: v7b (adds not-food refusal, food
+        // accuracy a statistical tie with v5) then v5. v4 is a dead adapter
+        // (50/50 parse failures) kept only as a last resort. Keep this list in
+        // sync with SHIPPING_ADAPTER in ios/App/copy_weights.sh.
         let localDevPaths = [
+            "/Users/jevgenikabanov/Documents/Projects/Claude/SeeCal/ml/adapters_v7b_swift",
             "/Users/jevgenikabanov/Documents/Projects/Claude/SeeCal/ml/adapters_v5_swift",
             "/Users/jevgenikabanov/Documents/Projects/Claude/SeeCal/ml/adapters_v4_swift"
         ]

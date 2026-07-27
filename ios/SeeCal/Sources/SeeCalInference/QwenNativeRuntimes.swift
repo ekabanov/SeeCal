@@ -76,6 +76,9 @@ public struct MLXQwenRuntime: InferenceRuntime {
     public func infer(request: FoodScanRequest) async throws -> FoodScanResult {
         let prompt = promptBuilder.buildPrompt(request: request)
         let raw = try await engine.run(imagePath: request.imagePath, prompt: prompt)
+        // v7: a not-food refusal (`{"not_food": true}`) is a definitive answer,
+        // checked before parseStrict (which would throw missingItems on it).
+        if ScanJSONParser.isNotFood(raw) { throw InferenceError.notFood }
         do {
             return try ScanJSONParser.parseStrict(from: raw)
         } catch {
@@ -103,6 +106,7 @@ public struct MNNQwenRuntime: InferenceRuntime {
     public func infer(request: FoodScanRequest) async throws -> FoodScanResult {
         let prompt = promptBuilder.buildPrompt(request: request)
         let raw = try await engine.run(imagePath: request.imagePath, prompt: prompt)
+        if ScanJSONParser.isNotFood(raw) { throw InferenceError.notFood }
         do {
             return try ScanJSONParser.parseStrict(from: raw)
         } catch {

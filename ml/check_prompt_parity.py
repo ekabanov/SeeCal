@@ -22,6 +22,9 @@ processor = AutoProcessor.from_pretrained(MODEL)
 config = load_config(MODEL)
 
 def check(jsonl, n=5):
+    if not Path(jsonl).exists():
+        print(f"  [SKIP] not present")
+        return 0
     fails = 0
     with open(jsonl) as f:
         recs = [json.loads(l) for _, l in zip(range(n), f)]
@@ -57,6 +60,11 @@ for name, path in [
     ("v5 control   ", REPO / "finetune_data_v2/train.jsonl"),
     ("variant B txt", REPO / "finetune_data_v2d_txt/train.jsonl"),
     ("variant A img", REPO / "finetune_data_v2d_img/train.jsonl"),
+    # v7 not-food track: refusal records use the byte-identical v5 prompt (only
+    # the completion differs), so they must pass the same gate. Checks the
+    # all-refusal negatives file and the mixed v7 train set.
+    ("v7 negatives ", REPO / "negatives/train.jsonl"),
+    ("v7 mixed     ", REPO / "finetune_data_v7/train.jsonl"),
 ]:
     print(f"{name}: {path}")
     total += check(path)

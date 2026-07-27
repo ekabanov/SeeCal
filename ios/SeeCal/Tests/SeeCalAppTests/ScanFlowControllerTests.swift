@@ -363,6 +363,53 @@ final class ScanFlowControllerTests: XCTestCase {
     }
 
     @MainActor
+    func testNotFoodRefusalShowsNoFoodStateNotError() async throws {
+        makeSUT()
+        let photoPath = try await startAnalyzingScan()
+
+        // v7: a not-food refusal is a definitive, non-error outcome.
+        await runner.fail(with: InferenceError.notFood)
+        await controller.inferenceTask?.value
+
+        guard case let .notFood(refusalPhotoPath) = controller.phase else {
+            return XCTFail("Expected .notFood phase, got \(controller.phase)")
+        }
+        XCTAssertEqual(refusalPhotoPath, photoPath)
+
+        // "Try again" re-runs on the SAME photo (no recapture).
+        controller.retry()
+        if case .analyzing(let retryPath) = controller.phase {
+            XCTAssertEqual(retryPath, photoPath)
+        } else {
+            XCTFail("Expected re-analysis after Try again, got \(controller.phase)")
+        }
+        let arrived = await waitUntil { [runner] in await runner!.requestCount == 2 }
+        XCTAssertTrue(arrived)
+        XCTAssertEqual(capture.captureCount, 1, "Try again must not recapture")
+    }
+
+    @MainActor
+    func testNewScanAfterNotFoodReturnsToCameraAndDeletesPhoto() async throws {
+        makeSUT()
+        let photoPath = try await startAnalyzingScan()
+
+        await runner.fail(with: InferenceError.notFood)
+        await controller.inferenceTask?.value
+        guard case .notFood = controller.phase else {
+            return XCTFail("Expected .notFood phase, got \(controller.phase)")
+        }
+
+        // FAB tap after a refusal: fresh capture, refused photo cleaned up.
+        controller.scanTapped()
+        XCTAssertEqual(controller.phase, .capturing, "The not-food phase must not dead-end")
+        XCTAssertTrue(controller.isScanSurfaceVisible)
+        XCTAssertFalse(
+            FileManager.default.fileExists(atPath: photoPath),
+            "The abandoned refused photo must be deleted"
+        )
+    }
+
+    @MainActor
     func testScanFABAfterErrorStartsFreshCaptureInsteadOfDeadEnding() async throws {
         makeSUT()
         let photoPath = try await startAnalyzingScan()

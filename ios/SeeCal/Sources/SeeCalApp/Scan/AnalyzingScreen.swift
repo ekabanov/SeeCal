@@ -40,14 +40,20 @@ struct AnalyzingScreen: View {
                 .padding(.top, 22)
                 .padding(.horizontal, 34)
 
-            steps
-                .padding(.top, 26)
-                .padding(.horizontal, 34)
-
-            if case let .error(message, _) = controller.phase {
-                errorBlock(message: message)
+            if isNotFood {
+                notFoodBlock
                     .padding(.top, 26)
                     .padding(.horizontal, 34)
+            } else {
+                steps
+                    .padding(.top, 26)
+                    .padding(.horizontal, 34)
+
+                if case let .error(message, _) = controller.phase {
+                    errorBlock(message: message)
+                        .padding(.top, 26)
+                        .padding(.horizontal, 34)
+                }
             }
 
             Spacer(minLength: 0)
@@ -66,13 +72,18 @@ struct AnalyzingScreen: View {
 
     private var photoPath: String? {
         switch controller.phase {
-        case let .analyzing(photoPath), let .error(_, photoPath):
+        case let .analyzing(photoPath), let .error(_, photoPath), let .notFood(photoPath):
             return photoPath
         case let .presentingResult(draft), let .ready(draft):
             return draft.imagePath
         case .idle, .capturing:
             return nil
         }
+    }
+
+    private var isNotFood: Bool {
+        if case .notFood = controller.phase { return true }
+        return false
     }
 
     private var isRunning: Bool {
@@ -238,6 +249,56 @@ struct AnalyzingScreen: View {
             let t = date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: pulsePeriod)
             return (1 - cos(2 * .pi * t / pulsePeriod)) / 2
         }
+    }
+
+    // MARK: - Not food (v7 refusal): friendly terminal state, no red error
+
+    /// Shown when the model refused (`{"not_food": true}`): the photo isn't a
+    /// meal. Reuses the error block's button layout but with neutral copy and a
+    /// basil-forward "New scan" primary — this is a normal outcome, not a fault.
+    private var notFoodBlock: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text("No food detected")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(Theme.appInk)
+                Text("This photo doesn’t look like a meal. Point the camera at your food and try again.")
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.appInk2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            Button {
+                controller.newScanAfterError()
+            } label: {
+                Text("New scan")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(Theme.basil)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Discards this photo and opens the camera")
+
+            // Same-photo retry, in case the model misjudged a borderline shot.
+            Button {
+                controller.retry()
+            } label: {
+                Text("Try again")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(Theme.appInk)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(Theme.appCard)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Runs the analysis again on the same photo")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .accessibilityElement(children: .contain)
     }
 
     // MARK: - Error + Retry (spec §5: same staged UI, runtime's message)

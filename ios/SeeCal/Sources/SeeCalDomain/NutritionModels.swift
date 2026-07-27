@@ -180,4 +180,37 @@ public enum ScanJSONParser {
         }
         return try parseStrict(from: data)
     }
+
+    /// True when the model returned the v7 not-food refusal — the object
+    /// `{"not_food": true}` — instead of a nutrition result. This is a *correct*
+    /// terminal answer for a non-food photo (a computer mouse, an empty plate),
+    /// NOT a parse failure, so callers check it before `parseStrict` (which would
+    /// throw `missingItems` on the empty-items refusal).
+    ///
+    /// Detection is lenient about surrounding prose: if the whole string isn't
+    /// valid JSON, the first `{ ... }` block is probed for a top-level
+    /// `not_food == true`.
+    public static func isNotFood(_ jsonString: String) -> Bool {
+        struct Probe: Decodable { let notFood: Bool?
+            enum CodingKeys: String, CodingKey { case notFood = "not_food" }
+        }
+        for candidate in jsonObjectCandidates(in: jsonString) {
+            if let data = candidate.data(using: .utf8),
+               let probe = try? JSONDecoder().decode(Probe.self, from: data),
+               probe.notFood == true {
+                return true
+            }
+        }
+        return false
+    }
+
+    /// The full string first, then the first brace-delimited substring — enough
+    /// to recover `{"not_food": true}` if the model wrapped it in commentary.
+    private static func jsonObjectCandidates(in text: String) -> [String] {
+        var candidates = [text]
+        if let open = text.firstIndex(of: "{"), let close = text.lastIndex(of: "}"), open < close {
+            candidates.append(String(text[open...close]))
+        }
+        return candidates
+    }
 }

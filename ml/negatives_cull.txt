@@ -1,0 +1,34 @@
+# v7 negatives food-leak cull list — coco_ids excluded from the refusal JSONL.
+#
+# COCO's food supercategory is only 10 items (apple, banana, broccoli, cake,
+# carrot, donut, hot dog, orange, pizza, sandwich), so dining-table scenes with
+# un-annotated food (rice, meat, produce, plated meals) pass the automated
+# filter. Visual review of the 120 hard/tableware negatives (contact sheets
+# contact_hard_1..4.jpg, 2026-07-27) found these with visible food — excluded so
+# we never train the model to refuse on a photo that actually contains food
+# (the critical over-refusal failure mode). Plain negatives reviewed clean.
+#
+# id       reason
+9590     # meal on dining table
+39484    # person eating food
+82696    # buffet/food visible in cafe
+91654    # bowl of noodle soup
+123585   # pigeon with orange (food)
+136633   # outdoor market produce
+138856   # loaf of bread on stove
+166918   # banquet table place settings with food
+171190   # dinner party, plated food
+181796   # plate of meat + vegetables
+218439   # person eating
+233238   # food + condiments on outdoor table
+275198   # bowls of food, outdoor table
+297084   # woman eating, food on table
+331569   # strawberry smoothie + strawberries
+402346   # bowl of tomatoes
+410735   # grid of four food dishes
+459437   # group dining, food on table
+492110   # person snacking
+494869   # plated food on kitchen table
+527750   # plated food on table
+559513   # plate of barbecue
+580294   # crepe/pancake cooking on stove

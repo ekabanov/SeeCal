@@ -81,7 +81,7 @@ rsync -a --delete "${MODEL_SRC}/" "${DEST}/${MODEL_FOLDER}/"
 # — no manual staging into MODELS_DIR is required. To ship a different adapter,
 # either update SHIPPING_ADAPTER below or drop one at $MODELS_DIR/adapters/
 # (which takes precedence when present).
-SHIPPING_ADAPTER="adapters_v5_swift"   # ml/<this> — change when the shipping adapter changes
+SHIPPING_ADAPTER="adapters_v7b_swift"  # ml/<this> — change when the shipping adapter changes
 REPO_ADAPTER="${PROJECT_DIR}/../../ml/${SHIPPING_ADAPTER}"
 
 ADAPTER_SRC=""
@@ -96,7 +96,7 @@ if [[ -n "${ADAPTER_SRC}" ]]; then
     rsync -a --delete "${ADAPTER_SRC}/" "${DEST}/adapters/"
 else
     echo "warning: no adapter found (looked in ${MODELS_DIR}/adapters and ${REPO_ADAPTER}) —" >&2
-    echo "         app will run the BASE model, not the fine-tune. Run ml/convert.sh adapters_v5" >&2
+    echo "         app will run the BASE model, not the fine-tune. Run ml/convert.sh adapters_v7b" >&2
     echo "         to produce ml/${SHIPPING_ADAPTER}, or stage one at ${MODELS_DIR}/adapters." >&2
     rm -rf "${DEST}/adapters"
 fi
