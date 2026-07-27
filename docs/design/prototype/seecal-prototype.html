@@ -849,7 +849,7 @@
             <div class="sectionlabel">On-device model</div>
             <div class="card modelcard">
               <div class="mt">Qwen3.5-4B · SeeCal adapter v6 <span class="badge">on device</span></div>
-              <div class="ms">4-bit quantized · fine-tuned on 5,000 measured meals · typical calorie error ±12%.<br>Photos are processed locally and never uploaded.</div>
+              <div class="ms">4-bit quantized · fine-tuned on 5,000 measured meals.<br>Photos are processed locally and never uploaded.</div>
             </div>
           </section>
 
@@ -901,7 +901,6 @@
               </div>
               <div class="kcal-hero">
                 <span class="n" id="rKcal">464</span><span class="u">kcal</span>
-                <span class="rng" id="rRange">typically ±56</span>
               </div>
               <div class="macrochips">
                 <div class="mc p"><div class="v" id="rP">44.2 g</div><div class="l">Protein</div></div>
@@ -1324,7 +1323,6 @@
     });
     var tot = draftTotals();
     $("rKcal").textContent = fmt(Math.round(tot.kcal));
-    $("rRange").textContent = "typically ±"+Math.round(tot.kcal*0.12);
     $("rP").textContent = tot.p.toFixed(1)+" g";
     $("rF").textContent = tot.f.toFixed(1)+" g";
     $("rC").textContent = tot.c.toFixed(1)+" g";

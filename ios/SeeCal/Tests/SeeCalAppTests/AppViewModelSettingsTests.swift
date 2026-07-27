@@ -119,8 +119,12 @@ final class AppViewModelSettingsTests: XCTestCase {
         let info = ModelInfo(modelLabel: "Qwen3.5-4B", adapterVersionLabel: "v6", quantizationLabel: "4-bit quantized")
         let subtitle = AppViewModel.modelCardSubtitle(info: info)
         XCTAssertTrue(subtitle.hasPrefix("4-bit quantized ·"))
-        XCTAssertTrue(subtitle.contains("typical calorie error \u{00B1}12%."))
+        XCTAssertTrue(subtitle.contains("fine-tuned on 5,000 measured meals."))
         XCTAssertTrue(subtitle.contains("Photos are processed locally and never uploaded."))
+        // The old "typical calorie error ±N%" accuracy claim was removed
+        // deliberately — the subtitle must not resurrect any error figure.
+        XCTAssertFalse(subtitle.contains("typical calorie error"))
+        XCTAssertFalse(subtitle.contains("±"))
     }
 
     func testModelCardSubtitleFallsBackWhenQuantizationUnknown() {

@@ -47,6 +47,21 @@ if ! command -v xcodegen > /dev/null 2>&1; then
     exit 1
 fi
 
+# project.yml reads the bundle id / signing team from the environment via
+# XcodeGen ${VAR} substitution; they must be SET (even if empty) or XcodeGen
+# bakes the literal ${...} into the project. Source .secrets so a device build's
+# generated project carries the real team/bundle id; default otherwise.
+_bundle_id="com.example.seecal"
+_team=""
+if [[ -f "${REPO_ROOT}/.secrets/release.env" ]]; then
+    # shellcheck source=/dev/null
+    source "${REPO_ROOT}/.secrets/release.env"
+    _bundle_id="${BUNDLE_ID:-$_bundle_id}"
+    _team="${DEVELOPMENT_TEAM:-$_team}"
+fi
+export SEECAL_BUNDLE_ID="${_bundle_id}"
+export SEECAL_DEVELOPMENT_TEAM="${_team}"
+
 echo "==> Generating Xcode project from ios/App/project.yml"
 (cd "${APP_DIR}" && xcodegen generate --quiet)
 

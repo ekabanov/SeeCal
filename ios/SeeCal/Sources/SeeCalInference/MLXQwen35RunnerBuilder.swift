@@ -4,9 +4,22 @@ import Foundation
 import os
 
 #if canImport(MLXLMCommon) && canImport(MLXVLM)
+import MLX
 import MLXLMCommon
 import MLXVLM
 #endif
+
+/// Cross-module hook for releasing MLX's GPU buffer cache under memory
+/// pressure. The app wires this to `UIApplication.didReceiveMemoryWarning` so a
+/// long session that creeps toward the jetsam limit sheds cached buffers before
+/// being killed. No-op when MLX isn't linked (e.g. unit-test builds).
+public enum SeeCalMemory {
+    public static func releaseCaches() {
+        #if canImport(MLXLMCommon) && canImport(MLXVLM)
+        MLX.Memory.clearCache()
+        #endif
+    }
+}
 
 public enum MLXRunnerBuilderError: Error, Equatable, CustomStringConvertible {
     case mlxPackagesNotLinked
@@ -50,10 +63,35 @@ public enum MLXQwen35RunnerBuilder {
         return String(format: "%.0fMB", Double(info.resident_size) / 1_048_576)
     }
 
+    /// MLX's own view of memory (active/cache/peak in MB) — distinguishes live
+    /// tensors from the retained buffer cache, so the log shows whether the
+    /// cache cap is holding.
+    private static func mlxMem() -> String {
+        #if canImport(MLXLMCommon) && canImport(MLXVLM)
+        let s = MLX.Memory.snapshot()
+        let mb = { (b: Int) in b / 1_048_576 }
+        return "active=\(mb(s.activeMemory))MB cache=\(mb(s.cacheMemory))MB peak=\(mb(s.peakMemory))MB"
+        #else
+        return "n/a"
+        #endif
+    }
+
+    /// Metal buffer-cache ceiling. MLX's cache limit otherwise defaults to the
+    /// device memory limit (~5–6 GB on an 8 GB iPhone), so it retains gigabytes
+    /// of freed intermediate buffers during load/fuse/warmup — the confirmed
+    /// cause of SeeCal ballooning to ~5.5 GB and being jetsam-killed on launch.
+    /// MLX's own docs note even ~2 MB performs comparably; 48 MB is a safe margin.
+    private static let mlxCacheLimitBytes = 48 * 1024 * 1024
+
     public static func makeRunner(config: QwenRuntimeConfig) async throws -> MLXSwiftQwenVisionEngine.Runner {
         _ = try config.validated()
 
         #if canImport(MLXLMCommon) && canImport(MLXVLM)
+        // Cap the Metal buffer cache BEFORE any allocation so the cache never
+        // grows to the multi-GB default during model load, adapter fuse, and
+        // warmup. This is the primary guard against the launch-time OOM.
+        MLX.Memory.cacheLimit = mlxCacheLimitBytes
+        print("[SeeCal][MLXRunnerBuilder] MLX cache limit set to \(mlxCacheLimitBytes / (1024 * 1024))MB")
         print("[SeeCal][MLXRunnerBuilder] makeRunner start modelPath=\(config.modelPath)")
         if config.modelPath.hasPrefix("/") {
             var isDirectory: ObjCBool = false
@@ -93,7 +131,7 @@ public enum MLXQwen35RunnerBuilder {
                 try? await Task.sleep(nanoseconds: 3_000_000_000)
                 guard !Task.isCancelled else { break }
                 tick += 1
-                print("[SeeCal][MLXRunnerBuilder] loading… tick=\(tick) mem=\(memMB())")
+                print("[SeeCal][MLXRunnerBuilder] loading… tick=\(tick) mem=\(memMB()) mlx=\(mlxMem())")
             }
         }
 
@@ -103,7 +141,7 @@ public enum MLXQwen35RunnerBuilder {
             let modelContainer = try await VLMModelFactory.shared.loadContainer(configuration: modelConfiguration)
             memMonitor.cancel()
             logger.log("Model container loaded for model id: \(config.modelPath, privacy: .public)")
-            print("[SeeCal][MLXRunnerBuilder] model container loaded in \(String(format: "%.2f", Date().timeIntervalSince(loadStarted)))s mem=\(memMB())")
+            print("[SeeCal][MLXRunnerBuilder] model container loaded in \(String(format: "%.2f", Date().timeIntervalSince(loadStarted)))s mem=\(memMB()) mlx=\(mlxMem())")
 
             // Apply the LoRA adapter (produced by convert_adapter_for_swift.py from an
             // mlx-vlm training run) before warmup so warmup compiles the adapted graph.
@@ -133,7 +171,11 @@ public enum MLXQwen35RunnerBuilder {
                     for await _ in stream {}
                 }
             }
-            print("[SeeCal][MLXRunnerBuilder] warmup done in \(String(format: "%.2f", Date().timeIntervalSince(warmupStarted)))s mem=\(memMB())")
+            // Warmup allocates full vision + LLM activation buffers; release
+            // them back to the system so steady-state memory settles near the
+            // model's resident size rather than the warmup peak.
+            MLX.Memory.clearCache()
+            print("[SeeCal][MLXRunnerBuilder] warmup done in \(String(format: "%.2f", Date().timeIntervalSince(warmupStarted)))s mem=\(memMB()) mlx=\(mlxMem())")
 
             return { imagePath, prompt in
                 guard FileManager.default.fileExists(atPath: imagePath) else {
@@ -167,7 +209,15 @@ public enum MLXQwen35RunnerBuilder {
                         generated.append(text)
                     }
                 }
-                print("[SeeCal][MLXRunnerBuilder] generate done in \(String(format: "%.2f", Date().timeIntervalSince(generateStarted)))s mem=\(memMB())")
+                print("[SeeCal][MLXRunnerBuilder] generate done in \(String(format: "%.2f", Date().timeIntervalSince(generateStarted)))s mem=\(memMB()) mlx=\(mlxMem())")
+                // Release this scan's activation + KV-cache buffers so repeated
+                // scans don't accumulate memory over a session. The cache cap
+                // already bounds the pool, but freeing per-inference keeps
+                // steady-state near the model's resident size. Watch `active=` in
+                // the log across scans: if it climbs, that's a live-tensor leak
+                // to chase; if only cache/peak spike, this clear handles it.
+                MLX.Memory.clearCache()
+                print("[SeeCal][MLXRunnerBuilder] post-clear mlx=\(mlxMem())")
 
                 var text = generated.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !text.isEmpty else {
@@ -277,6 +327,10 @@ public enum MLXQwen35RunnerBuilder {
                 // replace this call with `try adapter.load(into: context.model)`.
                 try adapter.fuse(with: context.model)
             }
+            // The fuse dequantizes every layer to fp16, adds the delta, and
+            // requantizes — leaving those fp16 temporaries in the buffer cache.
+            // Drop them immediately so they don't stack under the warmup.
+            MLX.Memory.clearCache()
         } catch {
             logger.error("Adapter load failed for path: \(path, privacy: .public). Error: \(String(describing: error), privacy: .public)")
             print("[SeeCal][MLXRunnerBuilder] adapter load FAILED path=\(path) error=\(String(describing: error))")

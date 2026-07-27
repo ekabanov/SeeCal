@@ -198,7 +198,7 @@ sequenceDiagram
     Dev->>Eval: infer.py --test-set ... --limit N (required, no silent default)
     Eval-->>Dev: MAE/median vs. base-model baseline
     Dev->>Conv: convert_adapter_for_swift.py (stamps seecal_adapter_version)
-    Conv-->>App: adapters_v7_swift/ -> $MODELS_DIR/adapters/
+    Conv-->>App: ml/adapters_v7_swift/ (bundled straight from the repo by copy_weights.sh)
 ```
 
 ## Where each invariant is enforced

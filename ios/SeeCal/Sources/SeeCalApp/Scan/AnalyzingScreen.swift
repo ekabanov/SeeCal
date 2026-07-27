@@ -16,6 +16,18 @@ struct AnalyzingScreen: View {
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
+    /// When the current analysis began, captured so the two visible stages can
+    /// advance over time. There is a single inference call with no observable
+    /// sub-stages, so — like the prototype, which fully simulates its stages —
+    /// "Identifying foods" runs during the vision-prefill window and hands off to
+    /// "Estimating nutrition" for the (longer) token-generation tail. Without this
+    /// the second stage was coded to only ever be pending/done and never lit up.
+    @State private var analyzeStart: Date?
+
+    /// Rough vision-prefill → token-generation handoff. Prefill is a few seconds;
+    /// generation dominates the ~15–20 s wait, so the pivot is early.
+    private let stagePivot: TimeInterval = 4
+
     private enum StageState {
         case pending
         case running
@@ -42,6 +54,12 @@ struct AnalyzingScreen: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Theme.appBg.ignoresSafeArea())
+        .onAppear {
+            if isRunning, analyzeStart == nil { analyzeStart = Date() }
+        }
+        .onChange(of: isRunning) { _, running in
+            analyzeStart = running ? Date() : nil
+        }
     }
 
     // MARK: - Derived stage state
@@ -74,19 +92,22 @@ struct AnalyzingScreen: View {
     // MARK: - Shot card (`.shot` + `.scanline`)
 
     private var shotCard: some View {
-        ZStack(alignment: .top) {
-            Group {
-                if let photoPath, let image = PlatformImageLoader.image(atPath: photoPath) {
-                    image
-                        .resizable()
-                        .aspectRatio(contentMode: .fill)
-                } else {
-                    Color(hex: 0x262420) // .shot background
-                }
+        Group {
+            if let photoPath, let image = PlatformImageLoader.image(atPath: photoPath) {
+                image
+                    .resizable()
+                    .aspectRatio(contentMode: .fill)
+            } else {
+                Color(hex: 0x262420) // .shot background
             }
-            .frame(maxWidth: .infinity)
-            .aspectRatio(240.0 / 190.0, contentMode: .fit) // prototype shot viewBox
-
+        }
+        .frame(maxWidth: .infinity)
+        .aspectRatio(240.0 / 190.0, contentMode: .fit) // prototype shot viewBox
+        // Scanline is an OVERLAY, not a ZStack sibling: ScanlineView wraps a
+        // greedy GeometryReader, and as a sibling it would expand the container to
+        // full height (blowing the photo up and pushing the step rows off-screen).
+        // As an overlay it is bounded by the aspect-constrained photo box.
+        .overlay {
             if isRunning {
                 ScanlineView(reduceMotion: reduceMotion)
             }
@@ -99,28 +120,38 @@ struct AnalyzingScreen: View {
     // MARK: - Steps (`.steps` / `.step`)
 
     private var steps: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            stageRow(
-                title: "Identifying foods",
-                subtitle: identifyingSubtitle,
-                state: identifyingState
-            )
-            stageRow(
-                title: "Estimating nutrition",
-                subtitle: estimatingSubtitle,
-                state: estimatingState
-            )
+        // Periodic ticks (not per-frame — this only needs to cross the pivot)
+        // recompute elapsed so the running stage advances over time.
+        TimelineView(.periodic(from: .now, by: 0.25)) { context in
+            let elapsed = analyzeStart.map { max(0, context.date.timeIntervalSince($0)) } ?? 0
+            VStack(alignment: .leading, spacing: 16) {
+                stageRow(
+                    title: "Identifying foods",
+                    subtitle: identifyingSubtitle,
+                    state: identifyingState(elapsed: elapsed)
+                )
+                stageRow(
+                    title: "Estimating nutrition",
+                    subtitle: estimatingSubtitle,
+                    state: estimatingState(elapsed: elapsed)
+                )
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
-    private var identifyingState: StageState {
+    private func identifyingState(elapsed: TimeInterval) -> StageState {
         if completedDraft != nil { return .done }
-        return isRunning ? .running : .pending
+        guard isRunning else { return .pending }
+        // Runs during the prefill window, then checks off as generation begins.
+        return elapsed < stagePivot ? .running : .done
     }
 
-    private var estimatingState: StageState {
-        completedDraft != nil ? .done : .pending
+    private func estimatingState(elapsed: TimeInterval) -> StageState {
+        if completedDraft != nil { return .done }
+        guard isRunning else { return .pending }
+        // Lights up once the handoff point passes and stays running until done.
+        return elapsed < stagePivot ? .pending : .running
     }
 
     private var identifyingSubtitle: String {
@@ -158,7 +189,9 @@ struct AnalyzingScreen: View {
         let state: StageState
         let reduceMotion: Bool
 
-        @State private var pulsing = false
+        // Full pulse cycle (0.5 s each way in the prototype's autoreversing
+        // easeInOut).
+        private let pulsePeriod: Double = 1.0
 
         var body: some View {
             ZStack {
@@ -171,17 +204,18 @@ struct AnalyzingScreen: View {
                 case .pending:
                     EmptyView()
                 case .running:
-                    Circle()
-                        .fill(Theme.basil)
-                        .frame(width: 10, height: 10)
-                        .scaleEffect(reduceMotion ? 1 : (pulsing ? 1 : 0.7))
-                        .opacity(reduceMotion ? 1 : (pulsing ? 1 : 0.6))
-                        .onAppear {
-                            guard !reduceMotion else { return }
-                            withAnimation(.easeInOut(duration: 0.5).repeatForever(autoreverses: true)) {
-                                pulsing = true
+                    // Time-based pulse (see ScanlineView): a `repeatForever`
+                    // animation would be stopped by a tap anywhere on the screen.
+                    Group {
+                        if reduceMotion {
+                            pulseDot(scale: 1, opacity: 1)
+                        } else {
+                            TimelineView(.animation) { context in
+                                let p = pulsePhase(at: context.date) // 0…1
+                                pulseDot(scale: 0.7 + 0.3 * p, opacity: 0.6 + 0.4 * p)
                             }
                         }
+                    }
                 case .done:
                     Image(systemName: "checkmark")
                         .font(.system(size: 11, weight: .bold))
@@ -189,6 +223,20 @@ struct AnalyzingScreen: View {
                 }
             }
             .frame(width: 24, height: 24)
+        }
+
+        private func pulseDot(scale: Double, opacity: Double) -> some View {
+            Circle()
+                .fill(Theme.basil)
+                .frame(width: 10, height: 10)
+                .scaleEffect(scale)
+                .opacity(opacity)
+        }
+
+        /// Smooth 0→1→0 pulse over `pulsePeriod`, derived from the timeline clock.
+        private func pulsePhase(at date: Date) -> Double {
+            let t = date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: pulsePeriod)
+            return (1 - cos(2 * .pi * t / pulsePeriod)) / 2
         }
     }
 
@@ -240,25 +288,36 @@ struct AnalyzingScreen: View {
 /// A 64pt gradient band with a bright bottom edge sweeping top→bottom on a
 /// 1.6 s loop. Reduce Motion pins it statically at 40% height, exactly like the
 /// prototype's `@media (prefers-reduced-motion)` override.
+///
+/// The sweep is driven from wall-clock time via `TimelineView(.animation)`, NOT
+/// a `withAnimation(...repeatForever)` started in `.onAppear`. A `repeatForever`
+/// animation is interrupted by any unrelated transaction — e.g. a tap anywhere
+/// on the analyzing screen combined with the parent's `.animation(value:)`
+/// scopes — which visibly stopped the sweep. A time-based redraw can't be
+/// cancelled by taps or re-renders.
 private struct ScanlineView: View {
     let reduceMotion: Bool
 
-    @State private var sweeping = false
-
     private let bandHeight: CGFloat = 64
+    private let period: Double = 1.6
     private let glow = Color(hex: 0x4FD394)
 
     var body: some View {
         GeometryReader { geometry in
-            band
-                .frame(height: bandHeight)
-                .offset(y: offsetY(in: geometry.size.height))
-                .onAppear {
-                    guard !reduceMotion else { return }
-                    withAnimation(.easeInOut(duration: 1.6).repeatForever(autoreverses: false)) {
-                        sweeping = true
+            let height = geometry.size.height
+            Group {
+                if reduceMotion {
+                    band
+                        .frame(height: bandHeight)
+                        .offset(y: height * 0.4) // static under Reduce Motion
+                } else {
+                    TimelineView(.animation) { context in
+                        band
+                            .frame(height: bandHeight)
+                            .offset(y: offsetY(at: context.date, in: height))
                     }
                 }
+            }
         }
         .clipped()
         .allowsHitTesting(false)
@@ -278,10 +337,13 @@ private struct ScanlineView: View {
         }
     }
 
-    private func offsetY(in height: CGFloat) -> CGFloat {
-        if reduceMotion {
-            return height * 0.4 // static position under Reduce Motion
-        }
-        return sweeping ? height * 1.05 : -bandHeight
+    /// Sweeps linearly from `-bandHeight` (above the photo) to `height * 1.05`
+    /// (just past the bottom) every `period` seconds, derived purely from the
+    /// timeline's clock so it never pauses on interaction.
+    private func offsetY(at date: Date, in height: CGFloat) -> CGFloat {
+        let phase = date.timeIntervalSinceReferenceDate
+            .truncatingRemainder(dividingBy: period) / period // 0…1
+        let travel = height * 1.05 + bandHeight
+        return -bandHeight + CGFloat(phase) * travel
     }
 }

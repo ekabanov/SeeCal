@@ -31,7 +31,7 @@ ml/finetune_data_sample/
 # Training outputs / model weights
 *.safetensors
 ml/adapters*/
-ml/fused-model/
+ml/fused*/
 ml/runs/
 ml/*.log
 

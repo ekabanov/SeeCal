@@ -76,12 +76,24 @@ public struct SeeCalTabBar: View {
             // material is the platform-idiomatic stand-in (explicitly allowed by the
             // P3 task brief); tinted with `appCard` so it still reads as the card
             // surface color rather than a neutral system material.
-            Rectangle()
-                .fill(.ultraThinMaterial)
-                .overlay(Theme.appCard.opacity(0.35))
-        }
-        .overlay(alignment: .top) {
-            Rectangle().fill(Theme.appLine).frame(height: 1)
+            //
+            // The top hairline lives HERE, in the background layer (behind the bar's
+            // content), not as an .overlay — otherwise it renders in front of the
+            // Scan FAB and its `appBg` halo can't mask it, so the line visibly runs
+            // across the raised button. Behind the content, the FAB halo punches
+            // through the line exactly as the prototype's `box-shadow 0 0 0 6px
+            // var(--app-bg)` does.
+            ZStack(alignment: .top) {
+                Rectangle()
+                    .fill(.ultraThinMaterial)
+                    .overlay(Theme.appCard.opacity(0.35))
+                Rectangle().fill(Theme.appLine).frame(height: 1)
+            }
+            // Extend the bar's background DOWN through the bottom safe area
+            // (home-indicator strip) so scrolled content can't show beneath it,
+            // like a standard iOS bottom bar. Only the background bleeds down —
+            // the icon row stays above the home indicator.
+            .ignoresSafeArea(edges: .bottom)
         }
         .accessibilityElement(children: .contain)
     }

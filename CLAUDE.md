@@ -76,11 +76,13 @@ with the flag.
 
 ## Current state (see `docs/` for detail, not this file)
 
-- Shipping adapter: `adapters_v5` (calories MAE 54.4 / median 36.2 on 50
-  held-out dishes vs. base model 83.4 / 63.9 — see `ml/README.md` for the
-  full table). `adapters_v6` (depth-augmented) was a statistical tie with v5
+- Shipping adapter: `adapters_v5` (calories MAE 59.0 / median 31.4 on the
+  full 325-dish held-out test set — see `ml/README.md` for the full table).
+  `adapters_v6` (depth-augmented) is a statistical tie that trends slightly
+  worse (MAE 62.5; paired v6−v5 = +3.5 kcal, t=0.89 on 322 shared dishes)
   and is not shipped. `adapters_v1`–`v4` are all confirmed dead — see
   `docs/training-history.md`.
-- 325-dish evaluation of v5 vs. v6 is queued, not yet run.
+- Full 325-dish v5-vs-v6 evaluation is DONE (2026-07-27); depth track closed,
+  v5 confirmed as the shipping adapter. Raw results in `ml/runs/eval_full/`.
 - iOS app: full product build-out complete against the prototype spec;
   `scripts/build.sh`/`scripts/test.sh` are green.

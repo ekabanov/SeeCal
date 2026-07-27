@@ -59,6 +59,10 @@ targets:
       path: Info.plist
       properties:
         CFBundleDisplayName: SeeCal
+        # actool populates the asset catalog + nested CFBundleIcons, but does
+        # not always emit the TOP-LEVEL CFBundleIconName key that App Store
+        # upload validation (error 90713) requires. Set it explicitly.
+        CFBundleIconName: AppIcon
         CFBundleShortVersionString: $(MARKETING_VERSION)
         CFBundleVersion: $(CURRENT_PROJECT_VERSION)
         ITSAppUsesNonExemptEncryption: false
@@ -79,7 +83,16 @@ targets:
         com.apple.developer.kernel.increased-memory-limit: true
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.example.seecal
+        # Bundle id and signing team are read from the environment at generate
+        # time (XcodeGen ${VAR} substitution) so a plain Xcode GUI Run signs
+        # correctly and the team SURVIVES every regenerate. Generate via
+        # `scripts/gen-xcode.sh` or `scripts/build.sh` — both source
+        # .secrets/release.env and always set these (defaulting the bundle id to
+        # com.example.seecal and the team to empty when .secrets is absent, e.g.
+        # public checkouts / CI). Do NOT run a bare `xcodegen generate` — XcodeGen
+        # leaves the literal `${...}` in the project when the vars are unset.
+        PRODUCT_BUNDLE_IDENTIFIER: ${SEECAL_BUNDLE_ID}
+        DEVELOPMENT_TEAM: ${SEECAL_DEVELOPMENT_TEAM}
         PRODUCT_NAME: SeeCal
         CODE_SIGN_STYLE: Automatic
         TARGETED_DEVICE_FAMILY: "1"

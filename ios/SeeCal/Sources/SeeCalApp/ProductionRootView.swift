@@ -1,6 +1,9 @@
 import SwiftUI
 import SeeCalInference
 import os
+#if canImport(UIKit)
+import UIKit
+#endif
 
 public struct ProductionRootView: View {
     private let logger = Logger(subsystem: "SeeCal", category: "ProductionRootView")
@@ -46,10 +49,31 @@ public struct ProductionRootView: View {
                 await load()
             }
         }
+#if canImport(UIKit)
+        // Shed MLX's cached GPU buffers when the OS warns about memory, so a long
+        // session creeping toward the jetsam limit recovers instead of being
+        // killed. Cheap and safe — the cache repopulates on the next inference.
+        .onReceive(NotificationCenter.default.publisher(
+            for: UIApplication.didReceiveMemoryWarningNotification
+        )) { _ in
+            logger.log("Memory warning — releasing MLX caches.")
+            SeeCalMemory.releaseCaches()
+        }
+#endif
     }
 
     @MainActor
     private func load() async {
+#if targetEnvironment(simulator)
+        // MLX-Metal cannot create a GPU device on the iOS Simulator — it aborts
+        // the process (SIGABRT in mlx::core::metal::Device), which is a C++
+        // abort no Swift `catch` can intercept. Simulator builds therefore run
+        // the mock inference engine so the full UI is usable for development and
+        // visual QA. Device builds always use MLX (the #else branch below).
+        logger.log("Simulator build — using development mock engine (MLX-Metal unavailable on simulator).")
+        print("[SeeCal][ProductionRootView] simulator: using development mock engine")
+        loadState = .loaded(SeeCalBootstrap.makeDevelopmentViewModel())
+#else
         do {
             logger.log("Starting model load for model id: \(config.modelPath, privacy: .public)")
             print("[SeeCal][ProductionRootView] load start modelPath=\(config.modelPath)")
@@ -63,6 +87,7 @@ public struct ProductionRootView: View {
             print("[SeeCal][ProductionRootView] load failed error=\(message)")
             loadState = .failed(message)
         }
+#endif
     }
 
     private func debugMessage(for error: Error) -> String {

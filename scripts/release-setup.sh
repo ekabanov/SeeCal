@@ -167,9 +167,10 @@ if [[ -z "${BUNDLE_ID}" || -z "${DEVELOPMENT_TEAM}" ]]; then
 fi
 
 echo
-echo "Model weights directory — bundled into the app at build time. Layout:"
+echo "Model weights directory — the base model bundled into the app at build time:"
 echo "  <dir>/mlx-community/Qwen3.5-4B-MLX-4bit/   (populate: ml/download_model.sh)"
-echo "  <dir>/adapters/                            (populate: ml/convert.sh, optional)"
+echo "The fine-tune adapter is sourced automatically from the repo (ml/convert.sh"
+echo "output) — you do NOT need to stage it here. <dir>/adapters/ is an optional override."
 prompt_plain MODELS_DIR "MODELS_DIR (Enter for ~/models)"
 MODELS_DIR="${MODELS_DIR:-${HOME}/models}"
 MODELS_DIR="${MODELS_DIR/#~/${HOME}}"
@@ -178,8 +179,8 @@ if [[ ! -d "${MODELS_DIR}/mlx-community/Qwen3.5-4B-MLX-4bit" ]]; then
     echo "         Run ml/download_model.sh before your first release build."
 fi
 if [[ ! -d "${MODELS_DIR}/adapters" ]]; then
-    echo "note: no adapters/ directory in ${MODELS_DIR} — the app will ship the base"
-    echo "      model only. Populate it from ml/convert.sh output for the fine-tune."
+    echo "note: no adapters/ override in ${MODELS_DIR} — that's fine; the app bundles the"
+    echo "      shipping adapter from the repo (ml/convert.sh output) automatically."
 fi
 
 # --- 4. write --------------------------------------------------------------

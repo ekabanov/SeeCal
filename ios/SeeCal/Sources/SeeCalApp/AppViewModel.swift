@@ -376,13 +376,13 @@ public extension AppViewModel {
         return "\(info.modelLabel) · base model (no adapter bundled)"
     }
 
-    /// Prototype copy verbatim for the parts that are fixed dataset/product
-    /// facts (fine-tune provenance, typical error, privacy line); only the
-    /// quantization figure is dynamic, read from the bundled model's own
-    /// config (`ModelInfoResolver`) — falls back to "Quantization not
-    /// bundled" rather than a hardcoded bit count when unavailable.
+    /// Prototype copy for the parts that are fixed dataset/product facts
+    /// (fine-tune provenance, privacy line); only the quantization figure is
+    /// dynamic, read from the bundled model's own config
+    /// (`ModelInfoResolver`) — falls back to "Quantization not bundled"
+    /// rather than a hardcoded bit count when unavailable.
     nonisolated static func modelCardSubtitle(info: ModelInfo) -> String {
         let quantization = info.quantizationLabel ?? "Quantization not bundled"
-        return "\(quantization) · fine-tuned on 5,000 measured meals · typical calorie error ±12%.\nPhotos are processed locally and never uploaded."
+        return "\(quantization) · fine-tuned on 5,000 measured meals.\nPhotos are processed locally and never uploaded."
     }
 }

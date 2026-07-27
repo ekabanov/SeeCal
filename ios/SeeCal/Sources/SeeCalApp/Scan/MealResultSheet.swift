@@ -5,9 +5,9 @@ import SeeCalDomain
 /// `MealEditDraft` (spec §5): a fresh scan's review-before-log, and editing an
 /// already-logged meal (tapped from a meal row). Layout, copy, and hierarchy
 /// follow the prototype exactly: grab handle, `.result-head` (photo thumb,
-/// name, depth meta — only when volume metadata exists), `.kcal-hero` with
-/// "typically ±N" (N = 12% of total), `.macrochips`, "DETECTED ITEMS — ADJUST
-/// IF NEEDED" rows with ±5 g steppers (min 5 g, live linear rescale),
+/// name, depth meta — only when volume metadata exists), `.kcal-hero`,
+/// `.macrochips`, "DETECTED ITEMS — ADJUST IF NEEDED" rows with ±5 g
+/// steppers (min 5 g, live linear rescale),
 /// `.edited-note` footnote, and the `.sheet-actions` pair — [Discard]/[Log
 /// meal] for a new scan, [Cancel]/[Save changes] in edit mode.
 struct MealResultSheet: View {
@@ -147,12 +147,7 @@ struct MealResultSheet: View {
             Text("kcal")
                 .font(.system(size: 15, weight: .bold))
                 .foregroundStyle(Theme.appInk2)
-            Spacer(minLength: 8)
-            // `renderSheet()`: "typically ±" + Math.round(tot.kcal*0.12)
-            Text("typically ±\(Int((totals.calories * 0.12).rounded()))")
-                .font(.system(size: 12))
-                .foregroundStyle(Theme.appInk2)
-                .monospacedDigit()
+            Spacer(minLength: 0)
         }
         .padding(.top, 14)
         .padding(.bottom, 2)

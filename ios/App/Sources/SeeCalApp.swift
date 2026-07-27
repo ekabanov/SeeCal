@@ -17,7 +17,11 @@ struct SeeCalHostApp: App {
                     modelPath: ModelAssetResolver.resolveModelPath(),
                     adapterPath: ModelAssetResolver.resolveAdapterPath(),
                     runtimePolicy: .mlxOnly,
-                    maxOutputTokens: 1024,
+                    // Matches the eval's max_tokens (ml/infer.py) so the app can't
+                    // truncate a long ingredient list where the eval had headroom.
+                    // Ground-truth JSON is ~700 tokens at p90, so this only costs
+                    // extra time on unusually long outputs.
+                    maxOutputTokens: 1536,
                     temperature: 0.1,
                     timeoutSeconds: 180,
                     maxAttemptsPerRuntime: 1

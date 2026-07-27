@@ -54,16 +54,20 @@ swift test -Xcxx -DFMT_CONSTEVAL=
 ## Weights bundling
 
 Weights are never in git. The app bundles them at build time via the
-"Bundle model weights" build phase (`App/copy_weights.sh`), which copies
-`$MODELS_DIR` into the app bundle at `Models/`. Required layout:
+"Bundle model weights" build phase (`App/copy_weights.sh`). The **base model**
+comes from `$MODELS_DIR`; required layout:
 
 ```
 $MODELS_DIR/
-├── mlx-community/Qwen3.5-4B-MLX-4bit/   base model, ~2.3 GB   (ml/download_model.sh)
-└── adapters/                            converted LoRA adapter, ~35 MB, optional
-                                         (ml/convert.sh — adapter_config.json +
-                                          adapters.safetensors)
+└── mlx-community/Qwen3.5-4B-MLX-4bit/   base model, ~2.3 GB   (ml/download_model.sh)
 ```
+
+The **shipping LoRA adapter** is a build artifact of the `ml/` pipeline, so it
+is sourced straight from the repo — `ml/adapters_v5_swift/` (output of
+`ml/convert.sh adapters_v5`), no manual staging. `copy_weights.sh` names the
+shipping adapter in one place (`SHIPPING_ADAPTER`); update it when the shipping
+adapter changes. Dropping an adapter at `$MODELS_DIR/adapters/` is an optional
+override that takes precedence when present.
 
 Without `MODELS_DIR` the build **fails with instructions**, unless
 `SEECAL_ALLOW_NO_WEIGHTS=1` (simulator dev mode — on the simulator,
