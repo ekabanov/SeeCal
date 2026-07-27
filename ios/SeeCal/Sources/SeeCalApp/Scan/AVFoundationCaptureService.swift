@@ -74,11 +74,38 @@ public final class AVFoundationCaptureService: CaptureService {
 private final class CameraSessionBox: NSObject, AVCapturePhotoCaptureDelegate, @unchecked Sendable {
     let session = AVCaptureSession()
 
+    /// Watchdog for a single photo capture. A healthy capture completes in well
+    /// under a second; this only exists so a capture that will *never* call back
+    /// fails loudly instead of hanging the shutter forever. Generous enough to
+    /// survive a slow capture under memory pressure.
+    private static let captureTimeout: DispatchTimeInterval = .seconds(10)
+
     private let queue = DispatchQueue(label: "seecal.camera.session")
     private let output = AVCapturePhotoOutput()
     private var configured = false
     private var configurationError: Error?
-    private var pendingCaptures: [Int64: (Result<Data, Error>) -> Void] = [:]
+    /// Queue-isolated; see `PendingCaptureRegistry` for the exactly-once contract.
+    private var pendingCaptures = PendingCaptureRegistry()
+
+    override init() {
+        super.init()
+        // `startRunning()` does not throw: when the media server refuses or tears
+        // down the session (seen on device as repeated FigCaptureSourceRemote
+        // err=-17281 under memory pressure), AVFoundation reports it *only* via
+        // this notification. Without observing it a dead session is completely
+        // silent — black preview, no error, and any in-flight capture never calls
+        // back.
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(sessionRuntimeError(_:)),
+            name: AVCaptureSession.runtimeErrorNotification,
+            object: session
+        )
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
 
     func start() {
         queue.async {
@@ -106,20 +133,38 @@ private final class CameraSessionBox: NSObject, AVCapturePhotoCaptureDelegate, @
                 self.session.startRunning()
             }
             let settings = AVCapturePhotoSettings()
-            self.pendingCaptures[settings.uniqueID] = { result in
+            let id = settings.uniqueID
+            self.pendingCaptures.register(id: id) { result in
                 DispatchQueue.main.async { completion(result) }
+            }
+            // Watchdog: whichever of {delegate, timeout} claims the capture first
+            // wins, so the continuation is resumed exactly once.
+            self.queue.asyncAfter(deadline: .now() + Self.captureTimeout) { [weak self] in
+                guard let self, let timedOut = self.pendingCaptures.claim(id: id) else { return }
+                timedOut(.failure(CaptureServiceError.captureFailed(
+                    "camera did not respond in time — try again")))
             }
             self.output.capturePhoto(with: settings, delegate: self)
         }
     }
 
+    /// Configures the session on first use. Only marks itself done on SUCCESS:
+    /// an earlier version set `configured = true` up front, so a single transient
+    /// failure (plausible under memory pressure, when acquiring the device can
+    /// fail) latched `cameraUnavailable` for the whole process lifetime — every
+    /// later attempt short-circuited and the camera never came back.
     private func configureIfNeeded() {
         guard !configured else { return }
-        configured = true
+        configurationError = nil
 
         session.beginConfiguration()
         session.sessionPreset = .photo
-        defer { session.commitConfiguration() }
+        var succeeded = false
+        defer {
+            session.commitConfiguration()
+            // Retry on the next call unless this attempt actually wired things up.
+            configured = succeeded
+        }
 
         guard
             let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
@@ -132,6 +177,23 @@ private final class CameraSessionBox: NSObject, AVCapturePhotoCaptureDelegate, @
         }
         session.addInput(input)
         session.addOutput(output)
+        succeeded = true
+    }
+
+    /// The session hit a runtime error. Fail every in-flight capture so the
+    /// shutter reports a problem instead of hanging, then make one best-effort
+    /// restart attempt — these errors are usually transient (the device log shows
+    /// AVFoundation recovering on its own).
+    @objc private func sessionRuntimeError(_ notification: Notification) {
+        let reason = (notification.userInfo?[AVCaptureSessionErrorKey] as? NSError)?
+            .localizedDescription ?? "capture session failed"
+        queue.async {
+            for completion in self.pendingCaptures.claimAll() {
+                completion(.failure(CaptureServiceError.captureFailed(reason)))
+            }
+            guard !self.session.isRunning else { return }
+            self.session.startRunning()
+        }
     }
 
     // AVCapturePhotoCaptureDelegate — called on the session's internal queue;
@@ -144,7 +206,8 @@ private final class CameraSessionBox: NSObject, AVCapturePhotoCaptureDelegate, @
         let uniqueID = photo.resolvedSettings.uniqueID
         let data = photo.fileDataRepresentation()
         queue.async {
-            guard let completion = self.pendingCaptures.removeValue(forKey: uniqueID) else { return }
+            // nil => the watchdog (or a session failure) already completed this one.
+            guard let completion = self.pendingCaptures.claim(id: uniqueID) else { return }
             if let error {
                 completion(.failure(CaptureServiceError.captureFailed(error.localizedDescription)))
             } else if let data {
