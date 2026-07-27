@@ -96,8 +96,18 @@ def main() -> int:
                     help="Do everything except write --out.")
     ap.add_argument("--sat-min", type=float, default=0.15,
                     help="Min saturation to count as icon art (default 0.15).")
-    ap.add_argument("--val-max", type=float, default=0.85,
-                    help="Below this brightness a pixel counts as art (default 0.85).")
+    # Deliberately well below typical drop-shadow brightness. Measured on a real
+    # mockup: icon body value ~0.39 / saturation ~0.47, drop shadow ~0.89 value
+    # but only ~0.004 saturation. An earlier 0.85 default caught the shadow's
+    # darker fringe (5th pct 0.78) and inflated the crop box.
+    ap.add_argument("--val-max", type=float, default=0.35,
+                    help="Below this brightness a pixel counts as art even if "
+                         "unsaturated (default 0.35 — keeps drop shadows out).")
+    ap.add_argument("--square-mode", choices=["crop", "pad"], default="crop",
+                    help="If the detected box isn't square: 'crop' centre-crops to "
+                         "the shorter side (default — mockup renders are often a few "
+                         "%% off square and the trimmed sliver is masked by iOS "
+                         "anyway); 'pad' keeps everything and pads instead.")
     ap.add_argument("--pad-pct", type=float, default=0.0,
                     help="Extra inward crop as %% of the detected box, if the "
                          "mockup has a visible outline you want gone.")
@@ -140,9 +150,15 @@ def main() -> int:
 
     crop = rgb[top:bottom + 1, left:right + 1]
 
-    # --- 2. square it up (centre the shorter axis) ---
+    # --- 2. square it up ---
     h, w = crop.shape[:2]
-    if h != w:
+    if h != w and args.square_mode == "crop":
+        side = min(h, w)
+        oy, ox = (h - side) // 2, (w - side) // 2
+        crop = crop[oy:oy + side, ox:ox + side]
+        print(f"centre-cropped {w}x{h} -> {side}x{side} "
+              f"(trimmed {w-side}px horizontally, {h-side}px vertically)")
+    elif h != w:
         side = max(h, w)
         # Pad with the mean edge colour so padding blends; corners get
         # inpainted below anyway.
