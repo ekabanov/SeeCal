@@ -99,10 +99,20 @@ public protocol CaptureService: AnyObject {
     /// unavailable).
     func gravityUpdates() -> AsyncStream<GravityReading>
 
+    /// Barcodes recognized from the same live camera stream. Photo capture
+    /// remains available at all times; recognition is an automatic side channel.
+    func barcodeUpdates() -> AsyncStream<DetectedBarcode>
+
     /// The live viewfinder content filling the camera screen. The AVFoundation
     /// implementation returns a preview-layer wrapper; the mock returns a static
     /// stand-in scene so the screen stays exercisable everywhere.
     func makePreviewView() -> AnyView
+}
+
+public extension CaptureService {
+    func barcodeUpdates() -> AsyncStream<DetectedBarcode> {
+        AsyncStream { $0.finish() }
+    }
 }
 
 // MARK: - Mock implementation
@@ -124,6 +134,7 @@ public final class MockCaptureService: CaptureService {
     public var nextCaptureResult: Result<CapturedPhoto, Error>?
 
     private var gravityContinuations: [UUID: AsyncStream<GravityReading>.Continuation] = [:]
+    private var barcodeContinuations: [UUID: AsyncStream<DetectedBarcode>.Continuation] = [:]
 
     public init(authorizationStatus: CameraAuthorization = .authorized) {
         self.authorizationStatus = authorizationStatus
@@ -146,6 +157,10 @@ public final class MockCaptureService: CaptureService {
             continuation.finish()
         }
         gravityContinuations.removeAll()
+        for continuation in barcodeContinuations.values {
+            continuation.finish()
+        }
+        barcodeContinuations.removeAll()
     }
 
     public func capturePhoto() async throws -> CapturedPhoto {
@@ -165,10 +180,23 @@ public final class MockCaptureService: CaptureService {
         }
     }
 
+    public func barcodeUpdates() -> AsyncStream<DetectedBarcode> {
+        let id = UUID()
+        return AsyncStream { continuation in
+            barcodeContinuations[id] = continuation
+        }
+    }
+
     /// Test/simulator hook: pushes a gravity sample to every open stream.
     public func sendGravity(_ reading: GravityReading) {
         for continuation in gravityContinuations.values {
             continuation.yield(reading)
+        }
+    }
+
+    public func sendBarcode(_ barcode: DetectedBarcode) {
+        for continuation in barcodeContinuations.values {
+            continuation.yield(barcode)
         }
     }
 

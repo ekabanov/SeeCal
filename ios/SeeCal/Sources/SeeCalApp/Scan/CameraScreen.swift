@@ -19,6 +19,7 @@ struct CameraScreen: View {
     // Starts visibly off-level so the hint begins at "Hold flat over the plate"
     // until real gravity arrives (prototype's bubble also starts adrift).
     @State private var gravity = GravityReading(x: 0.6, y: 0.5)
+    @State private var barcodeAmount = ""
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     /// Camera-overlay palette: these sit on top of the live image, so they are
@@ -48,6 +49,10 @@ struct CameraScreen: View {
                     depthAffordances
                 }
 
+                if case .found = controller.barcodeState {
+                    barcodeTarget
+                }
+
                 bottomControls
             }
 
@@ -65,6 +70,17 @@ struct CameraScreen: View {
                         gravity = reading
                     }
                 }
+            }
+        }
+        .task(id: authorization) {
+            guard authorization == .authorized else { return }
+            for await barcode in controller.captureService.barcodeUpdates() {
+                controller.barcodeDetected(barcode)
+            }
+        }
+        .onChange(of: controller.barcodeState) { _, state in
+            if case let .found(product) = state {
+                barcodeAmount = String(Int((product.defaultAmount ?? 100).rounded()))
             }
         }
         .onDisappear {
@@ -151,24 +167,76 @@ struct CameraScreen: View {
         .padding(.top, 12)
     }
 
-    // MARK: - Bottom controls (`.vf-bottom`: hint + shutter)
+    private var barcodeTarget: some View {
+        RoundedRectangle(cornerRadius: 13, style: .continuous)
+            .stroke(Overlay.levelGreen, lineWidth: 2)
+            .frame(width: 190, height: 104)
+            .overlay(alignment: .top) {
+                Text("Barcode detected")
+                    .font(.system(size: 10.5, weight: .heavy))
+                    .tracking(0.3)
+                    .foregroundStyle(Color(hex: 0x8CE5B7))
+                    .padding(.vertical, 5)
+                    .padding(.horizontal, 9)
+                    .background(Color(hex: 0x183C2A))
+                    .clipShape(Capsule())
+                    .offset(y: -29)
+            }
+            .shadow(color: Overlay.levelGreen.opacity(0.38), radius: 9)
+            .allowsHitTesting(false)
+    }
+
+    // MARK: - Bottom controls
 
     private var bottomControls: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 12) {
+            barcodeCard
+
             // Hint text is a coaching overlay (spec §5); the shutter directly
             // below it is NEVER gated by this toggle — capture always works.
-            if controller.capturePreferences.captureCoachingEnabled {
+            if controller.capturePreferences.captureCoachingEnabled,
+               controller.barcodeState == .idle {
                 Text(gravity.isLevel ? "Framed — capture when ready" : "Hold flat over the plate")
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Overlay.hintInk)
                     .shadow(color: .black.opacity(0.5), radius: 6, y: 1)
             }
 
-            ShutterButton(reduceMotion: reduceMotion) {
-                Task { await controller.shutterTapped() }
+            HStack {
+                cameraSideAction(
+                    title: "Manual",
+                    systemImage: "square.and.pencil"
+                ) {
+                    controller.beginManualMeal()
+                }
+
+                Spacer()
+
+                ShutterButton(reduceMotion: reduceMotion) {
+                    Task { await controller.shutterTapped() }
+                }
+
+                Spacer()
+
+                VStack(spacing: 5) {
+                    Image(systemName: "barcode.viewfinder")
+                        .font(.system(size: 20, weight: .medium))
+                        .foregroundStyle(Color(hex: 0x8CE5B7))
+                        .frame(width: 42, height: 42)
+                        .background(Color(hex: 0x0A0C0A).opacity(0.72))
+                        .clipShape(Circle())
+                        .overlay(Circle().stroke(.white.opacity(0.18), lineWidth: 1))
+                    Text("Barcode auto")
+                        .font(.system(size: 10.5, weight: .bold))
+                        .foregroundStyle(Color(hex: 0xD9DED9))
+                }
+                .frame(width: 86)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel("Barcode detection is automatic")
             }
+            .padding(.horizontal, 24)
         }
-        .padding(.bottom, 34)
+        .padding(.bottom, 30)
         .padding(.top, 40)
         .frame(maxWidth: .infinity)
         .background(
@@ -179,6 +247,170 @@ struct CameraScreen: View {
             )
         )
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
+    }
+
+    @ViewBuilder
+    private var barcodeCard: some View {
+        switch controller.barcodeState {
+        case .idle:
+            EmptyView()
+        case let .lookingUp(code):
+            HStack(spacing: 10) {
+                ProgressView().tint(Theme.basil)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("Looking up barcode")
+                        .font(.system(size: 14, weight: .bold))
+                    Text(code)
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.appInk2)
+                        .monospacedDigit()
+                }
+                Spacer()
+            }
+            .barcodeCameraCard()
+        case let .found(product):
+            if let nutrition = product.nutritionPer100 {
+                VStack(alignment: .leading, spacing: 10) {
+                    barcodeProductHeader(product: product) {
+                        controller.dismissBarcode()
+                    }
+                    Text("\(nutrition.kcal.formattedOneDecimal) kcal · \(nutrition.protein.formattedOneDecimal)p · \(nutrition.fat.formattedOneDecimal)f · \(nutrition.carbs.formattedOneDecimal)c per 100 \(product.amountUnit.symbol)")
+                        .font(.system(size: 11))
+                        .foregroundStyle(Theme.appInk2)
+                        .lineLimit(1)
+
+                    HStack(spacing: 8) {
+                        Text("Consumed")
+                            .font(.system(size: 11.5, weight: .bold))
+                            .foregroundStyle(Theme.appInk2)
+                        TextField("100", text: $barcodeAmount)
+                            .font(.system(size: 14, weight: .bold))
+                            .monospacedDigit()
+                            .multilineTextAlignment(.trailing)
+                            .barcodeNumericKeyboard()
+                            .padding(.vertical, 8)
+                            .padding(.horizontal, 9)
+                            .frame(width: 72)
+                            .background(Theme.appBg)
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        Text(product.amountUnit.symbol)
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(Theme.appInk2)
+                        Spacer()
+                        Button("Review") {
+                            guard let amount = parsedBarcodeAmount else { return }
+                            controller.reviewBarcodeProduct(product, amount: amount)
+                        }
+                        .font(.system(size: 12, weight: .heavy))
+                        .foregroundStyle(.white)
+                        .padding(.vertical, 9)
+                        .padding(.horizontal, 13)
+                        .background(Theme.basil)
+                        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        .disabled(parsedBarcodeAmount == nil)
+                        .opacity(parsedBarcodeAmount == nil ? 0.5 : 1)
+                    }
+                }
+                .barcodeCameraCard()
+            } else {
+                VStack(alignment: .leading, spacing: 10) {
+                    barcodeProductHeader(product: product) {
+                        controller.dismissBarcode()
+                    }
+                    Text("This record is missing calories or macros. Finish it manually so missing values aren’t treated as zero.")
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(Theme.appInk2)
+                    barcodeManualButton(product)
+                }
+                .barcodeCameraCard()
+            }
+        case let .failed(_, message):
+            VStack(alignment: .leading, spacing: 10) {
+                HStack {
+                    Text("Barcode lookup unavailable")
+                        .font(.system(size: 14, weight: .bold))
+                    Spacer()
+                    Button {
+                        controller.dismissBarcode()
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .foregroundStyle(Theme.appInk2)
+                }
+                Text(message)
+                    .font(.system(size: 11.5))
+                    .foregroundStyle(Theme.appInk2)
+                barcodeManualButton(nil)
+            }
+            .barcodeCameraCard()
+        }
+    }
+
+    private func barcodeProductHeader(product: BarcodeProduct, dismiss: @escaping () -> Void) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            Image(systemName: "barcode")
+                .font(.system(size: 18, weight: .medium))
+                .foregroundStyle(Theme.basil)
+                .frame(width: 34, height: 34)
+                .background(Theme.basilSoft)
+                .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+            VStack(alignment: .leading, spacing: 2) {
+                Text(product.name)
+                    .font(.system(size: 14, weight: .bold))
+                    .lineLimit(1)
+                Text("\(product.barcode) · \(product.provider)")
+                    .font(.system(size: 9.5))
+                    .foregroundStyle(Theme.appInk2)
+                    .lineLimit(1)
+            }
+            Spacer()
+            Button(action: dismiss) {
+                Image(systemName: "xmark")
+                    .font(.system(size: 11, weight: .bold))
+            }
+            .foregroundStyle(Theme.appInk2)
+        }
+    }
+
+    private func barcodeManualButton(_ product: BarcodeProduct?) -> some View {
+        Button("Enter manually") {
+            controller.enterBarcodeProductManually(product)
+        }
+        .font(.system(size: 12, weight: .heavy))
+        .foregroundStyle(.white)
+        .frame(maxWidth: .infinity)
+        .padding(.vertical, 10)
+        .background(Theme.basil)
+        .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+    }
+
+    private var parsedBarcodeAmount: Double? {
+        let normalized = barcodeAmount.replacingOccurrences(of: ",", with: ".")
+        guard let value = Double(normalized), value > 0 else { return nil }
+        return value
+    }
+
+    private func cameraSideAction(
+        title: String,
+        systemImage: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(spacing: 5) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 18, weight: .medium))
+                    .foregroundStyle(Color(hex: 0xF4F6F3))
+                    .frame(width: 42, height: 42)
+                    .background(Color(hex: 0x0A0C0A).opacity(0.72))
+                    .clipShape(Circle())
+                    .overlay(Circle().stroke(.white.opacity(0.18), lineWidth: 1))
+                Text(title)
+                    .font(.system(size: 10.5, weight: .bold))
+                    .foregroundStyle(Color(hex: 0xF4F6F3))
+            }
+            .frame(width: 86)
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Close (`.vf-close`)
@@ -235,8 +467,41 @@ struct CameraScreen: View {
             .buttonStyle(.plain)
             .padding(.top, 6)
             #endif
+            Button("Enter meal manually") {
+                controller.beginManualMeal()
+            }
+            .font(.system(size: 14, weight: .bold))
+            .foregroundStyle(.white)
+            .padding(.top, 4)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+}
+
+private extension View {
+    func barcodeCameraCard() -> some View {
+        self
+            .padding(12)
+            .background(Theme.appCard)
+            .foregroundStyle(Theme.appInk)
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .shadow(color: .black.opacity(0.35), radius: 15, y: 8)
+            .padding(.horizontal, 16)
+    }
+
+    @ViewBuilder
+    func barcodeNumericKeyboard() -> some View {
+        #if os(iOS)
+        self.keyboardType(.decimalPad)
+        #else
+        self
+        #endif
+    }
+}
+
+private extension Double {
+    var formattedOneDecimal: String {
+        String(format: "%.1f", self)
     }
 }
 

@@ -45,7 +45,7 @@ public struct TodayScreen: View {
 
                     mealsSection
 
-                    PrivacyChip("Analyzed entirely on this iPhone.")
+                    PrivacyChip("Meal photos stay on this iPhone. Barcode lookup sends only the numeric code to Open Food Facts.")
                 }
                 .padding(.horizontal, 18)
                 .padding(.bottom, Theme.screenBottomInset)

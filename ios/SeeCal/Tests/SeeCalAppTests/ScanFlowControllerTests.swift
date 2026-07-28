@@ -78,6 +78,31 @@ private final class GatedCaptureService: CaptureService {
     func makePreviewView() -> AnyView { AnyView(EmptyView()) }
 }
 
+private actor StubBarcodeLookup: BarcodeProductLookup {
+    var product: BarcodeProduct
+    private(set) var requestCount = 0
+    private(set) var requests: [DetectedBarcode] = []
+
+    init(product: BarcodeProduct = BarcodeProduct(
+        barcode: "3017620422003",
+        name: "Oat drink",
+        defaultAmount: 250,
+        amountUnit: .milliliters,
+        kcalPer100: 46,
+        proteinPer100: 1,
+        fatPer100: 1.5,
+        carbsPer100: 6.7
+    )) {
+        self.product = product
+    }
+
+    func lookup(barcode: DetectedBarcode) async throws -> BarcodeProduct {
+        requestCount += 1
+        requests.append(barcode)
+        return product
+    }
+}
+
 // MARK: - Fixtures
 
 private func sampleScanResult() -> FoodScanResult {
@@ -99,14 +124,19 @@ final class ScanFlowControllerTests: XCTestCase {
     private var store: InMemoryMealLogStore!
     private var viewModel: AppViewModel!
     private var capture: MockCaptureService!
+    private var barcodeLookup: StubBarcodeLookup!
     private var controller: ScanFlowController!
 
     @MainActor
-    private func makeSUT(now: @escaping @Sendable () -> Date = Date.init) {
+    private func makeSUT(
+        barcodeDebounceNanoseconds: UInt64 = 0,
+        now: @escaping @Sendable () -> Date = Date.init
+    ) {
         runner = GatedScanRunner()
         store = InMemoryMealLogStore()
         viewModel = AppViewModel(orchestrator: RuntimeOrchestrator(runtimes: []), store: store)
         capture = MockCaptureService()
+        barcodeLookup = StubBarcodeLookup()
         let photoDirectory = FileManager.default.temporaryDirectory
             .appendingPathComponent("seecal-scanflow-tests-\(UUID().uuidString)", isDirectory: true)
         controller = ScanFlowController(
@@ -114,6 +144,8 @@ final class ScanFlowControllerTests: XCTestCase {
             inference: runner,
             captureService: capture,
             photoStore: CapturedPhotoStore(directory: photoDirectory),
+            barcodeLookup: barcodeLookup,
+            barcodeDebounceNanoseconds: barcodeDebounceNanoseconds,
             now: now
         )
     }
@@ -595,6 +627,149 @@ final class ScanFlowControllerTests: XCTestCase {
         XCTAssertEqual(controller.phase, .idle)
         XCTAssertFalse(controller.isScanSurfaceVisible)
         XCTAssertEqual(switchedTo, .today, "Camera ✕ returns to Today (spec §5), not the previously selected tab")
+    }
+
+    @MainActor
+    func testManualMealFromCameraLogsWithoutPhotoInferenceOrCapture() async throws {
+        makeSUT()
+        controller.scanTapped()
+        controller.beginManualMeal()
+
+        guard case let .presentingResult(initialDraft) = controller.phase else {
+            return XCTFail("Manual action should present the shared meal sheet")
+        }
+        XCTAssertEqual(initialDraft.origin, .manual)
+        XCTAssertTrue(initialDraft.items.isEmpty)
+        XCTAssertNil(initialDraft.imagePath)
+        XCTAssertTrue(controller.isCameraSurfaceContent)
+
+        var draft = initialDraft
+        draft.addItem(
+            MealItem(
+                name: "apple",
+                grams: 150,
+                base: MealItemBase(grams: 150, kcal: 78, protein: 0.4, fat: 0.3, carbs: 20),
+                modelEstimate: nil
+            )
+        )
+        await controller.logMeal(draft)
+
+        let entries = try await store.fetchAll()
+        let inferenceCount = await runner.requestCount
+        XCTAssertEqual(entries.count, 1)
+        XCTAssertEqual(entries.first?.origin, .manual)
+        XCTAssertNil(entries.first?.imagePath)
+        XCTAssertEqual(capture.captureCount, 0)
+        XCTAssertEqual(inferenceCount, 0)
+    }
+
+    @MainActor
+    func testManualDraftDismissalReturnsToCameraWithoutReadyBanner() {
+        makeSUT()
+        controller.scanTapped()
+        controller.beginManualMeal()
+
+        controller.resultSheetDismissed()
+
+        XCTAssertEqual(controller.phase, .capturing)
+        XCTAssertTrue(controller.isScanSurfaceVisible)
+        XCTAssertFalse(controller.isBannerVisible)
+    }
+
+    @MainActor
+    func testDetectedBarcodeLooksUpAndBuildsSourceBackedDraftAtConsumedAmount() async throws {
+        makeSUT()
+        controller.scanTapped()
+        controller.barcodeDetected(
+            DetectedBarcode(value: "3017620422003", symbology: .ean13)
+        )
+
+        let found = await waitUntil { [controller] in
+            await MainActor.run {
+                if case .found = controller!.barcodeState { return true }
+                return false
+            }
+        }
+        XCTAssertTrue(found)
+        guard case let .found(product) = controller.barcodeState else {
+            return XCTFail("Expected a looked-up barcode product")
+        }
+
+        controller.reviewBarcodeProduct(product, amount: 250)
+        guard case let .presentingResult(draft) = controller.phase else {
+            return XCTFail("Review should open the shared meal sheet")
+        }
+        XCTAssertEqual(draft.origin, .barcode)
+        XCTAssertEqual(draft.items[0].amountUnit, .milliliters)
+        XCTAssertEqual(draft.items[0].grams, 250)
+        XCTAssertEqual(draft.totals.calories, 115, accuracy: 0.000_001)
+        XCTAssertEqual(draft.barcodeSource?.provider, "Open Food Facts")
+        XCTAssertTrue(controller.isCameraSurfaceContent)
+
+        await controller.logMeal(draft)
+        let entries = try await store.fetchAll()
+        XCTAssertEqual(entries.first?.origin, .barcode)
+        XCTAssertNil(entries.first?.imagePath)
+        XCTAssertEqual(entries.first?.barcodeSource?.barcode, "3017620422003")
+    }
+
+    @MainActor
+    func testAlternatingDetectionsCollapseToOneLookupAndFreezeWhileCardIsVisible() async {
+        makeSUT()
+        controller.scanTapped()
+
+        controller.barcodeDetected(
+            DetectedBarcode(value: "3017620422003", symbology: .ean13)
+        )
+        controller.barcodeDetected(
+            DetectedBarcode(value: "036000291452", symbology: .upca)
+        )
+
+        let found = await waitUntil { [controller] in
+            await MainActor.run {
+                if case .found = controller!.barcodeState { return true }
+                return false
+            }
+        }
+        XCTAssertTrue(found)
+        let firstCount = await barcodeLookup.requestCount
+        let requests = await barcodeLookup.requests
+        XCTAssertEqual(firstCount, 1)
+        XCTAssertEqual(requests.first?.value, "036000291452")
+
+        // A visible success/failure card owns recognition until the user
+        // dismisses it, preventing alternating packages from spamming reads.
+        controller.barcodeDetected(
+            DetectedBarcode(value: "3017620422003", symbology: .ean13)
+        )
+        await Task.yield()
+        let finalCount = await barcodeLookup.requestCount
+        XCTAssertEqual(finalCount, 1)
+    }
+
+    @MainActor
+    func testBarcodeLookupWaitsForCameraDebounce() async throws {
+        makeSUT(barcodeDebounceNanoseconds: 50_000_000)
+        controller.scanTapped()
+        controller.barcodeDetected(
+            DetectedBarcode(value: "3017620422003", symbology: .ean13)
+        )
+
+        await Task.yield()
+        let immediateCount = await barcodeLookup.requestCount
+        XCTAssertEqual(immediateCount, 0)
+        XCTAssertEqual(controller.barcodeState, .idle)
+
+        try await Task<Never, Never>.sleep(nanoseconds: 70_000_000)
+        let found = await waitUntil { [controller] in
+            await MainActor.run {
+                if case .found = controller!.barcodeState { return true }
+                return false
+            }
+        }
+        XCTAssertTrue(found)
+        let finalCount = await barcodeLookup.requestCount
+        XCTAssertEqual(finalCount, 1)
     }
 
     // MARK: - Edit mode (same sheet, Save changes semantics)

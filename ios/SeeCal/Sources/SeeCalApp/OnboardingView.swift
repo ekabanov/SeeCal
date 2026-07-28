@@ -93,7 +93,7 @@ public struct OnboardingView: View {
             Spacer(minLength: 12)
 
             // `.ob-priv`
-            Text("Meals are analyzed on your iPhone — nothing is uploaded.")
+            Text("Meal photos are analyzed on your iPhone and never uploaded. Barcode lookup sends only the numeric barcode to Open Food Facts.")
                 .font(.system(size: 12.5, weight: .semibold))
                 .foregroundStyle(Theme.basil)
                 .fixedSize(horizontal: false, vertical: true)

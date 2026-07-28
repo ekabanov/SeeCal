@@ -24,6 +24,7 @@ struct MealResultSheet: View {
         onDraftChanged: @escaping (MealEditDraft) -> Void = { _ in }
     ) {
         _draft = State(initialValue: draft)
+        _editor = State(initialValue: draft.origin == .manual && draft.items.isEmpty ? IngredientEditorDraft() : nil)
         self.onPrimary = onPrimary
         self.onSecondary = onSecondary
         self.onDeleteMeal = onDeleteMeal
@@ -53,7 +54,9 @@ struct MealResultSheet: View {
                 onDeleteMeal(draft)
             }
         } message: {
-            Text("This removes the logged meal and its photo. This action can’t be undone.")
+            Text(draft.imagePath == nil
+                ? "This removes the logged meal. This action can’t be undone."
+                : "This removes the logged meal and its photo. This action can’t be undone.")
         }
     }
 
@@ -112,7 +115,26 @@ struct MealResultSheet: View {
                         .accessibilityHidden(true)
                 }
 
-                if let volumeMl = draft.volumeMl {
+                if let source = draft.barcodeSource {
+                    HStack(spacing: 6) {
+                        HStack(spacing: 4) {
+                            Image(systemName: "barcode")
+                                .font(.system(size: 10, weight: .bold))
+                            Text("package label")
+                                .font(.system(size: 11, weight: .bold))
+                        }
+                        .foregroundStyle(Theme.basil)
+                        .padding(.vertical, 3)
+                        .padding(.horizontal, 8)
+                        .background(Theme.basilSoft)
+                        .clipShape(Capsule())
+
+                        Text("\(source.provider) · \(source.barcode)")
+                            .font(.system(size: 12))
+                            .foregroundStyle(Theme.appInk2)
+                            .lineLimit(1)
+                    }
+                } else if let volumeMl = draft.volumeMl {
                     HStack(spacing: 6) {
                         HStack(spacing: 4) {
                             Image(systemName: "star.fill")
@@ -145,15 +167,15 @@ struct MealResultSheet: View {
 
     private var thumbnail: some View {
         ZStack {
-            Color(hex: 0x262420)
+            draft.origin == .photo ? Color(hex: 0x262420) : Theme.basilSoft
             if let path = draft.imagePath, let image = PlatformImageLoader.image(atPath: path) {
                 image
                     .resizable()
                     .aspectRatio(contentMode: .fill)
             } else {
-                Image(systemName: "photo")
+                Image(systemName: draft.origin == .barcode ? "barcode" : "fork.knife")
                     .font(.system(size: 20))
-                    .foregroundStyle(.white.opacity(0.5))
+                    .foregroundStyle(draft.origin == .photo ? .white.opacity(0.5) : Theme.basil)
             }
         }
         .frame(width: 64, height: 64)
@@ -207,7 +229,9 @@ struct MealResultSheet: View {
     }
 
     private var itemsLabel: some View {
-        Text((draft.isEditingExisting ? "Ingredients — tap to edit" : "Detected items — tap to edit").uppercased())
+        Text((draft.isEditingExisting || draft.origin != .photo
+            ? "Ingredients — tap to edit"
+            : "Detected items — tap to edit").uppercased())
             .font(.system(size: 12.5, weight: .bold))
             .tracking(0.75)
             .foregroundStyle(Theme.appInk2)
@@ -239,13 +263,15 @@ struct MealResultSheet: View {
                         .font(.system(size: 15, weight: .semibold))
                         .foregroundStyle(Theme.appInk)
                         .lineLimit(1)
-                    if item.isManual {
+                    if item.sourceReference?.source == .barcode {
+                        statusChip("Label")
+                    } else if item.isManual {
                         statusChip("Added")
                     } else if item.isEdited {
                         statusChip("Edited")
                     }
                 }
-                Text("\(Int(item.grams.rounded())) g · \(item.protein.formattedOneDecimal)p · \(item.fat.formattedOneDecimal)f · \(item.carbs.formattedOneDecimal)c")
+                Text("\(Int(item.grams.rounded())) \(item.amountUnit.symbol) · \(item.protein.formattedOneDecimal)p · \(item.fat.formattedOneDecimal)f · \(item.carbs.formattedOneDecimal)c")
                     .font(.system(size: 12))
                     .foregroundStyle(Theme.appInk2)
                     .monospacedDigit()
@@ -301,7 +327,7 @@ struct MealResultSheet: View {
     }
 
     private var footnote: some View {
-        Text("Corrections update an item’s nutrition density, so later gram changes scale them. Meal totals always equal the sum of its ingredients.")
+        Text("Corrections update an item’s nutrition density, so later amount changes scale them. Meal totals always equal the sum of its ingredients.")
             .font(.system(size: 11.5))
             .lineSpacing(3)
             .foregroundStyle(Theme.appInk2)
@@ -463,20 +489,20 @@ private struct IngredientEditorPanel: View {
                 VStack(alignment: .leading, spacing: 16) {
                     header
                     nameField
-                    numericField("Amount", unit: "g", text: gramsBinding, reset: .grams)
+                    numericField("Amount", unit: editor.amountUnit.symbol, text: gramsBinding, reset: .grams)
                     numericField("Calories", unit: "kcal", text: $editor.kcalText, reset: .kcal)
                     numericField("Protein", unit: "g", text: $editor.proteinText, reset: .protein)
                     numericField("Fat", unit: "g", text: $editor.fatText, reset: .fat)
                     numericField("Carbs", unit: "g", text: $editor.carbsText, reset: .carbs)
 
-                    Text("Changing grams rescales calories and macros from their current values. Calories and macros may be corrected independently.")
+                    Text("Changing the amount rescales calories and macros from their current values. Calories and macros may be corrected independently.")
                         .font(.system(size: 11.5))
                         .lineSpacing(3)
                         .foregroundStyle(Theme.appInk2)
                         .fixedSize(horizontal: false, vertical: true)
 
-                    if editor.hasModelEstimate {
-                        Button("Reset item to estimate") {
+                    if editor.hasSourceReference {
+                        Button(editor.resetItemTitle) {
                             editor.resetWholeItem()
                         }
                         .font(.system(size: 14, weight: .bold))
@@ -539,7 +565,7 @@ private struct IngredientEditorPanel: View {
                 Text(editor.originalItem == nil ? "Add ingredient" : "Edit ingredient")
                     .font(.system(size: 19, weight: .bold))
                     .foregroundStyle(Theme.appInk)
-                Text(editor.hasModelEstimate ? "Model estimate" : "Added manually")
+                Text(editor.sourceLabel)
                     .font(.system(size: 11, weight: .bold))
                     .foregroundStyle(Theme.basil)
                     .textCase(.uppercase)
@@ -602,7 +628,7 @@ private struct IngredientEditorPanel: View {
                 .tracking(0.65)
                 .foregroundStyle(Theme.appInk2)
             Spacer()
-            if editor.hasModelEstimate {
+            if editor.hasSourceReference {
                 Button("Reset") {
                     editor.reset(reset)
                 }
@@ -648,6 +674,10 @@ private struct IngredientEditorDraft {
     var carbsText: String
     private var lastValidGrams: Double?
 
+    var amountUnit: MealAmountUnit {
+        originalItem?.amountUnit ?? .grams
+    }
+
     init(item: MealItem? = nil) {
         originalItem = item
         name = item?.name ?? ""
@@ -659,8 +689,25 @@ private struct IngredientEditorDraft {
         lastValidGrams = item?.grams
     }
 
-    var hasModelEstimate: Bool {
-        originalItem?.modelEstimate != nil
+    var hasSourceReference: Bool {
+        originalItem?.sourceReference != nil
+    }
+
+    var sourceLabel: String {
+        switch originalItem?.sourceReference?.source {
+        case .barcode:
+            return "Package label"
+        case .model:
+            return "Model estimate"
+        case nil:
+            return "Added manually"
+        }
+    }
+
+    var resetItemTitle: String {
+        originalItem?.sourceReference?.source == .barcode
+            ? "Reset item to package label"
+            : "Reset item to estimate"
     }
 
     var isValid: Bool {
@@ -689,7 +736,7 @@ private struct IngredientEditorDraft {
     }
 
     mutating func reset(_ field: IngredientResetField) {
-        guard let estimate = originalItem?.modelEstimate else { return }
+        guard let estimate = originalItem?.sourceReference else { return }
         switch field {
         case .name:
             name = estimate.name
@@ -707,7 +754,7 @@ private struct IngredientEditorDraft {
     }
 
     mutating func resetWholeItem() {
-        guard let estimate = originalItem?.modelEstimate else { return }
+        guard let estimate = originalItem?.sourceReference else { return }
         name = estimate.name
         gramsText = String(Int(estimate.base.grams.rounded()))
         kcalText = String(Int(estimate.base.kcal.rounded()))
@@ -729,6 +776,7 @@ private struct IngredientEditorDraft {
             id: originalItem?.id ?? UUID(),
             name: name.trimmingCharacters(in: .whitespacesAndNewlines),
             grams: grams,
+            amountUnit: amountUnit,
             base: MealItemBase(
                 grams: grams,
                 kcal: kcal,
@@ -736,7 +784,7 @@ private struct IngredientEditorDraft {
                 fat: fat,
                 carbs: carbs
             ),
-            modelEstimate: originalItem?.modelEstimate
+            sourceReference: originalItem?.sourceReference
         )
     }
 

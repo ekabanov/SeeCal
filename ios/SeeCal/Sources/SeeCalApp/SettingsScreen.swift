@@ -54,6 +54,9 @@ public struct SettingsScreen: View {
 
                 SectionLabel("On-device model")
                 modelCard
+
+                SectionLabel("Data sources")
+                openFoodFactsCard
             }
             .padding(.horizontal, 18)
             .padding(.bottom, Theme.screenBottomInset)
@@ -125,6 +128,52 @@ public struct SettingsScreen: View {
                     .font(.system(size: 12.5))
                     .foregroundStyle(Theme.appInk2)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var openFoodFactsCard: some View {
+        Card {
+            VStack(alignment: .leading, spacing: 10) {
+                Link(
+                    destination: URL(string: "https://world.openfoodfacts.org")!
+                ) {
+                    HStack(spacing: 10) {
+                        Image(systemName: "barcode")
+                            .font(.system(size: 17, weight: .semibold))
+                            .foregroundStyle(Theme.basil)
+                            .frame(width: 34, height: 34)
+                            .background(Theme.basilSoft)
+                            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Open Food Facts")
+                                .font(.system(size: 15, weight: .semibold))
+                                .foregroundStyle(Theme.appInk)
+                            Text("Barcode product data")
+                                .font(.system(size: 12, weight: .medium))
+                                .foregroundStyle(Theme.appInk2)
+                        }
+                        Spacer()
+                        Image(systemName: "arrow.up.right")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundStyle(Theme.appInk2)
+                    }
+                }
+                .buttonStyle(.plain)
+
+                Divider().overlay(Theme.appLine)
+
+                Text("Database licensed under ODbL. Product records are community-contributed and may be incomplete or inaccurate.")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Theme.appInk2)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Link(
+                    "License & attribution",
+                    destination: URL(string: "https://world.openfoodfacts.org/terms-of-use")!
+                )
+                .font(.system(size: 12.5, weight: .bold))
+                .foregroundStyle(Theme.basil)
             }
         }
     }

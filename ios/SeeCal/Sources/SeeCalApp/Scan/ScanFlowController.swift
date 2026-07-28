@@ -71,6 +71,13 @@ public struct CapturedPhotoStore: Sendable {
 /// - **Retry re-runs inference on the SAME photo** — no recapture.
 @MainActor
 public final class ScanFlowController: ObservableObject {
+    public enum BarcodeState: Equatable {
+        case idle
+        case lookingUp(code: String)
+        case found(BarcodeProduct)
+        case failed(code: String, message: String)
+    }
+
     public enum Phase: Equatable {
         /// No scan activity; tabs behave normally.
         case idle
@@ -111,6 +118,7 @@ public final class ScanFlowController: ObservableObject {
     /// Changes whenever "Log meal" lands, telling the Today screen to scroll to
     /// top (spec §5: "switch Today scrolled to top").
     @Published public private(set) var todayScrollToTopToken = UUID()
+    @Published public private(set) var barcodeState: BarcodeState = .idle
 
     /// Set by `RootView` so the controller can land the user on Today after
     /// logging. A closure (not a binding) keeps the controller testable.
@@ -128,22 +136,31 @@ public final class ScanFlowController: ObservableObject {
     private let viewModel: AppViewModel
     private let inference: ScanInferenceRunning
     private let photoStore: CapturedPhotoStore
+    private let barcodeLookup: BarcodeProductLookup
+    private let barcodeDebounceNanoseconds: UInt64
     private let now: @Sendable () -> Date
     /// Exposed for tests to await inference completion deterministically.
     private(set) var inferenceTask: Task<Void, Never>?
     private var toastTask: Task<Void, Never>?
+    private var barcodeLookupTask: Task<Void, Never>?
+    private var currentBarcode: String?
+    private var pendingBarcode: String?
 
     public init(
         viewModel: AppViewModel,
         inference: ScanInferenceRunning,
         captureService: CaptureService,
         photoStore: CapturedPhotoStore = CapturedPhotoStore(),
+        barcodeLookup: BarcodeProductLookup = CachedBarcodeProductLookup(),
+        barcodeDebounceNanoseconds: UInt64 = 350_000_000,
         now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.viewModel = viewModel
         self.inference = inference
         self.captureService = captureService
         self.photoStore = photoStore
+        self.barcodeLookup = barcodeLookup
+        self.barcodeDebounceNanoseconds = barcodeDebounceNanoseconds
         self.now = now
     }
 
@@ -160,7 +177,16 @@ public final class ScanFlowController: ObservableObject {
     /// screen == "camera"); the analyzing screen keeps it so the user can
     /// navigate away without cancelling.
     public var isTabBarHidden: Bool {
-        if case .capturing = phase, isScanSurfaceVisible { return true }
+        isCameraSurfaceContent && isScanSurfaceVisible
+    }
+
+    /// Manual and barcode drafts originate from camera controls, so their sheet
+    /// stays over the live camera just like the binding prototype.
+    public var isCameraSurfaceContent: Bool {
+        if case .capturing = phase { return true }
+        if case let .presentingResult(draft) = phase {
+            return draft.origin != .photo
+        }
         return false
     }
 
@@ -181,6 +207,7 @@ public final class ScanFlowController: ObservableObject {
     public func scanTapped() {
         switch phase {
         case .idle:
+            resetBarcodeRecognition()
             phase = .capturing
             isScanSurfaceVisible = true
         case .capturing, .analyzing:
@@ -223,6 +250,7 @@ public final class ScanFlowController: ObservableObject {
         guard case .capturing = phase else { return }
         phase = .idle
         isScanSurfaceVisible = false
+        resetBarcodeRecognition()
         onRequestTabSwitch?(.today)
     }
 
@@ -323,7 +351,12 @@ public final class ScanFlowController: ObservableObject {
     /// come back to it. (Explicit Discard is `discardResult()`.)
     public func resultSheetDismissed() {
         guard case let .presentingResult(draft) = phase else { return }
-        phase = .ready(draft: draft)
+        if draft.origin == .photo {
+            phase = .ready(draft: draft)
+        } else {
+            phase = .capturing
+            isScanSurfaceVisible = true
+        }
     }
 
     /// Live draft edits from the result sheet (gram steppers). Keeping the
@@ -344,6 +377,115 @@ public final class ScanFlowController: ObservableObject {
         }
         phase = .capturing
         isScanSurfaceVisible = true
+    }
+
+    /// Camera-side Manual action. No inference, photo, or network is touched.
+    public func beginManualMeal() {
+        guard case .capturing = phase, activeSheetDraft == nil else { return }
+        resetBarcodeRecognition()
+        let draft = MealEditDraft(manualMealType: Self.mealType(for: now()))
+        phase = .presentingResult(draft: draft)
+        isScanSurfaceVisible = true
+    }
+
+    /// Presents a source-backed barcode draft after lookup and amount
+    /// confirmation. Lookup remains outside the scan state machine.
+    public func beginBarcodeMeal(_ draft: MealEditDraft) {
+        guard case .capturing = phase,
+              activeSheetDraft == nil,
+              draft.origin == .barcode
+        else { return }
+        barcodeLookupTask?.cancel()
+        barcodeState = .idle
+        phase = .presentingResult(draft: draft)
+        isScanSurfaceVisible = true
+    }
+
+    // MARK: Live barcode recognition
+
+    public func barcodeDetected(_ detected: DetectedBarcode) {
+        guard case .capturing = phase,
+              case .idle = barcodeState,
+              let normalized = GTIN.normalized(detected.value, symbology: detected.symbology)
+        else { return }
+        guard normalized != currentBarcode, normalized != pendingBarcode else { return }
+
+        barcodeLookupTask?.cancel()
+        pendingBarcode = normalized
+        barcodeLookupTask = Task { [weak self] in
+            guard let self else { return }
+            if self.barcodeDebounceNanoseconds > 0 {
+                do {
+                    try await Task<Never, Never>.sleep(
+                        nanoseconds: self.barcodeDebounceNanoseconds
+                    )
+                } catch {
+                    return
+                }
+            }
+            guard !Task.isCancelled,
+                  case .capturing = self.phase,
+                  case .idle = self.barcodeState,
+                  self.pendingBarcode == normalized
+            else { return }
+
+            self.pendingBarcode = nil
+            self.currentBarcode = normalized
+            self.barcodeState = .lookingUp(code: normalized)
+            do {
+                let product = try await self.barcodeLookup.lookup(
+                    barcode: DetectedBarcode(value: normalized, symbology: detected.symbology)
+                )
+                guard !Task.isCancelled, case .capturing = self.phase else { return }
+                self.barcodeState = .found(product)
+                self.barcodeLookupTask = nil
+            } catch {
+                guard !Task.isCancelled, case .capturing = self.phase else { return }
+                self.barcodeState = .failed(code: normalized, message: error.localizedDescription)
+                self.barcodeLookupTask = nil
+            }
+        }
+    }
+
+    public func reviewBarcodeProduct(_ product: BarcodeProduct, amount: Double) {
+        guard case .capturing = phase else { return }
+        guard let draft = product.mealDraft(
+            amount: amount,
+            mealType: Self.mealType(for: now())
+        ) else {
+            barcodeState = .failed(
+                code: product.barcode,
+                message: "Nutrition is incomplete. Enter this product manually."
+            )
+            return
+        }
+        beginBarcodeMeal(draft)
+    }
+
+    public func enterBarcodeProductManually(_ product: BarcodeProduct? = nil) {
+        guard case .capturing = phase else { return }
+        resetBarcodeRecognition()
+        let title = product?.name ?? "Manual meal"
+        let draft = MealEditDraft(manualMealType: Self.mealType(for: now()), name: title)
+        phase = .presentingResult(draft: draft)
+        isScanSurfaceVisible = true
+    }
+
+    public func dismissBarcode() {
+        barcodeLookupTask?.cancel()
+        barcodeLookupTask = nil
+        pendingBarcode = nil
+        barcodeState = .idle
+        // Keep `currentBarcode` so the same code in every video frame does not
+        // immediately reopen the dismissed card.
+    }
+
+    private func resetBarcodeRecognition() {
+        barcodeLookupTask?.cancel()
+        barcodeLookupTask = nil
+        currentBarcode = nil
+        pendingBarcode = nil
+        barcodeState = .idle
     }
 
     /// New-scan "Log meal": persist (the FIRST store write of the whole flow),

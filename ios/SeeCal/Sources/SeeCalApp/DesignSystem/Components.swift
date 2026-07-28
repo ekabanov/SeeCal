@@ -282,23 +282,25 @@ public struct PrivacyChip: View {
 /// Shared by `TodayScreen`'s meal list and `HistoryScreen`'s recent-meals card
 /// (spec §6: "same row component as Today").
 public struct MealThumbnail: View {
-    private let imagePath: String
+    private let imagePath: String?
+    private let origin: MealOrigin
 
-    public init(imagePath: String) {
+    public init(imagePath: String?, origin: MealOrigin = .photo) {
         self.imagePath = imagePath
+        self.origin = origin
     }
 
     public var body: some View {
         ZStack {
             Theme.appLine
-            if let image = PlatformImageLoader.image(atPath: imagePath) {
+            if let imagePath, let image = PlatformImageLoader.image(atPath: imagePath) {
                 image
                     .resizable()
                     .aspectRatio(contentMode: .fill)
             } else {
-                Image(systemName: "photo")
+                Image(systemName: origin == .barcode ? "barcode" : (origin == .manual ? "fork.knife" : "photo"))
                     .font(.system(size: 18, weight: .regular))
-                    .foregroundStyle(Theme.appInk2)
+                    .foregroundStyle(origin == .photo ? Theme.appInk2 : Theme.basil)
             }
         }
         .frame(width: 52, height: 52)
@@ -322,7 +324,7 @@ public struct MealRowView: View {
     public var body: some View {
         Button(action: onTap) {
             HStack(spacing: 12) {
-                MealThumbnail(imagePath: entry.imagePath)
+                MealThumbnail(imagePath: entry.imagePath, origin: entry.origin)
 
                 VStack(alignment: .leading, spacing: 1) {
                     Text(entry.name)

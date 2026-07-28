@@ -19,23 +19,34 @@ public enum MealEditDraftError: Error, Equatable, CustomStringConvertible {
     }
 }
 
-/// One draft type serves both the new-scan flow (result sheet, spec §5) and the
+/// One draft type serves photo scans, manual/barcode entry, and editing an
 /// edit-an-existing-entry flow (tapping a meal row, spec §4/§5): initialize from
-/// either a fresh `FoodScanResult` or a previously-logged `MealLogEntry`, mutate
+/// either a fresh source or a previously-logged `MealLogEntry`, mutate
 /// names and the ingredient list/nutrition, then commit — the caller `save()`s (new scan) or
 /// `update()`s (edit) the resulting `MealLogEntry` via `MealLogStore`.
 public struct MealEditDraft: Equatable, Sendable {
     /// Context captured only in new-scan mode — everything needed to build a brand
     /// new `MealLogEntry` on commit that `existingEntry` doesn't already carry.
-    public struct NewScanContext: Equatable, Sendable {
-        public var imagePath: String
+    public struct NewMealContext: Equatable, Sendable {
+        public var imagePath: String?
         public var mealType: MealType
+        public var origin: MealOrigin
+        public var barcodeSource: BarcodeSourceMetadata?
         public var volumeMl: Double?
         public var maxHeightMm: Double?
 
-        public init(imagePath: String, mealType: MealType, volumeMl: Double? = nil, maxHeightMm: Double? = nil) {
+        public init(
+            imagePath: String? = nil,
+            mealType: MealType,
+            origin: MealOrigin,
+            barcodeSource: BarcodeSourceMetadata? = nil,
+            volumeMl: Double? = nil,
+            maxHeightMm: Double? = nil
+        ) {
             self.imagePath = imagePath
             self.mealType = mealType
+            self.origin = origin
+            self.barcodeSource = barcodeSource
             self.volumeMl = volumeMl
             self.maxHeightMm = maxHeightMm
         }
@@ -47,7 +58,7 @@ public struct MealEditDraft: Equatable, Sendable {
     /// Set in edit mode (initialized from an existing entry); nil for a new scan.
     private var existingEntry: MealLogEntry?
     /// Set in new-scan mode; nil when editing an existing entry.
-    private var newScanContext: NewScanContext?
+    private var newMealContext: NewMealContext?
 
     /// New-scan mode: build a draft straight from a fresh inference result (spec §0
     /// output schema — `items[{name, estimated_grams, calories, protein_g, fat_g,
@@ -64,11 +75,40 @@ public struct MealEditDraft: Equatable, Sendable {
         self.items = mappedItems
         self.name = name ?? MealLogEntry.defaultName(items: mappedItems, mealType: mealType)
         self.existingEntry = nil
-        self.newScanContext = NewScanContext(
+        self.newMealContext = NewMealContext(
             imagePath: imagePath,
             mealType: mealType,
+            origin: .photo,
             volumeMl: volumeMl,
             maxHeightMm: maxHeightMm
+        )
+    }
+
+    /// Manual-new-meal mode. It intentionally starts empty; the sheet opens its
+    /// blank ingredient editor immediately and keeps Log disabled until a valid
+    /// item is added.
+    public init(manualMealType mealType: MealType, name: String = "Manual meal") {
+        self.items = []
+        self.name = name
+        self.existingEntry = nil
+        self.newMealContext = NewMealContext(mealType: mealType, origin: .manual)
+    }
+
+    /// Barcode-new-meal mode. The item already contains the consumed amount and
+    /// its immutable package-label reference.
+    public init(
+        barcodeItem item: MealItem,
+        name: String,
+        mealType: MealType,
+        source: BarcodeSourceMetadata
+    ) {
+        self.items = [item]
+        self.name = name
+        self.existingEntry = nil
+        self.newMealContext = NewMealContext(
+            mealType: mealType,
+            origin: .barcode,
+            barcodeSource: source
         )
     }
 
@@ -78,7 +118,7 @@ public struct MealEditDraft: Equatable, Sendable {
         self.items = entry.items
         self.name = entry.name
         self.existingEntry = entry
-        self.newScanContext = nil
+        self.newMealContext = nil
     }
 
     /// True when this draft is editing a previously-logged entry (vs. a fresh scan).
@@ -98,17 +138,25 @@ public struct MealEditDraft: Equatable, Sendable {
     /// captured file for a new scan, the stored entry's photo in edit mode. Drives
     /// the result sheet's header thumbnail (spec §5).
     public var imagePath: String? {
-        existingEntry?.imagePath ?? newScanContext?.imagePath
+        existingEntry?.imagePath ?? newMealContext?.imagePath
+    }
+
+    public var origin: MealOrigin {
+        existingEntry?.origin ?? newMealContext?.origin ?? .manual
+    }
+
+    public var barcodeSource: BarcodeSourceMetadata? {
+        existingEntry?.barcodeSource ?? newMealContext?.barcodeSource
     }
 
     /// Depth metadata (spec §5: "depth-assisted" chip + "~V ml · max height H mm"
     /// meta line, rendered ONLY when present). `nil` until D5 lands, in both modes.
     public var volumeMl: Double? {
-        existingEntry != nil ? existingEntry?.volumeMl : newScanContext?.volumeMl
+        existingEntry != nil ? existingEntry?.volumeMl : newMealContext?.volumeMl
     }
 
     public var maxHeightMm: Double? {
-        existingEntry != nil ? existingEntry?.maxHeightMm : newScanContext?.maxHeightMm
+        existingEntry != nil ? existingEntry?.maxHeightMm : newMealContext?.maxHeightMm
     }
 
     /// Derived totals: the sum of every item's current (grams-scaled) nutrition —
@@ -170,15 +218,15 @@ public struct MealEditDraft: Equatable, Sendable {
             return updated
         }
 
-        // newScanContext is expected non-nil here: every init sets exactly one of
-        // existingEntry/newScanContext, and the existingEntry branch above returned.
-        guard let context = newScanContext else {
+        guard let context = newMealContext else {
             throw MealEditDraftError.missingContext
         }
         return MealLogEntry(
             name: committedName,
             mealType: context.mealType,
             imagePath: context.imagePath,
+            origin: context.origin,
+            barcodeSource: context.barcodeSource,
             items: items,
             volumeMl: context.volumeMl,
             maxHeightMm: context.maxHeightMm

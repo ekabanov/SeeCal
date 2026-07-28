@@ -156,6 +156,31 @@ final class MealEditDraftTests: XCTestCase {
         }
     }
 
+    func testManualMealStartsPhotoLessAndCommitsManualIngredient() throws {
+        var draft = MealEditDraft(manualMealType: .snack)
+
+        XCTAssertEqual(draft.origin, .manual)
+        XCTAssertNil(draft.imagePath)
+        XCTAssertTrue(draft.items.isEmpty)
+        XCTAssertFalse(draft.isValid)
+
+        draft.addItem(
+            MealItem(
+                name: "apple",
+                grams: 150,
+                base: MealItemBase(grams: 150, kcal: 78, protein: 0.4, fat: 0.3, carbs: 20),
+                modelEstimate: nil
+            )
+        )
+        let entry = try draft.committedEntry()
+
+        XCTAssertEqual(entry.origin, .manual)
+        XCTAssertNil(entry.imagePath)
+        XCTAssertNil(entry.barcodeSource)
+        XCTAssertTrue(entry.items[0].isManual)
+        XCTAssertEqual(entry.totals.calories, 78)
+    }
+
     func testAddRemoveRestoreAndReplaceItem() {
         var draft = MealEditDraft(scanResult: makeScanResult(), imagePath: "/tmp/a.jpg", mealType: .lunch)
         let manual = MealItem(

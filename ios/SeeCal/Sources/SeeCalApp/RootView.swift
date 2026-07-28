@@ -144,10 +144,9 @@ public struct RootView: View {
     @ViewBuilder
     private var content: some View {
         if scanController.isScanSurfaceVisible {
-            switch scanController.phase {
-            case .capturing:
+            if scanController.isCameraSurfaceContent {
                 CameraScreen(controller: scanController)
-            default:
+            } else {
                 // .analyzing, .error, and the completed states while the sheet
                 // (or banner) sits above the analyzing screen.
                 AnalyzingScreen(controller: scanController)

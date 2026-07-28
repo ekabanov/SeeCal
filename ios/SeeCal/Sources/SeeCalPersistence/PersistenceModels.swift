@@ -1,6 +1,40 @@
 import Foundation
 import SeeCalDomain
 
+public enum MealOrigin: String, Codable, Equatable, Sendable {
+    case photo
+    case manual
+    case barcode
+}
+
+/// Provenance retained with a barcode meal. Nutrition itself is snapshotted in
+/// the item's immutable `sourceReference`, so old logs never change when the
+/// community record changes.
+public struct BarcodeSourceMetadata: Codable, Equatable, Sendable {
+    public var barcode: String
+    public var provider: String
+    public var lookedUpAt: Date
+    public var productName: String
+    public var ingredientsText: String?
+    public var servingDescription: String?
+
+    public init(
+        barcode: String,
+        provider: String,
+        lookedUpAt: Date,
+        productName: String,
+        ingredientsText: String? = nil,
+        servingDescription: String? = nil
+    ) {
+        self.barcode = barcode
+        self.provider = provider
+        self.lookedUpAt = lookedUpAt
+        self.productName = productName
+        self.ingredientsText = ingredientsText
+        self.servingDescription = servingDescription
+    }
+}
+
 /// A logged (or being-logged) meal. Per spec §2, nutrition totals are never stored
 /// independently — they are always the sum of `items`' scaled values (see
 /// `MealLogEntry.totals`). `volumeMl`/`maxHeightMm` are depth metadata, populated
@@ -10,7 +44,9 @@ public struct MealLogEntry: Codable, Equatable, Sendable, Identifiable {
     public var name: String
     public var createdAt: Date
     public var mealType: MealType
-    public var imagePath: String
+    public var imagePath: String?
+    public var origin: MealOrigin
+    public var barcodeSource: BarcodeSourceMetadata?
     public var items: [MealItem]
     public var volumeMl: Double?
     public var maxHeightMm: Double?
@@ -20,7 +56,9 @@ public struct MealLogEntry: Codable, Equatable, Sendable, Identifiable {
         name: String? = nil,
         createdAt: Date = Date(),
         mealType: MealType,
-        imagePath: String,
+        imagePath: String? = nil,
+        origin: MealOrigin? = nil,
+        barcodeSource: BarcodeSourceMetadata? = nil,
         items: [MealItem],
         volumeMl: Double? = nil,
         maxHeightMm: Double? = nil
@@ -29,6 +67,8 @@ public struct MealLogEntry: Codable, Equatable, Sendable, Identifiable {
         self.createdAt = createdAt
         self.mealType = mealType
         self.imagePath = imagePath
+        self.origin = origin ?? (barcodeSource == nil ? (imagePath == nil ? .manual : .photo) : .barcode)
+        self.barcodeSource = barcodeSource
         self.items = items
         self.volumeMl = volumeMl
         self.maxHeightMm = maxHeightMm
@@ -51,7 +91,7 @@ public struct MealLogEntry: Codable, Equatable, Sendable, Identifiable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, name, createdAt, mealType, imagePath, items, volumeMl, maxHeightMm
+        case id, name, createdAt, mealType, imagePath, origin, barcodeSource, items, volumeMl, maxHeightMm
         /// Legacy-only key (pre-P2 schema): a whole-entry `FoodScanResult` carrying
         /// totals directly instead of a per-item `[MealItem]` breakdown. Decode-only —
         /// never written by `encode(to:)`.
@@ -63,7 +103,10 @@ public struct MealLogEntry: Codable, Equatable, Sendable, Identifiable {
         id = try container.decode(UUID.self, forKey: .id)
         createdAt = try container.decode(Date.self, forKey: .createdAt)
         mealType = try container.decode(MealType.self, forKey: .mealType)
-        imagePath = try container.decode(String.self, forKey: .imagePath)
+        imagePath = try container.decodeIfPresent(String.self, forKey: .imagePath)
+        barcodeSource = try container.decodeIfPresent(BarcodeSourceMetadata.self, forKey: .barcodeSource)
+        origin = try container.decodeIfPresent(MealOrigin.self, forKey: .origin)
+            ?? (barcodeSource == nil ? (imagePath == nil ? .manual : .photo) : .barcode)
         volumeMl = try container.decodeIfPresent(Double.self, forKey: .volumeMl)
         maxHeightMm = try container.decodeIfPresent(Double.self, forKey: .maxHeightMm)
 
@@ -112,7 +155,9 @@ public struct MealLogEntry: Codable, Equatable, Sendable, Identifiable {
         try container.encode(name, forKey: .name)
         try container.encode(createdAt, forKey: .createdAt)
         try container.encode(mealType, forKey: .mealType)
-        try container.encode(imagePath, forKey: .imagePath)
+        try container.encodeIfPresent(imagePath, forKey: .imagePath)
+        try container.encode(origin, forKey: .origin)
+        try container.encodeIfPresent(barcodeSource, forKey: .barcodeSource)
         try container.encode(items, forKey: .items)
         try container.encodeIfPresent(volumeMl, forKey: .volumeMl)
         try container.encodeIfPresent(maxHeightMm, forKey: .maxHeightMm)

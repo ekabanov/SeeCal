@@ -1,8 +1,8 @@
 # Third-party license audit
 
 This repository's own code is MIT-licensed (see `LICENSE`). It depends on the
-following third-party projects, models, and datasets. None of them are
-vendored or redistributed in this repo — Python packages come from PyPI via
+following third-party projects, models, datasets, and data services. Code
+dependencies are not vendored in this repo — Python packages come from PyPI via
 `ml/setup.sh`, Swift packages are resolved by SwiftPM from the URLs in
 `ios/SeeCal/Package.swift`, and the model/dataset are downloaded by the user.
 
@@ -44,6 +44,19 @@ entry); nothing to audit there.
 |---|---|---|
 | [XcodeGen](https://github.com/yonaskolb/XcodeGen) | MIT | generates `ios/App/SeeCal.xcodeproj` at build time (`scripts/build.sh`); not committed, not a runtime dependency |
 
+## Runtime data service
+
+| Service | License / terms | Use and attribution |
+|---|---|---|
+| [Open Food Facts](https://world.openfoodfacts.org) product API | Database: [Open Database License 1.0 (ODbL)](https://opendatacommons.org/licenses/odbl/1-0/); individual database contents: Database Contents License; product images: CC BY-SA (SeeCal does not request or display them) | Barcode lookup requests only product name, serving, ingredients text and nutrition. Responses are cached locally and the selected package-label values are snapshotted into the user's private meal log. The Settings data-sources card and each barcode result attribute Open Food Facts and link its [terms of use](https://world.openfoodfacts.org/terms-of-use). |
+
+The product database is community-contributed and carries no assurance of
+accuracy, completeness, or reliability. SeeCal therefore keeps all imported
+nutrition editable, preserves its Open Food Facts provenance, and treats missing
+required nutrition as incomplete instead of inventing zero values.
+
+Checked 2026-07-28 against the Open Food Facts API and license documentation.
+
 ## Model and dataset (not code, not redistributed)
 
 | Asset | License | Notes |
@@ -54,7 +67,8 @@ entry); nothing to audit there.
 
 ## Summary
 
-No copyleft (GPL/AGPL/LGPL) dependencies found anywhere in the stack. Every
-direct and transitive dependency checked is MIT or Apache-2.0, except
-PyTorch's own custom BSD-style license (permissive, non-copyleft). Nothing
-here restricts the MIT license on this repository's own code.
+No copyleft (GPL/AGPL/LGPL) code dependencies were found anywhere in the stack.
+Every direct and transitive code dependency checked is MIT or Apache-2.0,
+except PyTorch's own custom BSD-style license (permissive, non-copyleft).
+Open Food Facts runtime data remains subject to its separate ODbL/DbCL terms;
+those terms do not relicense this repository's own MIT-licensed code.

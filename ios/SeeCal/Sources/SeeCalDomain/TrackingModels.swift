@@ -18,17 +18,55 @@ public struct MealItemBase: Codable, Equatable, Sendable {
     }
 }
 
-/// The immutable model-produced value used by reset actions. Manual ingredients
-/// have no estimate.
-public struct MealItemEstimate: Codable, Equatable, Sendable {
+/// The quantity unit for an ingredient. Nutrition values still use grams for
+/// protein/fat/carbohydrates; this unit describes the amount consumed.
+public enum MealAmountUnit: String, Codable, CaseIterable, Sendable {
+    case grams = "g"
+    case milliliters = "ml"
+
+    public var symbol: String { rawValue }
+}
+
+/// Where an immutable nutrition reference came from. This lets reset actions
+/// restore either the on-device model estimate or an imported package label
+/// without pretending both sources are equivalent.
+public enum MealItemReferenceSource: String, Codable, Sendable {
+    case model
+    case barcode
+}
+
+/// The immutable source value used by reset actions. Manual ingredients have no
+/// reference.
+public struct MealItemReference: Codable, Equatable, Sendable {
     public let name: String
     public let base: MealItemBase
+    public let source: MealItemReferenceSource
 
-    public init(name: String, base: MealItemBase) {
+    public init(
+        name: String,
+        base: MealItemBase,
+        source: MealItemReferenceSource = .model
+    ) {
         self.name = name
         self.base = base
+        self.source = source
+    }
+
+    private enum CodingKeys: String, CodingKey {
+        case name, base, source
+    }
+
+    public init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        name = try container.decode(String.self, forKey: .name)
+        base = try container.decode(MealItemBase.self, forKey: .base)
+        source = try container.decodeIfPresent(MealItemReferenceSource.self, forKey: .source) ?? .model
     }
 }
+
+/// Source-compatible name for callers compiled against the editable-nutrition
+/// schema. New code should use `MealItemReference`.
+public typealias MealItemEstimate = MealItemReference
 
 public enum MealNutritionField: String, Codable, CaseIterable, Sendable {
     case kcal
@@ -48,33 +86,67 @@ public struct MealItem: Codable, Equatable, Sendable, Identifiable {
     public var id: UUID
     public var name: String
     public var grams: Double
+    public let amountUnit: MealAmountUnit
     public var base: MealItemBase
-    public let modelEstimate: MealItemEstimate?
+    public let sourceReference: MealItemReference?
+
+    /// Compatibility accessor for the pre-barcode API. It intentionally returns
+    /// any source reference; callers that need to distinguish model from barcode
+    /// should use `sourceReference.source`.
+    public var modelEstimate: MealItemReference? { sourceReference }
 
     /// Model-backed initializer retained for source compatibility. The supplied
     /// name/base become both the current basis and immutable reset estimate.
-    public init(id: UUID = UUID(), name: String, grams: Double, base: MealItemBase) {
-        self.id = id
-        self.name = name
-        self.grams = grams
-        self.base = base
-        self.modelEstimate = MealItemEstimate(name: name, base: base)
-    }
-
-    /// Explicit initializer used when preserving an existing estimate or creating
-    /// a manual item (`modelEstimate: nil`).
     public init(
         id: UUID = UUID(),
         name: String,
         grams: Double,
-        base: MealItemBase,
-        modelEstimate: MealItemEstimate?
+        amountUnit: MealAmountUnit = .grams,
+        base: MealItemBase
     ) {
         self.id = id
         self.name = name
         self.grams = grams
+        self.amountUnit = amountUnit
         self.base = base
-        self.modelEstimate = modelEstimate
+        self.sourceReference = MealItemReference(name: name, base: base)
+    }
+
+    /// Explicit source-neutral initializer used for model/barcode-backed items or
+    /// manual items (`sourceReference: nil`).
+    public init(
+        id: UUID = UUID(),
+        name: String,
+        grams: Double,
+        amountUnit: MealAmountUnit = .grams,
+        base: MealItemBase,
+        sourceReference: MealItemReference?
+    ) {
+        self.id = id
+        self.name = name
+        self.grams = grams
+        self.amountUnit = amountUnit
+        self.base = base
+        self.sourceReference = sourceReference
+    }
+
+    /// Compatibility initializer for the pre-barcode editable-nutrition API.
+    public init(
+        id: UUID = UUID(),
+        name: String,
+        grams: Double,
+        amountUnit: MealAmountUnit = .grams,
+        base: MealItemBase,
+        modelEstimate: MealItemEstimate?
+    ) {
+        self.init(
+            id: id,
+            name: name,
+            grams: grams,
+            amountUnit: amountUnit,
+            base: base,
+            sourceReference: modelEstimate
+        )
     }
 
     /// Linear rescale factor relative to the base measurement (spec §2).
@@ -93,11 +165,11 @@ public struct MealItem: Codable, Equatable, Sendable, Identifiable {
     }
 
     public var isManual: Bool {
-        modelEstimate == nil
+        sourceReference == nil
     }
 
     public var isEdited: Bool {
-        guard let estimate = modelEstimate else { return true }
+        guard let estimate = sourceReference else { return true }
         return name != estimate.name
             || !Self.nearlyEqual(grams, estimate.base.grams)
             || !Self.sameDensity(base, estimate.base, field: .kcal)
@@ -141,26 +213,26 @@ public struct MealItem: Codable, Equatable, Sendable, Identifiable {
     }
 
     public mutating func resetNameToEstimate() {
-        guard let estimate = modelEstimate else { return }
+        guard let estimate = sourceReference else { return }
         name = estimate.name
     }
 
     /// Resetting grams preserves all current densities, including corrections.
     public mutating func resetGramsToEstimate() {
-        guard let estimate = modelEstimate else { return }
+        guard let estimate = sourceReference else { return }
         grams = Self.clampedGrams(estimate.base.grams)
     }
 
     /// Restores one model density evaluated at the current grams.
     public mutating func resetNutritionToEstimate(_ field: MealNutritionField) {
-        guard let estimate = modelEstimate else { return }
+        guard let estimate = sourceReference else { return }
         let modelValue = Self.value(in: estimate.base, field: field)
         let modelDensity = estimate.base.grams == 0 ? 0 : modelValue / estimate.base.grams
         setCurrentValue(modelDensity * grams, for: field)
     }
 
     public mutating func resetToEstimate() {
-        guard let estimate = modelEstimate else { return }
+        guard let estimate = sourceReference else { return }
         name = estimate.name
         grams = Self.clampedGrams(estimate.base.grams)
         base = estimate.base
@@ -190,7 +262,7 @@ public struct MealItem: Codable, Equatable, Sendable, Identifiable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case id, name, grams, base, modelEstimate
+        case id, name, grams, amountUnit, base, sourceReference, modelEstimate
     }
 
     public init(from decoder: Decoder) throws {
@@ -198,13 +270,16 @@ public struct MealItem: Codable, Equatable, Sendable, Identifiable {
         id = try container.decodeIfPresent(UUID.self, forKey: .id) ?? UUID()
         name = try container.decode(String.self, forKey: .name)
         grams = try container.decode(Double.self, forKey: .grams)
+        amountUnit = try container.decodeIfPresent(MealAmountUnit.self, forKey: .amountUnit) ?? .grams
         base = try container.decode(MealItemBase.self, forKey: .base)
 
-        if container.contains(.modelEstimate) {
-            modelEstimate = try container.decodeIfPresent(MealItemEstimate.self, forKey: .modelEstimate)
+        if container.contains(.sourceReference) {
+            sourceReference = try container.decodeIfPresent(MealItemReference.self, forKey: .sourceReference)
+        } else if container.contains(.modelEstimate) {
+            sourceReference = try container.decodeIfPresent(MealItemReference.self, forKey: .modelEstimate)
         } else {
             // Pre-editable schema: `base` was the immutable model estimate.
-            modelEstimate = MealItemEstimate(name: name, base: base)
+            sourceReference = MealItemReference(name: name, base: base)
         }
     }
 
@@ -213,10 +288,11 @@ public struct MealItem: Codable, Equatable, Sendable, Identifiable {
         try container.encode(id, forKey: .id)
         try container.encode(name, forKey: .name)
         try container.encode(grams, forKey: .grams)
+        try container.encode(amountUnit, forKey: .amountUnit)
         try container.encode(base, forKey: .base)
         // Encode explicit null for manual items so decoding can distinguish them
         // from old JSON where the key did not exist.
-        try container.encode(modelEstimate, forKey: .modelEstimate)
+        try container.encode(sourceReference, forKey: .sourceReference)
     }
 }
 

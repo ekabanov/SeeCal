@@ -61,6 +61,10 @@ public final class AVFoundationCaptureService: CaptureService {
         motion.gravityStream()
     }
 
+    public func barcodeUpdates() -> AsyncStream<DetectedBarcode> {
+        camera.barcodeStream()
+    }
+
     public func makePreviewView() -> AnyView {
         AnyView(CameraPreviewView(session: camera.session).ignoresSafeArea())
     }
@@ -71,7 +75,7 @@ public final class AVFoundationCaptureService: CaptureService {
 /// Owns the capture session and photo output; all mutation happens on its own
 /// serial queue (AVFoundation requirement — never block the main thread on
 /// `startRunning`). `@unchecked Sendable` because the queue is the isolation.
-private final class CameraSessionBox: NSObject, AVCapturePhotoCaptureDelegate, @unchecked Sendable {
+private final class CameraSessionBox: NSObject, AVCapturePhotoCaptureDelegate, AVCaptureMetadataOutputObjectsDelegate, @unchecked Sendable {
     let session = AVCaptureSession()
 
     /// Watchdog for a single photo capture. A healthy capture completes in well
@@ -82,6 +86,8 @@ private final class CameraSessionBox: NSObject, AVCapturePhotoCaptureDelegate, @
 
     private let queue = DispatchQueue(label: "seecal.camera.session")
     private let output = AVCapturePhotoOutput()
+    private let metadataOutput = AVCaptureMetadataOutput()
+    private let barcodeStreams = BarcodeStreamRegistry()
     private var configured = false
     private var configurationError: Error?
     /// Queue-isolated; see `PendingCaptureRegistry` for the exactly-once contract.
@@ -170,13 +176,17 @@ private final class CameraSessionBox: NSObject, AVCapturePhotoCaptureDelegate, @
             let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back),
             let input = try? AVCaptureDeviceInput(device: device),
             session.canAddInput(input),
-            session.canAddOutput(output)
+            session.canAddOutput(output),
+            session.canAddOutput(metadataOutput)
         else {
             configurationError = CaptureServiceError.cameraUnavailable
             return
         }
         session.addInput(input)
         session.addOutput(output)
+        session.addOutput(metadataOutput)
+        metadataOutput.setMetadataObjectsDelegate(self, queue: queue)
+        metadataOutput.metadataObjectTypes = [.ean8, .ean13, .upce, .code128]
         succeeded = true
     }
 
@@ -216,6 +226,64 @@ private final class CameraSessionBox: NSObject, AVCapturePhotoCaptureDelegate, @
                 completion(.failure(CaptureServiceError.captureFailed("no image data produced")))
             }
         }
+    }
+
+    func barcodeStream() -> AsyncStream<DetectedBarcode> {
+        barcodeStreams.stream()
+    }
+
+    func metadataOutput(
+        _ output: AVCaptureMetadataOutput,
+        didOutput metadataObjects: [AVMetadataObject],
+        from connection: AVCaptureConnection
+    ) {
+        guard let code = metadataObjects
+            .compactMap({ $0 as? AVMetadataMachineReadableCodeObject })
+            .first,
+              let value = code.stringValue
+        else { return }
+
+        let symbology: BarcodeSymbology
+        switch code.type {
+        case .ean8: symbology = .ean8
+        case .ean13: symbology = .ean13
+        case .upce: symbology = .upce
+        case .code128: symbology = .code128
+        default: symbology = .unknown
+        }
+        barcodeStreams.yield(DetectedBarcode(value: value, symbology: symbology))
+    }
+}
+
+private final class BarcodeStreamRegistry: @unchecked Sendable {
+    private let lock = NSLock()
+    private var continuations: [UUID: AsyncStream<DetectedBarcode>.Continuation] = [:]
+
+    func stream() -> AsyncStream<DetectedBarcode> {
+        let id = UUID()
+        return AsyncStream { continuation in
+            lock.lock()
+            continuations[id] = continuation
+            lock.unlock()
+            continuation.onTermination = { [weak self] _ in
+                self?.remove(id)
+            }
+        }
+    }
+
+    func yield(_ barcode: DetectedBarcode) {
+        lock.lock()
+        let current = Array(continuations.values)
+        lock.unlock()
+        for continuation in current {
+            continuation.yield(barcode)
+        }
+    }
+
+    private func remove(_ id: UUID) {
+        lock.lock()
+        continuations[id] = nil
+        lock.unlock()
     }
 }
 

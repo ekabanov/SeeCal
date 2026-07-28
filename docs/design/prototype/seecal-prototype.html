@@ -241,13 +241,34 @@
   .level.off .bubble{background:#f28c3b}
   .vf-bottom{
     position:absolute; bottom:0; left:0; right:0; z-index:6;
-    display:flex; flex-direction:column; align-items:center; gap:14px; padding-bottom:34px;
+    display:flex; flex-direction:column; align-items:center; gap:12px; padding-bottom:30px;
     background:linear-gradient(transparent, rgba(0,0,0,.55));
     padding-top:40px;
   }
   .hint{color:#e6e9e5; font-size:13px; font-weight:600; text-shadow:0 1px 6px rgba(0,0,0,.5)}
+  .vf-controls{
+    width:100%; display:grid; grid-template-columns:1fr 82px 1fr; align-items:center;
+    padding:0 24px; box-sizing:border-box;
+  }
+  .vf-action{
+    all:unset; cursor:pointer; justify-self:start; display:flex; flex-direction:column;
+    align-items:center; gap:5px; color:#f4f6f3; font-size:10.5px; font-weight:700;
+    text-shadow:0 1px 6px rgba(0,0,0,.65);
+  }
+  .vf-action .ic,.barcode-auto .ic{
+    width:42px; height:42px; border-radius:50%; display:flex; align-items:center;
+    justify-content:center; background:rgba(10,12,10,.72); backdrop-filter:blur(8px);
+    border:1px solid rgba(255,255,255,.18);
+  }
+  .vf-action:focus-visible .ic{outline:3px solid var(--basil); outline-offset:2px}
+  .barcode-auto{
+    justify-self:end; display:flex; flex-direction:column; align-items:center; gap:5px;
+    color:#d9ded9; font-size:10.5px; font-weight:700; text-align:center;
+    text-shadow:0 1px 6px rgba(0,0,0,.65);
+  }
+  .barcode-auto .ic{color:#8ce5b7}
   .shutter{
-    all:unset; cursor:pointer; width:74px; height:74px; border-radius:50%;
+    all:unset; cursor:pointer; width:74px; height:74px; border-radius:50%; justify-self:center;
     border:4px solid var(--shutter-ring); display:flex; align-items:center; justify-content:center;
   }
   .shutter i{width:58px; height:58px; border-radius:50%; background:#fff; transition:transform .1s}
@@ -258,6 +279,66 @@
     width:34px; height:34px; border-radius:50%; background:rgba(10,12,10,.6);
     color:#e8ebe7; display:flex; align-items:center; justify-content:center; font-size:16px;
   }
+  .barcode-target{
+    position:absolute; left:91px; right:91px; top:315px; height:104px; z-index:5;
+    border:2px solid #5ee0a0; border-radius:13px; opacity:0; transform:scale(.96);
+    box-shadow:0 0 0 999px rgba(0,0,0,.08), 0 0 18px rgba(79,211,148,.38);
+    transition:opacity .22s, transform .22s; pointer-events:none;
+  }
+  .barcode-target::before{
+    content:"Barcode detected"; position:absolute; left:50%; top:-29px; transform:translateX(-50%);
+    padding:5px 9px; border-radius:999px; white-space:nowrap; background:#183c2a;
+    color:#8ce5b7; font-size:10.5px; font-weight:800; letter-spacing:.03em;
+  }
+  .barcode-package{
+    position:absolute; left:111px; top:300px; width:192px; height:136px; z-index:3;
+    border-radius:12px; background:linear-gradient(135deg,#e9e1ca,#cfc3a2);
+    box-shadow:0 12px 28px rgba(0,0,0,.35); opacity:0; transform:rotate(-4deg);
+    transition:opacity .2s;
+  }
+  .barcode-package::before{
+    content:"OAT\A DRINK"; white-space:pre; position:absolute; left:15px; top:16px;
+    color:#33443a; font-size:19px; line-height:.95; font-weight:850; letter-spacing:.03em;
+  }
+  .barcode-lines{
+    position:absolute; left:50px; right:16px; bottom:18px; height:38px;
+    background:repeating-linear-gradient(90deg,#111 0 2px,transparent 2px 4px,#111 4px 5px,transparent 5px 8px);
+  }
+  .barcode-card{
+    display:none; width:calc(100% - 32px); box-sizing:border-box; padding:12px 13px;
+    border-radius:16px; color:var(--app-ink); background:var(--app-card);
+    box-shadow:0 12px 30px rgba(0,0,0,.35); text-shadow:none;
+  }
+  .barcode-card .bc-head{display:flex; align-items:flex-start; gap:10px}
+  .barcode-card .bc-icon{
+    width:34px; height:34px; border-radius:10px; display:flex; align-items:center;
+    justify-content:center; background:var(--basil-soft); color:var(--basil); flex:0 0 auto;
+  }
+  .barcode-card .bc-copy{flex:1; min-width:0}
+  .barcode-card .bc-title{font-size:14px; font-weight:750}
+  .barcode-card .bc-sub{font-size:11px; color:var(--app-ink-2); margin-top:2px}
+  .barcode-card .bc-provider{font-size:9.5px; color:var(--app-ink-2); margin-top:4px}
+  .barcode-card .bc-amount{display:flex; align-items:center; gap:8px; margin-top:10px}
+  .barcode-card label{font-size:11.5px; font-weight:700; color:var(--app-ink-2)}
+  .barcode-card input{
+    width:72px; min-width:0; padding:8px 9px; border:1px solid var(--app-line);
+    border-radius:10px; background:var(--app-bg); color:var(--app-ink);
+    font:700 14px/1 -apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif;
+    text-align:right; font-variant-numeric:tabular-nums;
+  }
+  .barcode-card .bc-unit{font-size:11px; font-weight:700; color:var(--app-ink-2)}
+  .barcode-card .bc-review{
+    all:unset; cursor:pointer; margin-left:auto; padding:9px 13px; border-radius:10px;
+    background:var(--basil); color:#fff; font-size:12px; font-weight:800;
+  }
+  .camera.barcode-found .plate,.camera.barcode-found .level{opacity:0}
+  .camera.barcode-found .barcode-package,
+  .camera.barcode-found .barcode-target{opacity:1; transform:scale(1) rotate(-4deg)}
+  .camera.barcode-found .barcode-target{transform:scale(1)}
+  .camera.barcode-found .barcode-card{display:block}
+  .camera.barcode-found .hint{display:none}
+  .camera.barcode-found .vf-top{display:none}
+  .camera.barcode-found .vf-bottom{padding-top:22px}
 
   /* ---------- Analyzing ---------- */
   .scr.analyzing{padding-top:80px; background:var(--app-bg)}
@@ -317,6 +398,16 @@
   .result-head{display:flex; gap:14px; align-items:center; padding:8px 0 4px}
   .result-head .thumb{width:64px; height:64px; border-radius:16px; overflow:hidden; background:#262420; flex:0 0 auto}
   .result-head .thumb svg{width:100%; height:100%}
+  .result-head .thumb.manual,.result-head .thumb.barcode{
+    display:flex; align-items:center; justify-content:center; color:var(--basil);
+    background:var(--basil-soft); font-size:25px; font-weight:750;
+  }
+  .result-head .thumb.manual svg,.result-head .thumb.barcode svg{display:none}
+  .result-head .thumb.manual::after{content:"＋"}
+  .result-head .thumb.barcode::after{
+    content:""; width:31px; height:29px;
+    background:repeating-linear-gradient(90deg,currentColor 0 2px,transparent 2px 4px,currentColor 4px 5px,transparent 5px 8px);
+  }
   .result-head .title-wrap{flex:1; min-width:0; position:relative}
   .meal-title-input{
     display:block; width:100%; border:0; border-bottom:1px solid transparent; outline:0;
@@ -619,6 +710,20 @@
     font-size:10px; font-weight:800; letter-spacing:.06em; padding:3px 7px; border-radius:6px;
     background:var(--basil-soft); color:var(--basil); text-transform:uppercase;
   }
+  .sourcecard a{color:inherit; text-decoration:none}
+  .sourcecard .sourcehead{display:flex; align-items:center; gap:10px}
+  .sourcecard .sourceicon{
+    width:34px;height:34px;border-radius:10px;background:var(--basil-soft);
+    color:var(--basil);display:grid;place-items:center;font-size:18px;font-weight:800
+  }
+  .sourcecard .sourcecopy{flex:1}
+  .sourcecard .sourcecopy b{display:block;font-size:15px}
+  .sourcecard .sourcecopy small{display:block;color:var(--app-ink-2);font-size:12px;margin-top:1px}
+  .sourcecard .sourcelegal{
+    border-top:1px solid var(--app-line);margin-top:10px;padding-top:10px;
+    color:var(--app-ink-2);font-size:12.5px;line-height:1.45
+  }
+  .sourcecard .sourcelink{display:inline-block;color:var(--basil);font-weight:750;margin-top:8px;font-size:12.5px}
 
   /* ---------- responsive ---------- */
   @media (max-width:820px){
@@ -639,11 +744,12 @@
     <div>
       <div class="eyebrow">Interactive prototype · iOS 26</div>
       <h1>SeeCal</h1>
-      <p class="lede">Point your iPhone at a meal — an on-device vision model estimates calories, macros and portions. Nothing leaves the phone.</p>
+      <p class="lede">Photograph a meal, scan a package barcode, or enter nutrition manually. Meal photos stay on this iPhone; barcode lookup contacts Open Food Facts.</p>
     </div>
     <nav class="screenmap" aria-label="Screens">
       <button data-jump="today"    class="on"><span class="k">01</span>Today</button>
       <button data-jump="camera">  <span class="k">02</span>Scan — depth-guided capture</button>
+      <button data-jump="barcode"> <span class="k">02B</span>Scan — barcode detected</button>
       <button data-jump="analyzing"><span class="k">03</span>Analyzing — on-device wait</button>
       <button data-jump="result">  <span class="k">04</span>Result — correct &amp; log</button>
       <button data-jump="history"> <span class="k">05</span>History</button>
@@ -653,6 +759,7 @@
     <div class="decisions">
       <div class="d"><b>The wait is designed, not hidden</b>Inference takes 15–30 s on device. The analyzing screen narrates real pipeline stages and surfaces the depth measurement early, so waiting feels like work being done.</div>
       <div class="d"><b>Capture is coached</b>Portion accuracy depends on a 35–45 cm top-down shot. Distance and level are shown live; the shutter is never blocked — guidance, not gating.</div>
+      <div class="d"><b>One camera, three entry paths</b>Scan still opens the camera immediately. The same view detects package barcodes automatically and keeps manual entry one tap away without slowing photo capture.</div>
       <div class="d"><b>Output is a draft</b>Meal names, ingredients, amounts, calories and macros are editable. Corrected nutrition becomes the new density and continues to scale with grams.</div>
       <div class="d"><b>Totals stay trustworthy</b>Meal totals always equal the sum of its ingredients. Items can be added, removed with Undo, or reset to the model estimate.</div>
     </div>
@@ -705,7 +812,7 @@
             <div class="card mealcard" id="mealList"></div>
             <div class="privchip">
               <svg width="18" height="18" viewBox="0 0 18 18" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3.5" y="7.5" width="11" height="8" rx="2"/><path d="M6 7.5V5.8a3 3 0 0 1 6 0v1.7"/></svg>
-              Analyzed entirely on this iPhone.
+              Meal photos stay on this iPhone. Barcode lookup sends only the numeric code to Open Food Facts.
             </div>
           </section>
 
@@ -753,6 +860,8 @@
                   </g>
                 </g>
               </svg>
+              <div class="barcode-package" aria-hidden="true"><div class="barcode-lines"></div></div>
+              <div class="barcode-target" aria-hidden="true"></div>
               <div class="level off" id="level"><div class="bubble" id="bubble"></div></div>
               <div class="vf-top">
                 <div class="distchip" id="distChip"><span class="dot"></span><span id="distTxt">52 cm — move closer</span></div>
@@ -760,8 +869,40 @@
               </div>
               <button class="vf-close" id="vfClose" aria-label="Close camera">✕</button>
               <div class="vf-bottom">
+                <div class="barcode-card" id="barcodeCard" role="status" aria-live="polite">
+                  <div class="bc-head">
+                    <div class="bc-icon" aria-hidden="true">
+                      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 4v12M6 4v12M9 4v12M13 4v12M15.5 4v12M18 4v12"/></svg>
+                    </div>
+                    <div class="bc-copy">
+                      <div class="bc-title">Oat drink · original</div>
+                      <div class="bc-sub">46 kcal · 1.0p · 1.5f · 6.7c per 100 ml</div>
+                      <div class="bc-provider">Barcode 7394376616501 · Open Food Facts</div>
+                    </div>
+                  </div>
+                  <div class="bc-amount">
+                    <label for="barcodeAmount">Consumed</label>
+                    <input id="barcodeAmount" type="number" min="1" step="1" value="250" inputmode="decimal">
+                    <span class="bc-unit">ml</span>
+                    <button class="bc-review" id="barcodeReviewBtn">Review</button>
+                  </div>
+                </div>
                 <div class="hint" id="vfHint">Hold flat over the plate</div>
-                <button class="shutter" id="shutter" aria-label="Capture photo"><i></i></button>
+                <div class="vf-controls">
+                  <button class="vf-action" id="manualEntryBtn" aria-label="Add a meal manually">
+                    <span class="ic" aria-hidden="true">
+                      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M4 20h4L19 9l-4-4L4 16v4Z"/><path d="m13.5 6.5 4 4M5 13H3v8h8v-2"/></svg>
+                    </span>
+                    Manual
+                  </button>
+                  <button class="shutter" id="shutter" aria-label="Capture photo"><i></i></button>
+                  <div class="barcode-auto" aria-label="Barcode detection is automatic">
+                    <span class="ic" aria-hidden="true">
+                      <svg width="21" height="21" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 4v12M6 4v12M9 4v12M13 4v12M15.5 4v12M18 4v12"/></svg>
+                    </span>
+                    Barcode auto
+                  </div>
+                </div>
               </div>
             </div>
           </section>
@@ -944,6 +1085,16 @@
               <div class="mt">Qwen3.5-4B · SeeCal adapter v6 <span class="badge">on device</span></div>
               <div class="ms">4-bit quantized · fine-tuned on 5,000 measured meals.<br>Photos are processed locally and never uploaded.</div>
             </div>
+            <div class="sectionlabel">Data sources</div>
+            <div class="card sourcecard">
+              <a class="sourcehead" href="https://world.openfoodfacts.org" target="_blank" rel="noreferrer">
+                <span class="sourceicon" aria-hidden="true">▥</span>
+                <span class="sourcecopy"><b>Open Food Facts</b><small>Barcode product data</small></span>
+                <span aria-hidden="true">↗</span>
+              </a>
+              <div class="sourcelegal">Database licensed under ODbL. Product records are community-contributed and may be incomplete or inaccurate.</div>
+              <a class="sourcelink" href="https://world.openfoodfacts.org/terms-of-use" target="_blank" rel="noreferrer">License &amp; attribution</a>
+            </div>
           </section>
 
           <!-- shared food-shot symbol (photo stand-in) -->
@@ -981,14 +1132,14 @@
             <div class="sheet-panel active" id="summaryPanel">
               <div class="sheet-scroll">
                 <div class="result-head">
-                  <div class="thumb"><svg viewBox="35 2 172 172"><use href="#foodShot"/></svg></div>
+                  <div class="thumb" id="resultThumb"><svg viewBox="35 2 172 172"><use href="#foodShot"/></svg></div>
                   <div class="title-wrap">
                     <input class="meal-title-input" id="sheetTitleInput" value="Chicken, rice &amp; broccoli" aria-label="Meal name">
                     <svg class="title-pencil" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m3 11.5-.5 2 2-.5L12.8 4.7 11.3 3.2 3 11.5Z"/><path d="m10.6 3.9 1.5 1.5"/></svg>
                     <div class="meta" id="resultMeta">
-                      <span class="chip">
+                      <span class="chip" id="resultChip">
                         <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><path d="M5 0 6.2 3.4 9.8 3.6 7 5.9 7.9 9.4 5 7.4 2.1 9.4 3 5.9 0.2 3.6 3.8 3.4z"/></svg>
-                        depth-assisted
+                        <span id="resultChipText">depth-assisted</span>
                       </span>
                       <span id="resultVol">~412 ml · max height 41 mm</span>
                     </div>
@@ -1032,7 +1183,7 @@
                   <div class="field-row">
                     <label for="editGrams">Amount</label>
                     <input class="field-input" id="editGrams" type="number" min="1" step="1" inputmode="decimal" placeholder="0">
-                    <span class="field-unit">g</span>
+                    <span class="field-unit" id="editAmountUnit">g</span>
                     <button class="field-reset" data-reset-field="g" aria-label="Reset amount to estimate">↶</button>
                   </div>
                   <div class="field-row">
@@ -1100,7 +1251,7 @@
               <h3>Welcome to SeeCal</h3>
               <p>Point your camera at a meal — SeeCal estimates calories, macros and portions, entirely on this iPhone.</p>
               <p>A few details set your daily calorie goal. You can change everything later in Profile.</p>
-              <p class="ob-priv">Meals are analyzed on your iPhone — nothing is uploaded.</p>
+              <p class="ob-priv">Meal photos are analyzed on your iPhone and never uploaded. Barcode lookup sends only the numeric barcode to Open Food Facts.</p>
             </div>
 
             <div class="ob-step">
@@ -1265,18 +1416,19 @@
   /* ---------- navigation ---------- */
   var screens = ["today","camera","analyzing","history","profile","settings"];
   function show(name){
+    var actualName = name==="barcode" ? "camera" : name;
     screens.forEach(function(s){
       var el = $("scr-"+s);
-      if (el) el.classList.toggle("active", s===name);
+      if (el) el.classList.toggle("active", s===actualName);
     });
     document.querySelectorAll(".tab").forEach(function(t){
-      t.classList.toggle("on", t.dataset.tab===name);
+      t.classList.toggle("on", t.dataset.tab===actualName);
     });
     document.querySelectorAll(".screenmap button").forEach(function(b){
       b.classList.toggle("on", b.dataset.jump===name || (b.dataset.jump==="result" && name==="__result"));
     });
-    document.querySelector(".tabbar").classList.toggle("hidden", name==="camera");
-    if (name==="camera") startCamera(); else stopCamera();
+    document.querySelector(".tabbar").classList.toggle("hidden", actualName==="camera");
+    if (actualName==="camera") startCamera(name==="barcode"); else stopCamera();
     // Leaving the analyzing screen does NOT cancel the analysis — on-device
     // inference is expensive; it finishes in the background and surfaces as
     // a "ready" banner. Nothing is ever logged without explicit confirmation.
@@ -1338,7 +1490,12 @@
 
   /* ---------- Camera simulation ---------- */
   var camTimer = null, camT = 0;
-  function startCamera(){
+  function startCamera(barcodeFound){
+    $("scr-camera").classList.toggle("barcode-found", !!barcodeFound);
+    if (barcodeFound){
+      stopCamera();
+      return;
+    }
     if (reduced){
       $("distTxt").textContent = "38 cm · in range"; $("distChip").classList.add("ok");
       $("level").classList.remove("off"); $("bubble").style.transform = "translate(-50%,-50%)";
@@ -1364,6 +1521,8 @@
   }
   function stopCamera(){ if (camTimer){ clearInterval(camTimer); camTimer = null; } }
   $("shutter").addEventListener("click", function(){ show("analyzing"); runAnalyze(); markRail("analyzing"); });
+  $("manualEntryBtn").addEventListener("click", openManualMeal);
+  $("barcodeReviewBtn").addEventListener("click", openBarcodeMeal);
   $("vfClose").addEventListener("click", function(){ show("today"); });
 
   /* ---------- Analyze simulation ---------- */
@@ -1439,7 +1598,7 @@
   // `density` is nutrition per gram. A correction updates that density, so
   // future gram changes continue to scale the corrected value. `model` keeps
   // the immutable original estimate for per-field and whole-item reset.
-  var draft = null; // {title, vol, h, items, mealIdx|null}
+  var draft = null; // {title, origin:"photo"|"manual"|"barcode", vol, h, items, mealIdx|null}
   var itemEditor = null;
   var itemUndo = null;
   var itemUndoTimer = null;
@@ -1449,10 +1608,11 @@
       return {
         name:it.name,
         g:it.g,
+        unit:it.unit||"g",
         density:{kcal:it.density.kcal, p:it.density.p, f:it.density.f, c:it.density.c},
         model:it.model ? {
           name:it.model.name, g:it.model.g, kcal:it.model.kcal,
-          p:it.model.p, f:it.model.f, c:it.model.c
+          p:it.model.p, f:it.model.f, c:it.model.c, source:it.model.source||"model"
         } : null
       };
     }
@@ -1460,8 +1620,9 @@
     return {
       name:it.name,
       g:it.g,
+      unit:it.unit||"g",
       density:{kcal:b.kcal/b.g, p:b.p/b.g, f:b.f/b.g, c:b.c/b.g},
-      model:{name:it.name, g:b.g, kcal:b.kcal, p:b.p, f:b.f, c:b.c}
+      model:{name:it.name, g:b.g, kcal:b.kcal, p:b.p, f:b.f, c:b.c, source:"model"}
     };
   }
   function cloneItem(it){ return normalizeItem(normalizeItem(it)); }
@@ -1494,13 +1655,14 @@
   function resetDraft(){
     var mock = SCAN_RESULTS[scanCount % SCAN_RESULTS.length];
     // deep-copy so logged meals keep their own item state
-    draft = {title:mock.title, vol:mock.vol, h:mock.h, mealIdx:null,
+    draft = {title:mock.title, origin:"photo", vol:mock.vol, h:mock.h, mealIdx:null,
              items:mock.items.map(normalizeItem)};
   }
   function openSheetForMeal(idx){
     var m = state.meals[idx];
     draft = {
       title:m.name,
+      origin:m.origin||"photo",
       vol:m.vol||null,
       h:m.h||null,
       mealIdx:idx,
@@ -1518,11 +1680,23 @@
   function renderSheet(){
     var editing = draft.mealIdx !== null;
     $("sheetTitleInput").value = draft.title;
-    $("resultMeta").style.display = draft.vol ? "" : "none";
-    if (draft.vol) $("resultVol").textContent = "~"+draft.vol+" ml · max height "+draft.h+" mm";
+    $("resultThumb").className = "thumb"+(draft.origin==="manual" ? " manual" : (draft.origin==="barcode" ? " barcode" : ""));
+    if (draft.origin==="barcode"){
+      $("resultMeta").style.display = "";
+      $("resultChipText").textContent = "package label";
+      $("resultVol").textContent = "Open Food Facts · barcode 7394376616501";
+    } else if (draft.vol){
+      $("resultMeta").style.display = "";
+      $("resultChipText").textContent = "depth-assisted";
+      $("resultVol").textContent = "~"+draft.vol+" ml · max height "+draft.h+" mm";
+    } else {
+      $("resultMeta").style.display = "none";
+    }
     $("logBtn").textContent = editing ? "Save changes" : "Log meal";
     $("discardBtn").textContent = editing ? "Cancel" : "Discard";
-    $("itemsLabel").textContent = editing ? "Ingredients — tap to edit" : "Detected items — tap to edit";
+    $("itemsLabel").textContent = editing
+      ? "Ingredients — tap to edit"
+      : (draft.origin==="photo" ? "Detected items — tap to edit" : "Ingredients — tap to edit");
     $("deleteMealBtn").style.display = editing ? "" : "none";
     var rows = $("itemRows"); rows.innerHTML = "";
     draft.items.forEach(function(it, idx){
@@ -1542,7 +1716,7 @@
         row.querySelector(".t").appendChild(chip);
       }
       row.querySelector(".s").textContent =
-        Math.round(it.g)+" g · "+s.p.toFixed(1)+"p · "+s.f.toFixed(1)+"f · "+s.c.toFixed(1)+"c";
+        Math.round(it.g)+" "+(it.unit||"g")+" · "+s.p.toFixed(1)+"p · "+s.f.toFixed(1)+"f · "+s.c.toFixed(1)+"c";
       row.addEventListener("click", function(){ openItemEditor(idx); });
       rows.appendChild(row);
     });
@@ -1588,7 +1762,9 @@
     var existing = itemEditor.index !== null;
     var hasModel = !!itemEditor.model;
     $("itemEditorTitle").textContent = existing ? "Edit ingredient" : "Add ingredient";
-    $("editorSource").textContent = hasModel ? "Model estimate" : "Added manually";
+    var isBarcode = hasModel && itemEditor.model.source==="barcode";
+    $("editorSource").textContent = isBarcode ? "Package label" : (hasModel ? "Model estimate" : "Added manually");
+    $("editAmountUnit").textContent = itemEditor.unit||"g";
     $("editName").value = itemEditor.name;
     setEditorInput("editGrams", itemEditor.g, 0);
     setEditorInput("editKcal", itemEditor.values.kcal, 0);
@@ -1599,6 +1775,7 @@
       b.style.visibility = hasModel ? "visible" : "hidden";
     });
     $("resetItemBtn").style.display = hasModel ? "" : "none";
+    $("resetItemBtn").textContent = isBarcode ? "Reset item to package label" : "Reset item to estimate";
     $("deleteItemBtn").style.display = existing ? "" : "none";
     updateEditorDone();
   }
@@ -1619,10 +1796,11 @@
       index:idx,
       name:it.name,
       g:it.g,
+      unit:it.unit||"g",
       values:{kcal:s.kcal, p:s.p, f:s.f, c:s.c},
       model:it.model ? {
         name:it.model.name, g:it.model.g, kcal:it.model.kcal,
-        p:it.model.p, f:it.model.f, c:it.model.c
+        p:it.model.p, f:it.model.f, c:it.model.c, source:it.model.source||"model"
       } : null
     };
     $("summaryPanel").classList.remove("active");
@@ -1635,6 +1813,7 @@
       index:null,
       name:"",
       g:null,
+      unit:"g",
       values:{kcal:null,p:null,f:null,c:null},
       model:null
     };
@@ -1642,6 +1821,52 @@
     $("itemEditorPanel").classList.add("active");
     renderItemEditor();
     $("editName").focus();
+  }
+  function openManualMeal(){
+    draft = {
+      title:"Manual meal",
+      origin:"manual",
+      vol:null,
+      h:null,
+      mealIdx:null,
+      items:[]
+    };
+    openSheet();
+    openNewItemEditor();
+    markRail("result");
+  }
+  function openBarcodeMeal(){
+    var amount = Math.max(1, Math.round(Number($("barcodeAmount").value)||0));
+    var per100 = {kcal:46, p:1.0, f:1.5, c:6.7};
+    draft = {
+      title:"Oat drink · original",
+      origin:"barcode",
+      vol:null,
+      h:null,
+      mealIdx:null,
+      items:[normalizeItem({
+        name:"oat drink",
+        g:amount,
+        unit:"ml",
+        density:{
+          kcal:per100.kcal/100,
+          p:per100.p/100,
+          f:per100.f/100,
+          c:per100.c/100
+        },
+        model:{
+          name:"oat drink",
+          g:amount,
+          kcal:per100.kcal*amount/100,
+          p:per100.p*amount/100,
+          f:per100.f*amount/100,
+          c:per100.c*amount/100,
+          source:"barcode"
+        }
+      })]
+    };
+    openSheet();
+    markRail("result");
   }
   function cancelItemEditor(){
     itemEditor = null;
@@ -1659,6 +1884,7 @@
     var saved = {
       name:$("editName").value.trim(),
       g:grams,
+      unit:itemEditor.unit||"g",
       density:{
         kcal:Math.round(valueOrZero("editKcal"))/grams,
         p:valueOrZero("editProtein")/grams,
@@ -1794,7 +2020,7 @@
     if (draft.mealIdx === null){
       var now = new Date();
       state.meals.push({
-        name:draft.title.trim(), vol:draft.vol, h:draft.h,
+        name:draft.title.trim(), origin:draft.origin, vol:draft.vol, h:draft.h,
         time: String(now.getHours()).padStart(2,"0")+":"+String(now.getMinutes()).padStart(2,"0"),
         kcal:tot.kcal, p:tot.p, f:tot.f, c:tot.c, items:draft.items.map(cloneItem)
       });

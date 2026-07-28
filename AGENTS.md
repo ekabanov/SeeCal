@@ -70,7 +70,7 @@ weights are not.
 
 ```bash
 cd ml && .venv/bin/python -m pytest tests/        # ml pipeline unit tests (41)
-cd ios/SeeCal && swift test -Xcxx -DFMT_CONSTEVAL= # Swift package tests (190; 1 env-gated skip)
+cd ios/SeeCal && swift test -Xcxx -DFMT_CONSTEVAL= # Swift package tests (205; 1 env-gated skip)
 scripts/test.sh                                    # both of the above + iOS build check
 scripts/test.sh --skip-build                       # skip the slow xcodebuild step
 scripts/build.sh --device                          # signed device build (bundles weights)
@@ -174,9 +174,15 @@ verified off a green `swift test`.
   E4B is 5.15 GB plain / 7.48 GB OptiQ, too big to bundle. Qwen3.5-4B stays.
   Fine-tuning, not base-model choice, does the heavy lifting.
 - **iOS app**: full product build-out complete against the prototype spec.
-  190 Swift (1 env-gated skip) + 41 ml tests green; `scripts/build.sh` /
+  205 Swift (1 env-gated skip) + 41 ml tests; `scripts/build.sh` /
   `scripts/test.sh` green;
   device build bundles v7b and verifies `seecal_adapter_version: v7b`.
+- Camera-first manual and barcode entry shipped (2026-07-28): Scan still opens
+  the viewfinder; Manual opens a photo-less editable draft, while EAN/UPC/Code
+  128 detection shares the photo capture session and resolves normalized GTINs
+  through a cached Open Food Facts v3 lookup. Package-label nutrition stays
+  source-backed and resettable; missing fields fall back to manual entry without
+  inventing zero values.
 - Editable nutrition shipped (2026-07-28): meal and ingredient names, grams,
   calories/macros, manual add, delete with Undo, model reset, corrected-density
   scaling, backward-compatible persistence, and confirmed logged-meal deletion

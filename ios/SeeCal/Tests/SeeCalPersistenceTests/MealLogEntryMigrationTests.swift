@@ -81,6 +81,8 @@ final class MealLogEntryMigrationTests: XCTestCase {
         let entry = try XCTUnwrap(all.first)
         XCTAssertEqual(entry.id, id)
         XCTAssertEqual(entry.mealType, .lunch)
+        XCTAssertEqual(entry.origin, .photo)
+        XCTAssertEqual(entry.imagePath, "/tmp/legacy.jpg")
 
         // Single synthetic item, named after the entry (mealType, the only naming
         // signal a legacy entry carries) since there was no top-level `name`.
