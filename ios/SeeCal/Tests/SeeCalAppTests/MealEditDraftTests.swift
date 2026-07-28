@@ -73,9 +73,9 @@ final class MealEditDraftTests: XCTestCase {
         XCTAssertEqual(rice.carbs, 30)
     }
 
-    // MARK: - Minimum-grams clamp (spec §2/§5: floor of 5 g)
+    // MARK: - Minimum-grams clamp (focused editor accepts positive whole grams)
 
-    func testStepGramsNeverDropsBelowFiveGramFloor() {
+    func testStepGramsNeverDropsBelowOneGramFloor() {
         var draft = MealEditDraft(scanResult: makeScanResult(), imagePath: "/tmp/a.jpg", mealType: .lunch)
         let riceID = draft.items[1].id
 
@@ -85,7 +85,7 @@ final class MealEditDraftTests: XCTestCase {
         }
 
         XCTAssertEqual(draft.items[1].grams, MealItem.minimumGrams)
-        XCTAssertEqual(draft.items[1].grams, 5)
+        XCTAssertEqual(draft.items[1].grams, 1)
     }
 
     func testSetGramsClampsDirectAssignmentBelowFloor() {
@@ -93,7 +93,7 @@ final class MealEditDraftTests: XCTestCase {
         let chickenID = draft.items[0].id
 
         draft.setGrams(itemID: chickenID, to: -20)
-        XCTAssertEqual(draft.items[0].grams, 5)
+        XCTAssertEqual(draft.items[0].grams, 1)
     }
 
     // MARK: - Totals derivation
@@ -145,6 +145,45 @@ final class MealEditDraftTests: XCTestCase {
         XCTAssertThrowsError(try draft.committedEntry()) { error in
             XCTAssertEqual(error as? MealEditDraftError, .noItems)
         }
+    }
+
+    func testCommitWithWhitespaceNameThrows() {
+        var draft = MealEditDraft(scanResult: makeScanResult(), imagePath: "/tmp/a.jpg", mealType: .lunch)
+        draft.name = "   "
+
+        XCTAssertThrowsError(try draft.committedEntry()) { error in
+            XCTAssertEqual(error as? MealEditDraftError, .emptyName)
+        }
+    }
+
+    func testAddRemoveRestoreAndReplaceItem() {
+        var draft = MealEditDraft(scanResult: makeScanResult(), imagePath: "/tmp/a.jpg", mealType: .lunch)
+        let manual = MealItem(
+            name: "olive oil",
+            grams: 10,
+            base: MealItemBase(grams: 10, kcal: 88, protein: 0, fat: 10, carbs: 0),
+            modelEstimate: nil
+        )
+        draft.addItem(manual)
+        XCTAssertEqual(draft.items.last, manual)
+
+        var edited = manual
+        edited.name = "extra virgin olive oil"
+        draft.replaceItem(edited)
+        XCTAssertEqual(draft.items.last?.name, "extra virgin olive oil")
+
+        let removed = draft.removeItem(id: edited.id)
+        XCTAssertEqual(removed?.index, 2)
+        XCTAssertEqual(draft.items.count, 2)
+
+        if let removed {
+            draft.restoreItem(removed.item, at: removed.index)
+        }
+        XCTAssertEqual(draft.items.map(\.id), [
+            draft.items[0].id,
+            draft.items[1].id,
+            edited.id
+        ])
     }
 
     // MARK: - Commit: edit mode -> updates the existing entry in place

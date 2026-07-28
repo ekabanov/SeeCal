@@ -14,25 +14,24 @@ private struct NoopRuntime: InferenceRuntime {
     }
 }
 
-/// Settings §8 (capture toggles + on-device model card) and History §6
+/// Settings §8 (capture coaching + on-device model card) and History §6
 /// (recent-meals filtering) behavior on `AppViewModel`.
 final class AppViewModelSettingsTests: XCTestCase {
     // MARK: - Capture preferences
 
     @MainActor
-    func testCapturePreferencesDefaultToBothOnBeforeAnyLoad() {
+    func testCaptureCoachingDefaultsOnBeforeAnyLoad() {
         let vm = AppViewModel(
             orchestrator: RuntimeOrchestrator(runtimes: [NoopRuntime()]),
             store: InMemoryMealLogStore()
         )
-        XCTAssertTrue(vm.capturePreferences.useLiDARDepth)
         XCTAssertTrue(vm.capturePreferences.captureCoachingEnabled)
     }
 
     @MainActor
     func testLoadEntriesPicksUpPersistedCapturePreferences() async {
         let preferencesStore = InMemoryUserPreferencesStore(
-            initialCapturePreferences: CapturePreferences(useLiDARDepth: false, captureCoachingEnabled: false)
+            initialCapturePreferences: CapturePreferences(captureCoachingEnabled: false)
         )
         let vm = AppViewModel(
             orchestrator: RuntimeOrchestrator(runtimes: [NoopRuntime()]),
@@ -42,7 +41,6 @@ final class AppViewModelSettingsTests: XCTestCase {
 
         await vm.loadEntries()
 
-        XCTAssertFalse(vm.capturePreferences.useLiDARDepth)
         XCTAssertFalse(vm.capturePreferences.captureCoachingEnabled)
     }
 
@@ -56,9 +54,8 @@ final class AppViewModelSettingsTests: XCTestCase {
         )
         await vm.loadEntries()
 
-        await vm.updateCapturePreferences(CapturePreferences(useLiDARDepth: false, captureCoachingEnabled: true))
-        XCTAssertFalse(vm.capturePreferences.useLiDARDepth)
-        XCTAssertTrue(vm.capturePreferences.captureCoachingEnabled)
+        await vm.updateCapturePreferences(CapturePreferences(captureCoachingEnabled: false))
+        XCTAssertFalse(vm.capturePreferences.captureCoachingEnabled)
 
         // A freshly-constructed view model backed by the SAME store sees the change.
         let reloaded = AppViewModel(
@@ -67,8 +64,7 @@ final class AppViewModelSettingsTests: XCTestCase {
             preferencesStore: preferencesStore
         )
         await reloaded.loadEntries()
-        XCTAssertFalse(reloaded.capturePreferences.useLiDARDepth)
-        XCTAssertTrue(reloaded.capturePreferences.captureCoachingEnabled)
+        XCTAssertFalse(reloaded.capturePreferences.captureCoachingEnabled)
     }
 
     // MARK: - Model info wiring (spec §8: read from bundled config, never hardcoded)

@@ -658,6 +658,40 @@ final class ScanFlowControllerTests: XCTestCase {
         XCTAssertNil(controller.toastMessage)
     }
 
+    @MainActor
+    func testDeleteEditedMealRemovesEntryAndPhotoAndReturnsToToday() async throws {
+        makeSUT()
+        let photoURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("seecal-sheet-delete-\(UUID().uuidString).jpg")
+        try Data([0xFF, 0xD8, 0xFF]).write(to: photoURL)
+        let entry = MealLogEntry(
+            mealType: .dinner,
+            imagePath: photoURL.path,
+            items: [
+                MealItem(
+                    name: "pasta",
+                    grams: 220,
+                    base: MealItemBase(grams: 220, kcal: 346, protein: 12.8, fat: 2, carbs: 68)
+                )
+            ]
+        )
+        try await store.save(entry)
+        await viewModel.loadEntries()
+        var switchedTo: AppTab?
+        controller.onRequestTabSwitch = { switchedTo = $0 }
+
+        controller.beginEdit(entry: entry)
+        let draft = try XCTUnwrap(controller.activeSheetDraft)
+        await controller.deleteMeal(draft)
+
+        let remainingEntries = try await store.fetchAll()
+        XCTAssertTrue(remainingEntries.isEmpty)
+        XCTAssertFalse(FileManager.default.fileExists(atPath: photoURL.path))
+        XCTAssertNil(controller.activeSheetDraft)
+        XCTAssertEqual(switchedTo, .today)
+        XCTAssertEqual(controller.toastMessage, "Meal deleted")
+    }
+
     // MARK: - Derivations
 
     func testMealNameDerivedFromTopTwoItemsByGrams() {

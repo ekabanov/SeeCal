@@ -308,19 +308,15 @@ public struct MealThumbnail: View {
 
 /// One `.meal` row: 52pt rounded thumb, name, "HH:mm · N g protein", kcal
 /// (bold + small "kcal" unit), chevron. `onTap` opens the shared result/edit
-/// sheet; `onDelete` backs a context-menu "Delete" (the VStack-based card
-/// layout isn't a system `List`, so `.swipeActions` isn't available — see
-/// `TodayScreen`'s original comment on this row for why a context menu was
-/// chosen instead).
+/// sheet. Deletion lives in that edit sheet so a destructive action is never
+/// hidden behind a row gesture.
 public struct MealRowView: View {
     private let entry: MealLogEntry
     private let onTap: () -> Void
-    private let onDelete: () -> Void
 
-    public init(entry: MealLogEntry, onTap: @escaping () -> Void, onDelete: @escaping () -> Void) {
+    public init(entry: MealLogEntry, onTap: @escaping () -> Void) {
         self.entry = entry
         self.onTap = onTap
-        self.onDelete = onDelete
     }
 
     public var body: some View {
@@ -362,9 +358,6 @@ public struct MealRowView: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel("Edit \(entry.name)")
-        .contextMenu {
-            Button("Delete", role: .destructive, action: onDelete)
-        }
     }
 
     /// "HH:mm", zero-padded 24-hour clock (matches the prototype's

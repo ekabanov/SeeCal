@@ -30,7 +30,7 @@ final class FileBackedUserPreferencesStoreTests: XCTestCase {
 
     func testCapturePreferencesRoundTripAcrossFreshInstances() async throws {
         let fileURL = tempDirectory.appendingPathComponent("preferences.json")
-        let preferences = CapturePreferences(useLiDARDepth: false, captureCoachingEnabled: true)
+        let preferences = CapturePreferences(captureCoachingEnabled: true)
 
         let store = FileBackedUserPreferencesStore(fileURL: fileURL)
         try await store.saveCapturePreferences(preferences)
@@ -47,14 +47,14 @@ final class FileBackedUserPreferencesStoreTests: XCTestCase {
         let store = FileBackedUserPreferencesStore(fileURL: fileURL)
 
         try await store.saveDailyTarget(DailyNutritionTarget(calories: 2400, proteinGrams: 160, fatGrams: 75, carbsGrams: 230))
-        try await store.saveCapturePreferences(CapturePreferences(useLiDARDepth: true, captureCoachingEnabled: false))
+        try await store.saveCapturePreferences(CapturePreferences(captureCoachingEnabled: false))
 
         let reloaded = FileBackedUserPreferencesStore(fileURL: fileURL)
         let target = try await reloaded.loadDailyTarget()
         let capturePreferences = try await reloaded.loadCapturePreferences()
 
         XCTAssertEqual(target?.calories, 2400)
-        XCTAssertEqual(capturePreferences, CapturePreferences(useLiDARDepth: true, captureCoachingEnabled: false))
+        XCTAssertEqual(capturePreferences, CapturePreferences(captureCoachingEnabled: false))
     }
 
     /// A preferences.json written before this key existed (P7) must still

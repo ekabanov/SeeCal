@@ -4,12 +4,15 @@ import SeeCalPersistence
 
 public enum MealEditDraftError: Error, Equatable, CustomStringConvertible {
     case noItems
+    case emptyName
     case missingContext
 
     public var description: String {
         switch self {
         case .noItems:
             return "A meal must have at least one item"
+        case .emptyName:
+            return "A meal must have a name"
         case .missingContext:
             return "Draft is missing the context needed to build a new entry"
         }
@@ -19,7 +22,7 @@ public enum MealEditDraftError: Error, Equatable, CustomStringConvertible {
 /// One draft type serves both the new-scan flow (result sheet, spec §5) and the
 /// edit-an-existing-entry flow (tapping a meal row, spec §4/§5): initialize from
 /// either a fresh `FoodScanResult` or a previously-logged `MealLogEntry`, mutate
-/// per-item gram steppers, then commit — the caller `save()`s (new scan) or
+/// names and the ingredient list/nutrition, then commit — the caller `save()`s (new scan) or
 /// `update()`s (edit) the resulting `MealLogEntry` via `MealLogStore`.
 public struct MealEditDraft: Equatable, Sendable {
     /// Context captured only in new-scan mode — everything needed to build a brand
@@ -69,8 +72,8 @@ public struct MealEditDraft: Equatable, Sendable {
         )
     }
 
-    /// Edit mode: build a draft from an already-logged entry, ready to have its item
-    /// grams adjusted and saved back over the same entry.
+    /// Edit mode: build a draft from an already-logged entry, ready to be edited
+    /// and saved back over the same entry.
     public init(entry: MealLogEntry) {
         self.items = entry.items
         self.name = entry.name
@@ -81,6 +84,14 @@ public struct MealEditDraft: Equatable, Sendable {
     /// True when this draft is editing a previously-logged entry (vs. a fresh scan).
     public var isEditingExisting: Bool {
         existingEntry != nil
+    }
+
+    public var existingEntryID: UUID? {
+        existingEntry?.id
+    }
+
+    public var isValid: Bool {
+        !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !items.isEmpty
     }
 
     /// The meal photo backing this draft, whichever mode it's in — the freshly
@@ -106,17 +117,37 @@ public struct MealEditDraft: Equatable, Sendable {
         items.reduce(NutritionTotals()) { $0 + $1.totals }
     }
 
-    /// Steps one item's grams by `delta` (spec §2/§5: ±5 g, floor of 5 g), rescaling
-    /// that item's (and so the draft's derived totals') nutrition proportionally.
+    /// Compatibility mutation for non-editor clients. The focused editor accepts
+    /// positive whole grams directly; either path rescales nutrition proportionally.
     public mutating func stepGrams(itemID: MealItem.ID, by delta: Double) {
         guard let index = items.firstIndex(where: { $0.id == itemID }) else { return }
         items[index].stepGrams(by: delta)
     }
 
-    /// Sets one item's grams directly, still floored at the 5 g minimum.
+    /// Sets one item's grams directly, floored at one positive gram.
     public mutating func setGrams(itemID: MealItem.ID, to newValue: Double) {
         guard let index = items.firstIndex(where: { $0.id == itemID }) else { return }
         items[index].setGrams(newValue)
+    }
+
+    public mutating func replaceItem(_ item: MealItem) {
+        guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
+        items[index] = item
+    }
+
+    public mutating func addItem(_ item: MealItem) {
+        items.append(item)
+    }
+
+    @discardableResult
+    public mutating func removeItem(id: MealItem.ID) -> (item: MealItem, index: Int)? {
+        guard let index = items.firstIndex(where: { $0.id == id }) else { return nil }
+        return (items.remove(at: index), index)
+    }
+
+    public mutating func restoreItem(_ item: MealItem, at index: Int) {
+        guard !items.contains(where: { $0.id == item.id }) else { return }
+        items.insert(item, at: min(max(0, index), items.count))
     }
 
     /// Commits the draft to a `MealLogEntry`. In edit mode this is the original
@@ -127,10 +158,14 @@ public struct MealEditDraft: Equatable, Sendable {
         guard !items.isEmpty else {
             throw MealEditDraftError.noItems
         }
+        let committedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !committedName.isEmpty else {
+            throw MealEditDraftError.emptyName
+        }
 
         if let existingEntry {
             var updated = existingEntry
-            updated.name = name
+            updated.name = committedName
             updated.items = items
             return updated
         }
@@ -141,7 +176,7 @@ public struct MealEditDraft: Equatable, Sendable {
             throw MealEditDraftError.missingContext
         }
         return MealLogEntry(
-            name: name,
+            name: committedName,
             mealType: context.mealType,
             imagePath: context.imagePath,
             items: items,

@@ -15,10 +15,7 @@ private struct NoopRuntime: InferenceRuntime {
 }
 
 /// `CameraScreen` reads `ScanFlowController.capturePreferences` (not the whole
-/// view model) to gate its coaching overlays and the LiDAR-gated depth
-/// affordances (spec §8 scope item: "LiDAR toggle → plumb a preference the
-/// (currently dormant) depth path will read"; "coaching toggle → CameraScreen
-/// hides level/hint overlays when off"). This covers the plumbing: the
+/// view model) to gate its coaching overlays. This covers the plumbing: the
 /// controller's exposed value always mirrors the owning view model's, live.
 final class ScanFlowControllerCapturePreferencesTests: XCTestCase {
     @MainActor
@@ -33,15 +30,13 @@ final class ScanFlowControllerCapturePreferencesTests: XCTestCase {
             captureService: MockCaptureService()
         )
 
-        // Starts at the shared default (both on).
-        XCTAssertTrue(controller.capturePreferences.useLiDARDepth)
+        // Starts at the shared default (on).
         XCTAssertTrue(controller.capturePreferences.captureCoachingEnabled)
 
         await viewModel.updateCapturePreferences(
-            CapturePreferences(useLiDARDepth: false, captureCoachingEnabled: false)
+            CapturePreferences(captureCoachingEnabled: false)
         )
 
-        XCTAssertFalse(controller.capturePreferences.useLiDARDepth)
         XCTAssertFalse(controller.capturePreferences.captureCoachingEnabled)
     }
 }

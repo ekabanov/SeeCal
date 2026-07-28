@@ -15,8 +15,8 @@ public final class AppViewModel: ObservableObject {
     /// default, or to a legacy persisted target (see `loadEntries`).
     @Published public private(set) var dailyTarget: DailyNutritionTarget
     @Published public var lastError: String?
-    /// Settings §8 "Capture" toggles (LiDAR depth, capture coaching). Defaults
-    /// to both-on (`CapturePreferences.default`) until a persisted value loads
+    /// Settings §8 capture coaching toggle. Defaults on
+    /// (`CapturePreferences.default`) until a persisted value loads
     /// in `loadEntries()`, matching the prototype's initial switch state.
     @Published public private(set) var capturePreferences: CapturePreferences = .default
 

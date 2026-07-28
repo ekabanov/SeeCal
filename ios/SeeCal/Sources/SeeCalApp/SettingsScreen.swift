@@ -1,8 +1,8 @@
 import SwiftUI
 import SeeCalDomain
 
-/// Spec §8 / `#scr-settings`: Capture toggles (LiDAR depth, capture coaching —
-/// both persisted), a Sync card of disabled "SOON" roadmap rows (no
+/// Spec §8 / `#scr-settings`: persisted capture coaching, a Sync card of
+/// disabled "SOON" roadmap rows (no
 /// functional toggles — copy must not claim sync exists), and the on-device
 /// model card (version/quantization read from the bundled config at runtime,
 /// never hardcoded). Matches the prototype's markup + CSS (`.setrow`,
@@ -23,33 +23,18 @@ public struct SettingsScreen: View {
 
                 SectionLabel("Capture")
                 Card {
-                    VStack(spacing: 0) {
-                        toggleRow(
-                            title: "Use LiDAR depth",
-                            subtitle: "Improves portion-size accuracy",
-                            isOn: Binding(
-                                get: { viewModel.capturePreferences.useLiDARDepth },
-                                set: { newValue in
-                                    var preferences = viewModel.capturePreferences
-                                    preferences.useLiDARDepth = newValue
-                                    Task { await viewModel.updateCapturePreferences(preferences) }
-                                }
-                            )
+                    toggleRow(
+                        title: "Capture coaching",
+                        subtitle: "Distance & level guides",
+                        isOn: Binding(
+                            get: { viewModel.capturePreferences.captureCoachingEnabled },
+                            set: { newValue in
+                                var preferences = viewModel.capturePreferences
+                                preferences.captureCoachingEnabled = newValue
+                                Task { await viewModel.updateCapturePreferences(preferences) }
+                            }
                         )
-                        Divider().overlay(Theme.appLine)
-                        toggleRow(
-                            title: "Capture coaching",
-                            subtitle: "Distance & level guides",
-                            isOn: Binding(
-                                get: { viewModel.capturePreferences.captureCoachingEnabled },
-                                set: { newValue in
-                                    var preferences = viewModel.capturePreferences
-                                    preferences.captureCoachingEnabled = newValue
-                                    Task { await viewModel.updateCapturePreferences(preferences) }
-                                }
-                            )
-                        )
-                    }
+                    )
                 }
 
                 SectionLabel("Sync")

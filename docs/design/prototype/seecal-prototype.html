@@ -310,12 +310,22 @@
   }
   .sheet.open{transform:translateY(0); visibility:visible; transition:transform .38s cubic-bezier(.32,.72,.28,1)}
   .grab{width:38px; height:5px; border-radius:3px; background:var(--app-line); margin:10px auto 2px; flex:0 0 auto}
-  .sheet-scroll{overflow-y:auto; padding:6px 20px 18px}
+  .sheet-panel{display:none; flex:1; min-height:0; flex-direction:column}
+  .sheet-panel.active{display:flex}
+  .sheet-scroll{overflow-y:auto; padding:6px 20px 18px; flex:1}
   .sheet-scroll::-webkit-scrollbar{display:none}
   .result-head{display:flex; gap:14px; align-items:center; padding:8px 0 4px}
   .result-head .thumb{width:64px; height:64px; border-radius:16px; overflow:hidden; background:#262420; flex:0 0 auto}
   .result-head .thumb svg{width:100%; height:100%}
-  .result-head h3{margin:0; font-size:19px; letter-spacing:-.01em}
+  .result-head .title-wrap{flex:1; min-width:0; position:relative}
+  .meal-title-input{
+    display:block; width:100%; border:0; border-bottom:1px solid transparent; outline:0;
+    margin:0; padding:2px 26px 3px 0; background:transparent; color:var(--app-ink);
+    font:700 19px/1.2 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",sans-serif;
+    letter-spacing:-.01em; text-overflow:ellipsis;
+  }
+  .meal-title-input:focus{border-bottom-color:var(--basil)}
+  .title-pencil{position:absolute; right:2px; top:5px; color:var(--app-ink-2); pointer-events:none}
   .result-head .meta{font-size:12px; color:var(--app-ink-2); margin-top:3px; display:flex; gap:6px; flex-wrap:wrap}
   .chip{
     display:inline-flex; align-items:center; gap:4px; padding:3px 8px; border-radius:999px;
@@ -331,11 +341,30 @@
   .mc .l{font-size:11px; font-weight:700; text-transform:uppercase; letter-spacing:.05em; margin-top:1px}
   .mc.p .l{color:var(--protein)} .mc.f .l{color:var(--fat)} .mc.c .l{color:var(--carbs)}
   .items-label{font-size:12.5px; font-weight:700; color:var(--app-ink-2); text-transform:uppercase; letter-spacing:.06em; padding:6px 0}
-  .item{display:flex; align-items:center; gap:10px; padding:11px 0}
+  .item{
+    all:unset; box-sizing:border-box; display:flex; align-items:center; gap:10px;
+    width:100%; padding:12px 0; cursor:pointer; color:var(--app-ink);
+  }
+  .item:focus-visible{outline:2px solid var(--basil); outline-offset:2px; border-radius:10px}
   .item + .item{border-top:1px solid var(--app-line)}
   .item .nm{flex:1; min-width:0}
   .item .nm .t{font-size:15px; font-weight:600; text-transform:capitalize}
   .item .nm .s{font-size:12px; color:var(--app-ink-2); font-variant-numeric:tabular-nums; margin-top:1px}
+  .item .state-chip{
+    display:inline-block; margin-left:5px; padding:2px 6px; border-radius:6px;
+    background:var(--basil-soft); color:var(--basil); font-size:9px;
+    font-weight:800; letter-spacing:.04em; text-transform:uppercase; vertical-align:2px;
+  }
+  .item .ik{width:58px; text-align:right; font-size:14px; font-weight:700; font-variant-numeric:tabular-nums}
+  .item .ik small{display:block; font-size:10.5px; color:var(--app-ink-2); font-weight:600}
+  .item .chev{color:var(--app-ink-2); opacity:.65; flex:0 0 auto}
+  .add-item{
+    all:unset; box-sizing:border-box; cursor:pointer; width:100%; display:flex;
+    align-items:center; justify-content:center; gap:7px; margin-top:6px; padding:11px;
+    border:1px dashed color-mix(in srgb, var(--basil) 55%, var(--app-line));
+    border-radius:12px; color:var(--basil); font-size:13.5px; font-weight:700;
+  }
+  .add-item:focus-visible{outline:2px solid var(--basil); outline-offset:2px}
   .stepper{display:flex; align-items:center; gap:0; border:1px solid var(--app-line); border-radius:10px; overflow:hidden}
   .stepper button{
     all:unset; cursor:pointer; width:32px; height:32px; display:flex; align-items:center; justify-content:center;
@@ -346,9 +375,13 @@
     width:56px; text-align:center; font-size:13.5px; font-weight:700; font-variant-numeric:tabular-nums;
   }
   .stepper .g small{font-weight:600; color:var(--app-ink-2)}
-  .item .ik{width:62px; text-align:right; font-size:14px; font-weight:700; font-variant-numeric:tabular-nums}
-  .item .ik small{display:block; font-size:10.5px; color:var(--app-ink-2); font-weight:600}
   .edited-note{font-size:11.5px; color:var(--app-ink-2); padding:8px 0 0; line-height:1.5}
+  .delete-meal{
+    all:unset; box-sizing:border-box; cursor:pointer; width:100%; text-align:center;
+    margin-top:18px; padding:12px; border-radius:12px; background:color-mix(in srgb, var(--danger) 10%, transparent);
+    color:var(--danger); font-size:14px; font-weight:700;
+  }
+  .delete-meal:focus-visible{outline:2px solid var(--danger); outline-offset:2px}
   .sheet-actions{display:flex; gap:10px; padding:14px 20px 26px; border-top:1px solid var(--app-line)}
   .btn{
     all:unset; cursor:pointer; text-align:center; font-size:16px; font-weight:700;
@@ -357,6 +390,66 @@
   .btn:focus-visible{outline:2px solid var(--basil); outline-offset:2px}
   .btn.primary{background:var(--basil); color:#fff}
   .btn.ghost{background:var(--app-bg); color:var(--app-ink)}
+  .btn:disabled{opacity:.38; cursor:default}
+
+  /* Focused ingredient editor — navigates within the result sheet. */
+  .editor-nav{display:flex; align-items:center; gap:10px; padding:4px 20px 10px}
+  .editor-back{
+    all:unset; cursor:pointer; width:34px; height:34px; border-radius:50%;
+    display:flex; align-items:center; justify-content:center; color:var(--basil);
+    background:var(--app-bg); font-size:22px;
+  }
+  .editor-nav .title{font-size:18px; font-weight:750; flex:1}
+  .editor-source{font-size:10px; font-weight:800; text-transform:uppercase; letter-spacing:.05em; color:var(--basil)}
+  .editor-card{background:var(--app-bg); border-radius:16px; padding:2px 14px; margin-top:8px}
+  .field-row{display:grid; grid-template-columns:92px 1fr auto auto; align-items:center; gap:7px; min-height:50px}
+  .field-row + .field-row{border-top:1px solid var(--app-line)}
+  .field-row label{font-size:13.5px; font-weight:650; color:var(--app-ink)}
+  .field-input{
+    min-width:0; width:100%; border:0; outline:0; border-radius:8px; padding:8px 9px;
+    background:var(--app-card); color:var(--app-ink); font:650 14px/1 -apple-system,BlinkMacSystemFont,"SF Pro Text",sans-serif;
+    text-align:right; font-variant-numeric:tabular-nums;
+  }
+  .field-input.name{text-align:left; grid-column:2 / 4}
+  .field-input:focus{box-shadow:0 0 0 2px var(--basil)}
+  .field-unit{width:28px; color:var(--app-ink-2); font-size:12px; font-weight:600}
+  .field-reset{
+    all:unset; cursor:pointer; width:28px; height:28px; display:flex; align-items:center; justify-content:center;
+    border-radius:50%; color:var(--basil); font-size:15px;
+  }
+  .field-reset:hover{background:var(--basil-soft)}
+  .field-reset:focus-visible{outline:2px solid var(--basil)}
+  .editor-help{font-size:11.5px; line-height:1.5; color:var(--app-ink-2); margin:12px 2px 0}
+  .reset-item,.delete-item{
+    all:unset; box-sizing:border-box; cursor:pointer; width:100%; text-align:center;
+    margin-top:12px; padding:11px; border-radius:12px; font-size:13.5px; font-weight:700;
+  }
+  .reset-item{background:var(--basil-soft); color:var(--basil)}
+  .delete-item{background:color-mix(in srgb, var(--danger) 10%, transparent); color:var(--danger)}
+
+  .undo-bar{
+    position:absolute; left:18px; right:18px; bottom:88px; z-index:3;
+    display:flex; align-items:center; gap:10px; padding:11px 14px; border-radius:13px;
+    background:var(--app-ink); color:var(--app-bg); box-shadow:var(--app-elev);
+    font-size:12.5px; font-weight:650; opacity:0; transform:translateY(8px);
+    pointer-events:none; transition:opacity .2s, transform .2s;
+  }
+  .undo-bar.show{opacity:1; transform:translateY(0); pointer-events:auto}
+  .undo-bar span{flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .undo-bar button{all:unset; cursor:pointer; color:#7be3ad; font-weight:800}
+
+  .confirm-scrim{
+    position:absolute; inset:0; z-index:95; display:none; align-items:center; justify-content:center;
+    padding:28px; background:rgba(0,0,0,.48);
+  }
+  .confirm-scrim.open{display:flex}
+  .confirm-card{
+    width:100%; padding:20px; border-radius:20px; background:var(--app-card);
+    color:var(--app-ink); box-shadow:0 18px 50px rgba(0,0,0,.35);
+  }
+  .confirm-card h4{margin:0; font-size:19px}
+  .confirm-card p{margin:8px 0 18px; color:var(--app-ink-2); font-size:13px; line-height:1.45}
+  .confirm-actions{display:flex; gap:9px}
 
   /* ---------- Profile ---------- */
   .profhead{display:flex; align-items:center; gap:14px}
@@ -560,7 +653,8 @@
     <div class="decisions">
       <div class="d"><b>The wait is designed, not hidden</b>Inference takes 15–30 s on device. The analyzing screen narrates real pipeline stages and surfaces the depth measurement early, so waiting feels like work being done.</div>
       <div class="d"><b>Capture is coached</b>Portion accuracy depends on a 35–45 cm top-down shot. Distance and level are shown live; the shutter is never blocked — guidance, not gating.</div>
-      <div class="d"><b>Output is a draft</b>Every estimate is editable before logging. Gram steppers rescale each item's nutrition linearly, mirroring how the model reasons per-ingredient.</div>
+      <div class="d"><b>Output is a draft</b>Meal names, ingredients, amounts, calories and macros are editable. Corrected nutrition becomes the new density and continues to scale with grams.</div>
+      <div class="d"><b>Totals stay trustworthy</b>Meal totals always equal the sum of its ingredients. Items can be added, removed with Undo, or reset to the model estimate.</div>
     </div>
   </aside>
 
@@ -832,7 +926,6 @@
             </div>
             <div class="sectionlabel">Capture</div>
             <div class="card">
-              <div class="setrow"><div class="t">Use LiDAR depth <small>Improves portion-size accuracy</small></div><div class="switch" role="switch" aria-checked="true"></div></div>
               <div class="setrow"><div class="t">Capture coaching <small>Distance &amp; level guides</small></div><div class="switch" role="switch" aria-checked="true"></div></div>
             </div>
             <div class="sectionlabel">Sync</div>
@@ -885,39 +978,116 @@
           <div class="sheet-scrim" id="scrim"></div>
           <div class="sheet" id="sheet" role="dialog" aria-label="Meal analysis result">
             <div class="grab"></div>
-            <div class="sheet-scroll">
-              <div class="result-head">
-                <div class="thumb"><svg viewBox="35 2 172 172"><use href="#foodShot"/></svg></div>
-                <div>
-                  <h3 id="sheetTitle">Chicken, rice &amp; broccoli</h3>
-                  <div class="meta" id="resultMeta">
-                    <span class="chip">
-                      <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><path d="M5 0 6.2 3.4 9.8 3.6 7 5.9 7.9 9.4 5 7.4 2.1 9.4 3 5.9 0.2 3.6 3.8 3.4z"/></svg>
-                      depth-assisted
-                    </span>
-                    <span id="resultVol">~412 ml · max height 41 mm</span>
+            <div class="sheet-panel active" id="summaryPanel">
+              <div class="sheet-scroll">
+                <div class="result-head">
+                  <div class="thumb"><svg viewBox="35 2 172 172"><use href="#foodShot"/></svg></div>
+                  <div class="title-wrap">
+                    <input class="meal-title-input" id="sheetTitleInput" value="Chicken, rice &amp; broccoli" aria-label="Meal name">
+                    <svg class="title-pencil" width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m3 11.5-.5 2 2-.5L12.8 4.7 11.3 3.2 3 11.5Z"/><path d="m10.6 3.9 1.5 1.5"/></svg>
+                    <div class="meta" id="resultMeta">
+                      <span class="chip">
+                        <svg width="10" height="10" viewBox="0 0 10 10" fill="currentColor"><path d="M5 0 6.2 3.4 9.8 3.6 7 5.9 7.9 9.4 5 7.4 2.1 9.4 3 5.9 0.2 3.6 3.8 3.4z"/></svg>
+                        depth-assisted
+                      </span>
+                      <span id="resultVol">~412 ml · max height 41 mm</span>
+                    </div>
                   </div>
                 </div>
+                <div class="kcal-hero">
+                  <span class="n" id="rKcal">464</span><span class="u">kcal</span>
+                </div>
+                <div class="macrochips">
+                  <div class="mc p"><div class="v" id="rP">44.2 g</div><div class="l">Protein</div></div>
+                  <div class="mc f"><div class="v" id="rF">5.1 g</div><div class="l">Fat</div></div>
+                  <div class="mc c"><div class="v" id="rC">57.2 g</div><div class="l">Carbs</div></div>
+                </div>
+                <div class="items-label" id="itemsLabel">Detected items — tap to edit</div>
+                <div id="itemRows"></div>
+                <button class="add-item" id="addItemBtn">
+                  <span aria-hidden="true">＋</span> Add ingredient
+                </button>
+                <div class="edited-note">Corrections update an item’s nutrition density, so later gram changes scale them. Meal totals always equal the sum of its ingredients.</div>
+                <button class="delete-meal" id="deleteMealBtn">Delete meal</button>
               </div>
-              <div class="kcal-hero">
-                <span class="n" id="rKcal">464</span><span class="u">kcal</span>
+              <div class="sheet-actions">
+                <button class="btn ghost" id="discardBtn">Discard</button>
+                <button class="btn primary" id="logBtn">Log meal</button>
               </div>
-              <div class="macrochips">
-                <div class="mc p"><div class="v" id="rP">44.2 g</div><div class="l">Protein</div></div>
-                <div class="mc f"><div class="v" id="rF">5.1 g</div><div class="l">Fat</div></div>
-                <div class="mc c"><div class="v" id="rC">57.2 g</div><div class="l">Carbs</div></div>
-              </div>
-              <div class="items-label">Detected items — adjust if needed</div>
-              <div id="itemRows"></div>
-              <div class="edited-note">Estimates come from the on-device model. Adjusting grams rescales an item's nutrition proportionally.</div>
             </div>
-            <div class="sheet-actions">
-              <button class="btn ghost" id="discardBtn">Discard</button>
-              <button class="btn primary" id="logBtn">Log meal</button>
+
+            <div class="sheet-panel" id="itemEditorPanel">
+              <div class="editor-nav">
+                <button class="editor-back" id="editorBackBtn" aria-label="Back to meal">‹</button>
+                <div class="title" id="itemEditorTitle">Edit ingredient</div>
+                <div class="editor-source" id="editorSource">Model estimate</div>
+              </div>
+              <div class="sheet-scroll">
+                <div class="editor-card">
+                  <div class="field-row">
+                    <label for="editName">Name</label>
+                    <input class="field-input name" id="editName" type="text" autocomplete="off" placeholder="Ingredient name">
+                    <button class="field-reset" data-reset-field="name" aria-label="Reset name to estimate">↶</button>
+                  </div>
+                  <div class="field-row">
+                    <label for="editGrams">Amount</label>
+                    <input class="field-input" id="editGrams" type="number" min="1" step="1" inputmode="decimal" placeholder="0">
+                    <span class="field-unit">g</span>
+                    <button class="field-reset" data-reset-field="g" aria-label="Reset amount to estimate">↶</button>
+                  </div>
+                  <div class="field-row">
+                    <label for="editKcal">Calories</label>
+                    <input class="field-input" id="editKcal" type="number" min="0" step="1" inputmode="decimal" placeholder="0">
+                    <span class="field-unit">kcal</span>
+                    <button class="field-reset" data-reset-field="kcal" aria-label="Reset calories to estimate">↶</button>
+                  </div>
+                  <div class="field-row">
+                    <label for="editProtein">Protein</label>
+                    <input class="field-input" id="editProtein" type="number" min="0" step="0.1" inputmode="decimal" placeholder="0">
+                    <span class="field-unit">g</span>
+                    <button class="field-reset" data-reset-field="p" aria-label="Reset protein to estimate">↶</button>
+                  </div>
+                  <div class="field-row">
+                    <label for="editFat">Fat</label>
+                    <input class="field-input" id="editFat" type="number" min="0" step="0.1" inputmode="decimal" placeholder="0">
+                    <span class="field-unit">g</span>
+                    <button class="field-reset" data-reset-field="f" aria-label="Reset fat to estimate">↶</button>
+                  </div>
+                  <div class="field-row">
+                    <label for="editCarbs">Carbs</label>
+                    <input class="field-input" id="editCarbs" type="number" min="0" step="0.1" inputmode="decimal" placeholder="0">
+                    <span class="field-unit">g</span>
+                    <button class="field-reset" data-reset-field="c" aria-label="Reset carbs to estimate">↶</button>
+                  </div>
+                </div>
+                <div class="editor-help">Calories and macros are independent values. Changing the amount scales all corrected nutrition proportionally.</div>
+                <button class="reset-item" id="resetItemBtn">Reset item to estimate</button>
+                <button class="delete-item" id="deleteItemBtn">Delete ingredient</button>
+              </div>
+              <div class="sheet-actions">
+                <button class="btn ghost" id="editorCancelBtn">Cancel</button>
+                <button class="btn primary" id="editorDoneBtn">Done</button>
+              </div>
+            </div>
+
+            <div class="undo-bar" id="itemUndoBar">
+              <span id="itemUndoText">Ingredient deleted</span>
+              <button id="itemUndoBtn">Undo</button>
             </div>
           </div>
 
           <div class="toast" id="toast">Logged to Today</div>
+
+          <div class="confirm-scrim" id="deleteMealConfirm" role="alertdialog" aria-modal="true" aria-labelledby="deleteMealTitle">
+            <div class="confirm-card">
+              <h4 id="deleteMealTitle">Delete this meal?</h4>
+              <p>This removes the logged meal and its photo. This action can’t be undone.</p>
+              <div class="confirm-actions">
+                <button class="btn ghost" id="cancelDeleteMealBtn">Cancel</button>
+                <button class="btn primary" id="confirmDeleteMealBtn" style="background:var(--danger)">Delete</button>
+              </div>
+            </div>
+          </div>
 
           <!-- ============ FIRST-OPEN ONBOARDING ============ -->
           <div class="onboard" id="onboard" role="dialog" aria-label="Set up your goal">
@@ -1119,7 +1289,7 @@
       closeSheet();
       var j = b.dataset.jump;
       if (j==="analyzing"){ show("analyzing"); runAnalyze(); }
-      else if (j==="result"){ show("today"); openSheet(); markRail("result"); }
+      else if (j==="result"){ resetDraft(); show("today"); openSheet(); markRail("result"); }
       else show(j);
     });
   });
@@ -1266,10 +1436,53 @@
   var scanCount = 0;
 
   /* ---------- Result sheet (shared by new scans and meal editing) ---------- */
+  // `density` is nutrition per gram. A correction updates that density, so
+  // future gram changes continue to scale the corrected value. `model` keeps
+  // the immutable original estimate for per-field and whole-item reset.
   var draft = null; // {title, vol, h, items, mealIdx|null}
+  var itemEditor = null;
+  var itemUndo = null;
+  var itemUndoTimer = null;
+
+  function normalizeItem(it){
+    if (it.density){
+      return {
+        name:it.name,
+        g:it.g,
+        density:{kcal:it.density.kcal, p:it.density.p, f:it.density.f, c:it.density.c},
+        model:it.model ? {
+          name:it.model.name, g:it.model.g, kcal:it.model.kcal,
+          p:it.model.p, f:it.model.f, c:it.model.c
+        } : null
+      };
+    }
+    var b = it.base;
+    return {
+      name:it.name,
+      g:it.g,
+      density:{kcal:b.kcal/b.g, p:b.p/b.g, f:b.f/b.g, c:b.c/b.g},
+      model:{name:it.name, g:b.g, kcal:b.kcal, p:b.p, f:b.f, c:b.c}
+    };
+  }
+  function cloneItem(it){ return normalizeItem(normalizeItem(it)); }
   function scaled(it){
-    var r = it.g/it.base.g;
-    return {kcal:it.base.kcal*r, p:it.base.p*r, f:it.base.f*r, c:it.base.c*r};
+    var n = normalizeItem(it);
+    return {
+      kcal:n.density.kcal*n.g,
+      p:n.density.p*n.g,
+      f:n.density.f*n.g,
+      c:n.density.c*n.g
+    };
+  }
+  function nearlyEqual(a,b){ return Math.abs(a-b) < 0.0001; }
+  function itemIsEdited(it){
+    if (!it.model) return true;
+    return it.name !== it.model.name ||
+      !nearlyEqual(it.g, it.model.g) ||
+      !nearlyEqual(it.density.kcal, it.model.kcal/it.model.g) ||
+      !nearlyEqual(it.density.p, it.model.p/it.model.g) ||
+      !nearlyEqual(it.density.f, it.model.f/it.model.g) ||
+      !nearlyEqual(it.density.c, it.model.c/it.model.g);
   }
   function draftTotals(){
     var tot = {kcal:0,p:0,f:0,c:0};
@@ -1282,43 +1495,55 @@
     var mock = SCAN_RESULTS[scanCount % SCAN_RESULTS.length];
     // deep-copy so logged meals keep their own item state
     draft = {title:mock.title, vol:mock.vol, h:mock.h, mealIdx:null,
-             items:mock.items.map(function(it){
-               return {name:it.name, g:it.base.g, base:it.base};
-             })};
+             items:mock.items.map(normalizeItem)};
   }
   function openSheetForMeal(idx){
     var m = state.meals[idx];
-    draft = {title:m.name, vol:m.vol||null, h:m.h||null, mealIdx:idx, items:m.items};
+    draft = {
+      title:m.name,
+      vol:m.vol||null,
+      h:m.h||null,
+      mealIdx:idx,
+      items:m.items.map(normalizeItem)
+    };
     openSheet();
     markRail("result");
   }
+  function showSummaryPanel(){
+    itemEditor = null;
+    $("summaryPanel").classList.add("active");
+    $("itemEditorPanel").classList.remove("active");
+    renderSheet();
+  }
   function renderSheet(){
     var editing = draft.mealIdx !== null;
-    $("sheetTitle").textContent = draft.title;
+    $("sheetTitleInput").value = draft.title;
     $("resultMeta").style.display = draft.vol ? "" : "none";
     if (draft.vol) $("resultVol").textContent = "~"+draft.vol+" ml · max height "+draft.h+" mm";
     $("logBtn").textContent = editing ? "Save changes" : "Log meal";
     $("discardBtn").textContent = editing ? "Cancel" : "Discard";
+    $("itemsLabel").textContent = editing ? "Ingredients — tap to edit" : "Detected items — tap to edit";
+    $("deleteMealBtn").style.display = editing ? "" : "none";
     var rows = $("itemRows"); rows.innerHTML = "";
-    draft.items.forEach(function(it){
+    draft.items.forEach(function(it, idx){
       var s = scaled(it);
-      var row = document.createElement("div"); row.className = "item";
+      var row = document.createElement("button"); row.className = "item";
+      row.setAttribute("aria-label", "Edit "+it.name);
+      var stateLabel = !it.model ? "Added" : (itemIsEdited(it) ? "Edited" : "");
       row.innerHTML =
         '<div class="nm"><div class="t"></div><div class="s"></div></div>'+
-        '<div class="stepper">'+
-          '<button data-d="-5" aria-label="Less">−</button>'+
-          '<span class="g">'+Math.round(it.g)+'<small> g</small></span>'+
-          '<button data-d="5" aria-label="More">＋</button>'+
-        '</div>'+
-        '<div class="ik">'+Math.round(s.kcal)+'<small>kcal</small></div>';
+        '<div class="ik">'+Math.round(s.kcal)+'<small>kcal</small></div>'+
+        '<svg class="chev" width="8" height="14" viewBox="0 0 8 14" fill="none" stroke="currentColor" stroke-width="2"><path d="M1.5 1.5 6.5 7l-5 5.5" stroke-linecap="round"/></svg>';
       row.querySelector(".t").textContent = it.name;
-      row.querySelector(".s").textContent = Math.round(s.p)+"p · "+Math.round(s.f)+"f · "+Math.round(s.c)+"c";
-      row.querySelectorAll(".stepper button").forEach(function(b){
-        b.addEventListener("click", function(){
-          it.g = Math.max(5, it.g + Number(b.dataset.d));
-          renderSheet();
-        });
-      });
+      if (stateLabel){
+        var chip = document.createElement("span");
+        chip.className = "state-chip";
+        chip.textContent = stateLabel;
+        row.querySelector(".t").appendChild(chip);
+      }
+      row.querySelector(".s").textContent =
+        Math.round(it.g)+" g · "+s.p.toFixed(1)+"p · "+s.f.toFixed(1)+"f · "+s.c.toFixed(1)+"c";
+      row.addEventListener("click", function(){ openItemEditor(idx); });
       rows.appendChild(row);
     });
     var tot = draftTotals();
@@ -1326,13 +1551,239 @@
     $("rP").textContent = tot.p.toFixed(1)+" g";
     $("rF").textContent = tot.f.toFixed(1)+" g";
     $("rC").textContent = tot.c.toFixed(1)+" g";
+    updatePrimaryDisabled();
   }
-  function openSheet(){ renderSheet(); $("scrim").classList.add("open"); $("sheet").classList.add("open"); }
-  function closeSheet(){ $("scrim").classList.remove("open"); $("sheet").classList.remove("open"); }
+  function updatePrimaryDisabled(){
+    $("logBtn").disabled = !draft || !draft.title.trim() || draft.items.length===0;
+  }
+  function openSheet(){
+    hideItemUndo();
+    $("summaryPanel").classList.add("active");
+    $("itemEditorPanel").classList.remove("active");
+    renderSheet();
+    $("scrim").classList.add("open");
+    $("sheet").classList.add("open");
+  }
+  function closeSheet(){
+    hideItemUndo();
+    itemEditor = null;
+    $("scrim").classList.remove("open");
+    $("sheet").classList.remove("open");
+    $("deleteMealConfirm").classList.remove("open");
+  }
   function showToast(msg){
     var toast = $("toast"); toast.textContent = msg; toast.classList.add("show");
     setTimeout(function(){ toast.classList.remove("show"); }, 1900);
   }
+  function numericInputValue(id){
+    var raw = $(id).value.trim();
+    if (raw==="") return null;
+    var n = Number(raw);
+    return Number.isFinite(n) ? n : null;
+  }
+  function setEditorInput(id, value, decimals){
+    $(id).value = value===null ? "" : Number(value).toFixed(decimals);
+  }
+  function renderItemEditor(){
+    var existing = itemEditor.index !== null;
+    var hasModel = !!itemEditor.model;
+    $("itemEditorTitle").textContent = existing ? "Edit ingredient" : "Add ingredient";
+    $("editorSource").textContent = hasModel ? "Model estimate" : "Added manually";
+    $("editName").value = itemEditor.name;
+    setEditorInput("editGrams", itemEditor.g, 0);
+    setEditorInput("editKcal", itemEditor.values.kcal, 0);
+    setEditorInput("editProtein", itemEditor.values.p, 1);
+    setEditorInput("editFat", itemEditor.values.f, 1);
+    setEditorInput("editCarbs", itemEditor.values.c, 1);
+    document.querySelectorAll("[data-reset-field]").forEach(function(b){
+      b.style.visibility = hasModel ? "visible" : "hidden";
+    });
+    $("resetItemBtn").style.display = hasModel ? "" : "none";
+    $("deleteItemBtn").style.display = existing ? "" : "none";
+    updateEditorDone();
+  }
+  function updateEditorDone(){
+    var name = $("editName").value.trim();
+    var grams = numericInputValue("editGrams");
+    var nutritionIDs = ["editKcal","editProtein","editFat","editCarbs"];
+    var nutritionValid = nutritionIDs.every(function(id){
+      var value = numericInputValue(id);
+      return value===null || value>=0;
+    });
+    $("editorDoneBtn").disabled = !name || grams===null || grams<=0 || !nutritionValid;
+  }
+  function openItemEditor(idx){
+    var it = draft.items[idx];
+    var s = scaled(it);
+    itemEditor = {
+      index:idx,
+      name:it.name,
+      g:it.g,
+      values:{kcal:s.kcal, p:s.p, f:s.f, c:s.c},
+      model:it.model ? {
+        name:it.model.name, g:it.model.g, kcal:it.model.kcal,
+        p:it.model.p, f:it.model.f, c:it.model.c
+      } : null
+    };
+    $("summaryPanel").classList.remove("active");
+    $("itemEditorPanel").classList.add("active");
+    renderItemEditor();
+    $("itemEditorPanel").querySelector(".sheet-scroll").scrollTop = 0;
+  }
+  function openNewItemEditor(){
+    itemEditor = {
+      index:null,
+      name:"",
+      g:null,
+      values:{kcal:null,p:null,f:null,c:null},
+      model:null
+    };
+    $("summaryPanel").classList.remove("active");
+    $("itemEditorPanel").classList.add("active");
+    renderItemEditor();
+    $("editName").focus();
+  }
+  function cancelItemEditor(){
+    itemEditor = null;
+    $("itemEditorPanel").classList.remove("active");
+    $("summaryPanel").classList.add("active");
+    renderSheet();
+  }
+  function saveItemEditor(){
+    if ($("editorDoneBtn").disabled) return;
+    var grams = Math.round(numericInputValue("editGrams"));
+    var valueOrZero = function(id){
+      var value = numericInputValue(id);
+      return value===null ? 0 : Math.max(0,value);
+    };
+    var saved = {
+      name:$("editName").value.trim(),
+      g:grams,
+      density:{
+        kcal:Math.round(valueOrZero("editKcal"))/grams,
+        p:valueOrZero("editProtein")/grams,
+        f:valueOrZero("editFat")/grams,
+        c:valueOrZero("editCarbs")/grams
+      },
+      model:itemEditor.model
+    };
+    if (itemEditor.index===null) draft.items.push(saved);
+    else draft.items[itemEditor.index] = saved;
+    cancelItemEditor();
+  }
+  function scaleEditorValues(oldG,newG){
+    if (!(oldG>0) || !(newG>0)) return;
+    var ratio = newG/oldG;
+    ["kcal","p","f","c"].forEach(function(k){
+      if (itemEditor.values[k]!==null) itemEditor.values[k] *= ratio;
+    });
+  }
+  function resetEditorField(field){
+    if (!itemEditor.model) return;
+    var m = itemEditor.model;
+    if (field==="name"){
+      itemEditor.name = m.name;
+      $("editName").value = m.name;
+    } else if (field==="g"){
+      var oldG = itemEditor.g;
+      itemEditor.g = m.g;
+      scaleEditorValues(oldG,m.g);
+      setEditorInput("editGrams",m.g,0);
+      setEditorInput("editKcal",itemEditor.values.kcal,0);
+      setEditorInput("editProtein",itemEditor.values.p,1);
+      setEditorInput("editFat",itemEditor.values.f,1);
+      setEditorInput("editCarbs",itemEditor.values.c,1);
+    } else {
+      var grams = itemEditor.g>0 ? itemEditor.g : m.g;
+      itemEditor.values[field] = (m[field]/m.g)*grams;
+      var map = {kcal:["editKcal",0],p:["editProtein",1],f:["editFat",1],c:["editCarbs",1]};
+      setEditorInput(map[field][0],itemEditor.values[field],map[field][1]);
+    }
+    updateEditorDone();
+  }
+  function resetWholeItem(){
+    if (!itemEditor.model) return;
+    var m = itemEditor.model;
+    itemEditor.name = m.name;
+    itemEditor.g = m.g;
+    itemEditor.values = {kcal:m.kcal,p:m.p,f:m.f,c:m.c};
+    renderItemEditor();
+  }
+  function showItemUndo(item,index){
+    clearTimeout(itemUndoTimer);
+    itemUndo = {item:item,index:index};
+    $("itemUndoText").textContent = item.name+" deleted";
+    $("itemUndoBar").classList.add("show");
+    itemUndoTimer = setTimeout(hideItemUndo,5000);
+  }
+  function hideItemUndo(){
+    clearTimeout(itemUndoTimer);
+    itemUndoTimer = null;
+    itemUndo = null;
+    $("itemUndoBar").classList.remove("show");
+  }
+  function deleteCurrentItem(){
+    if (itemEditor.index===null) return;
+    var idx = itemEditor.index;
+    var removed = draft.items.splice(idx,1)[0];
+    itemEditor = null;
+    $("itemEditorPanel").classList.remove("active");
+    $("summaryPanel").classList.add("active");
+    renderSheet();
+    showItemUndo(removed,idx);
+  }
+
+  $("sheetTitleInput").addEventListener("input", function(){
+    if (!draft) return;
+    draft.title = $("sheetTitleInput").value;
+    updatePrimaryDisabled();
+  });
+  $("addItemBtn").addEventListener("click", openNewItemEditor);
+  $("editorBackBtn").addEventListener("click", cancelItemEditor);
+  $("editorCancelBtn").addEventListener("click", cancelItemEditor);
+  $("editorDoneBtn").addEventListener("click", saveItemEditor);
+  $("deleteItemBtn").addEventListener("click", deleteCurrentItem);
+  $("resetItemBtn").addEventListener("click", resetWholeItem);
+  document.querySelectorAll("[data-reset-field]").forEach(function(b){
+    b.addEventListener("click", function(){ resetEditorField(b.dataset.resetField); });
+  });
+  $("editName").addEventListener("input", function(){
+    if (!itemEditor) return;
+    itemEditor.name = $("editName").value;
+    updateEditorDone();
+  });
+  $("editGrams").addEventListener("input", function(){
+    if (!itemEditor) return;
+    var next = numericInputValue("editGrams");
+    var old = itemEditor.g;
+    if (next!==null && next>0){
+      scaleEditorValues(old,next);
+      itemEditor.g = next;
+      setEditorInput("editKcal",itemEditor.values.kcal,0);
+      setEditorInput("editProtein",itemEditor.values.p,1);
+      setEditorInput("editFat",itemEditor.values.f,1);
+      setEditorInput("editCarbs",itemEditor.values.c,1);
+    } else {
+      itemEditor.g = next;
+    }
+    updateEditorDone();
+  });
+  [
+    ["editKcal","kcal"],["editProtein","p"],["editFat","f"],["editCarbs","c"]
+  ].forEach(function(pair){
+    $(pair[0]).addEventListener("input", function(){
+      if (!itemEditor) return;
+      itemEditor.values[pair[1]] = numericInputValue(pair[0]);
+      updateEditorDone();
+    });
+  });
+  $("itemUndoBtn").addEventListener("click", function(){
+    if (!itemUndo) return;
+    draft.items.splice(itemUndo.index,0,itemUndo.item);
+    hideItemUndo();
+    renderSheet();
+  });
+
   $("scrim").addEventListener("click", closeSheet);
   $("discardBtn").addEventListener("click", function(){
     closeSheet();
@@ -1343,19 +1794,36 @@
     if (draft.mealIdx === null){
       var now = new Date();
       state.meals.push({
-        name:draft.title, vol:draft.vol, h:draft.h,
+        name:draft.title.trim(), vol:draft.vol, h:draft.h,
         time: String(now.getHours()).padStart(2,"0")+":"+String(now.getMinutes()).padStart(2,"0"),
-        kcal:tot.kcal, p:tot.p, f:tot.f, c:tot.c, items:draft.items
+        kcal:tot.kcal, p:tot.p, f:tot.f, c:tot.c, items:draft.items.map(cloneItem)
       });
       scanCount++;
       showToast("Logged to Today");
     } else {
       var m = state.meals[draft.mealIdx];
+      m.name = draft.title.trim();
       m.kcal = tot.kcal; m.p = tot.p; m.f = tot.f; m.c = tot.c;
+      m.items = draft.items.map(cloneItem);
       showToast("Changes saved");
     }
     closeSheet(); show("today"); renderToday();
     $("scr-today").scrollTop = 0;
+  });
+  $("deleteMealBtn").addEventListener("click", function(){
+    $("deleteMealConfirm").classList.add("open");
+  });
+  $("cancelDeleteMealBtn").addEventListener("click", function(){
+    $("deleteMealConfirm").classList.remove("open");
+  });
+  $("confirmDeleteMealBtn").addEventListener("click", function(){
+    if (!draft || draft.mealIdx===null) return;
+    state.meals.splice(draft.mealIdx,1);
+    $("deleteMealConfirm").classList.remove("open");
+    closeSheet();
+    show("today");
+    renderToday();
+    showToast("Meal deleted");
   });
 
   /* ---------- History ---------- */

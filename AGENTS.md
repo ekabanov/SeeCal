@@ -70,7 +70,7 @@ weights are not.
 
 ```bash
 cd ml && .venv/bin/python -m pytest tests/        # ml pipeline unit tests (41)
-cd ios/SeeCal && swift test -Xcxx -DFMT_CONSTEVAL= # Swift package tests (181)
+cd ios/SeeCal && swift test -Xcxx -DFMT_CONSTEVAL= # Swift package tests (190; 1 env-gated skip)
 scripts/test.sh                                    # both of the above + iOS build check
 scripts/test.sh --skip-build                       # skip the slow xcodebuild step
 scripts/build.sh --device                          # signed device build (bundles weights)
@@ -174,8 +174,14 @@ verified off a green `swift test`.
   E4B is 5.15 GB plain / 7.48 GB OptiQ, too big to bundle. Qwen3.5-4B stays.
   Fine-tuning, not base-model choice, does the heavy lifting.
 - **iOS app**: full product build-out complete against the prototype spec.
-  181 Swift + 41 ml tests green; `scripts/build.sh` / `scripts/test.sh` green;
+  190 Swift (1 env-gated skip) + 41 ml tests green; `scripts/build.sh` /
+  `scripts/test.sh` green;
   device build bundles v7b and verifies `seecal_adapter_version: v7b`.
+- Editable nutrition shipped (2026-07-28): meal and ingredient names, grams,
+  calories/macros, manual add, delete with Undo, model reset, corrected-density
+  scaling, backward-compatible persistence, and confirmed logged-meal deletion
+  with photo cleanup. Meal totals remain derived from ingredients. The unused
+  LiDAR setting was removed; depth affordances are capability-driven.
 - Camera capture hardened (2026-07-28): watchdog timeout on `capturePhoto()`,
   `AVCaptureSession.runtimeErrorNotification` observed, and no permanent failure
   latch in `configureIfNeeded()`. Exactly-once completion lives in
@@ -210,25 +216,20 @@ a photo that contains food is exactly the over-refusal failure to avoid.
 
 See `docs/BACKLOG.md` for detail. Highest-value items:
 
-1. **Fully editable food data.** Only grams are editable today; ingredient
-   names, add/remove, and direct nutrition entry are missing. Carries a real
-   design decision (derived-vs-overridden nutrition, since nutrition is
-   currently a pure function of grams) that must be settled in the app spec
-   first — the spec is binding.
-2. **An honest out-of-distribution test set.** All 325 test dishes are
+1. **An honest out-of-distribution test set.** All 325 test dishes are
    cafeteria trays on one RealSense rig, so our MAE almost certainly flatters
    real phone photos. NutritionVerse-Real (889 real images, weighed ground
    truth) is the best candidate. Note Nutrition5K is *not* single-food —
    63.3% of dishes are multi-ingredient (mean 5.71, max 34); the weakness is
    scene diversity, not mixed food.
-3. **On-device depth (v6)** — blocked on calibrating iPhone LiDAR to the
+2. **On-device depth (v6)** — blocked on calibrating iPhone LiDAR to the
    Nutrition5K rig scale; that calibration is the entire difficulty.
-4. **Multi-view training (v8?)** — `side_angles` (cameras A–D, ~115
+3. **Multi-view training (v8?)** — `side_angles` (cameras A–D, ~115
    frames/dish) are downloaded but unused: a 1920×1080 side frame is ~2040
    image tokens against `--max-seq-length 2048`, so those records would
    truncate. Needs downscaling first. Would take training data from 2,594 to
    ~9,400 records.
-5. **HF publish of the fused model: DEFERRED** by the user ("wait with
+4. **HF publish of the fused model: DEFERRED** by the user ("wait with
    publishing"). Ready via
    `ml/fuse.sh adapters_v7b --out-path fused_v7b --upload-repo <id>`.
    Any publish is a separate user-confirmed step.

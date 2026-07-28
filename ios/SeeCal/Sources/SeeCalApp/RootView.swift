@@ -122,6 +122,11 @@ public struct RootView: View {
                             scanController.discardResult()
                         }
                     },
+                    onDeleteMeal: { editDraft in
+                        Task {
+                            await scanController.deleteMeal(editDraft)
+                        }
+                    },
                     onDraftChanged: { editedDraft in
                         // New-scan drafts track the sheet's live edits so an
                         // interactive dismissal parks the adjusted values

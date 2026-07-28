@@ -57,7 +57,8 @@ in `select_images.py`, then drop `--only-overhead`. Would take training data fro
 opposite way to the v7 negatives, which *cost* a little food precision. More food
 signal could offset that.
 
-## Fully editable food data — ingredients, amounts, nutrition (added 2026-07-27)
+## Completed: Fully editable food data — ingredients, amounts, nutrition
+(added 2026-07-27; completed 2026-07-28)
 
 **Goal:** every aspect of a scan result should be user-editable — ingredient
 names, the ingredient list itself (add / remove), amounts, and the nutrition
@@ -65,36 +66,29 @@ numbers. The model is an estimator, not an authority; when it misidentifies or
 misjudges something the user must be able to correct it rather than log a number
 they know is wrong (or discard the scan).
 
-**What works today** (`MealEditDraft`, `MealResultSheet`):
-- Grams only, via `stepGrams` (±5 g, floored at 5 g) and `setGrams`.
-- Nutrition is **derived**: per-item calories/macros are scaled proportionally
-  from grams, and dish totals are the sum over items (`totals`).
+**Status (2026-07-28): implemented and verified.** The functional interaction is
+binding in
+`docs/design/prototype/seecal-prototype.html`, the data and behavior contract is
+in `docs/specs/2026-07-26-app-spec.md` §2/§5, and the implementation sequence is
+in `docs/plans/2026-07-28-editable-nutrition-plan.md`.
 
-**Missing:** editing an ingredient's name, adding an ingredient, removing an
-ingredient, and setting calories/macros directly.
+**What shipped:**
+- A correction redefines that field's nutrition density at the entered grams;
+  later gram changes scale the corrected value.
+- Calories, protein, fat and carbs stay independent. No 4/9/4 consistency rule.
+- Meal totals always equal the sum of ingredients; there is no total override.
+- Added ingredients are manual in v1: blank name, grams, calories and macro fields.
+- Compact rows open a focused editor inside the shared result/edit sheet.
+- Model-backed items have per-field reset plus Reset item to estimate.
+- Ingredient deletion is immediate with a five-second Undo.
+- Meal title is editable; logged meals can be deleted from their edit sheet after
+  confirmation, including their stored photo.
+- Fresh results and previously logged meals use the same editing capabilities.
+- Old meal JSON lazily migrates to the new model-backed shape; corrected and
+  manual ingredients round-trip without losing reset data.
 
-**The load-bearing design decision — derived vs. overridden.** Because nutrition
-is currently a pure function of grams, letting the user type a calorie value
-creates a conflict: the next gram step would silently recompute and destroy their
-edit. Options:
-1. **Per-field override flags** — a manually-set field stops tracking grams
-   (needs a visible "edited" affordance so the user knows it detached, and a way
-   to revert to the estimate).
-2. **Edit grams-per-100g instead** — the user corrects the *density*, nutrition
-   stays derived. Keeps one source of truth; less direct.
-3. **Free-form totals** — dish totals become independently editable and stop
-   being the item sum. Simplest UI, but then items and totals can disagree.
-
-Recommend (1) with an explicit revert, and totals staying the item sum.
-
-**Also needs deciding:** whether an added ingredient requires a nutrition lookup
-(a per-100g food table shipped in-app — Nutrition5K's `ingredients_metadata.csv`
-is a candidate source) or the user types its macros directly.
-
-**Touches:** `MealEditDraft` (mutation API + override state), `MealResultSheet`
-(name field, add/remove rows, numeric entry), `MealLogEntry` persistence (must
-round-trip overrides), and `docs/specs/2026-07-26-app-spec.md` — the spec only
-describes gram steppers today, so it needs updating first (spec wins over code).
+**Verification:** `scripts/test.sh` — 41 ML tests, 190 Swift tests (one
+environment-gated parity test skipped), and the iOS simulator build all green.
 
 ## On-device depth (v6) — real-life depth test (added 2026-07-27)
 

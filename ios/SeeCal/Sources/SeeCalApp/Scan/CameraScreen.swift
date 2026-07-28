@@ -44,7 +44,7 @@ struct CameraScreen: View {
                     levelIndicator
                 }
 
-                if controller.capturePreferences.useLiDARDepth && controller.captureService.supportsDepthCapture {
+                if controller.captureService.supportsDepthCapture {
                     depthAffordances
                 }
 

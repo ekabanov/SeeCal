@@ -155,8 +155,7 @@ public struct HistoryScreen: View {
                         }
                         MealRowView(
                             entry: entry,
-                            onTap: { onEditMeal(entry) },
-                            onDelete: { Task { await viewModel.deleteMeal(id: entry.id) } }
+                            onTap: { onEditMeal(entry) }
                         )
                     }
                 }

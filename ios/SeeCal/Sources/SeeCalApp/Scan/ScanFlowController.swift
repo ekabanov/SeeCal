@@ -389,6 +389,19 @@ public final class ScanFlowController: ObservableObject {
         }
     }
 
+    /// Edit-mode deletion reuses the view model's store + photo cleanup path.
+    /// Keep the sheet open when persistence fails so the user can retry.
+    public func deleteMeal(_ draft: MealEditDraft) async {
+        guard let id = draft.existingEntryID else { return }
+        await viewModel.deleteMeal(id: id)
+        guard !viewModel.mealEntries.contains(where: { $0.id == id }) else { return }
+
+        editDraft = nil
+        todayScrollToTopToken = UUID()
+        onRequestTabSwitch?(.today)
+        showToast("Meal deleted")
+    }
+
     // MARK: Toast
 
     private func showToast(_ message: String) {
