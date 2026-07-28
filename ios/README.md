@@ -62,12 +62,19 @@ $MODELS_DIR/
 └── mlx-community/Qwen3.5-4B-MLX-4bit/   base model, ~2.3 GB   (ml/download_model.sh)
 ```
 
-The **shipping LoRA adapter** is a build artifact of the `ml/` pipeline, so it
-is sourced straight from the repo — `ml/adapters_v5_swift/` (output of
-`ml/convert.sh adapters_v5`), no manual staging. `copy_weights.sh` names the
-shipping adapter in one place (`SHIPPING_ADAPTER`); update it when the shipping
-adapter changes. Dropping an adapter at `$MODELS_DIR/adapters/` is an optional
-override that takes precedence when present.
+The **shipping LoRA adapter** and compiled **Core ML specialist** are local,
+gitignored build artifacts. By default `copy_weights.sh` sources:
+
+```
+ml/adapters_v8_numeric_4b_swift/
+ml/runs/visual-specialist/deployment/SeeCalVisualSpecialist.mlmodelc/
+```
+
+Optional staged overrides may be placed at `$MODELS_DIR/adapters/` and
+`$MODELS_DIR/visual-specialist/SeeCalVisualSpecialist.mlmodelc/`. Device builds
+fail if either artifact is missing or the adapter is not stamped
+`v8-conditioned`; running the conditioned adapter without its specialist is
+not a supported shipping configuration.
 
 Without `MODELS_DIR` the build **fails with instructions**, unless
 `SEECAL_ALLOW_NO_WEIGHTS=1` (simulator dev mode — on the simulator,

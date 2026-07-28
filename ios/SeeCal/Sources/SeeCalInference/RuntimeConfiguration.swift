@@ -2,6 +2,8 @@ import Foundation
 
 public enum RuntimeConfigError: Error, Equatable, CustomStringConvertible {
     case emptyModelPath
+    case emptyVisualSpecialistModelPath
+    case missingAdapterForVisualSpecialist
     case invalidMaxOutputTokens(Int)
     case invalidTemperature(Double)
     case invalidTimeoutSeconds(Double)
@@ -11,6 +13,10 @@ public enum RuntimeConfigError: Error, Equatable, CustomStringConvertible {
         switch self {
         case .emptyModelPath:
             return "modelPath must not be empty"
+        case .emptyVisualSpecialistModelPath:
+            return "visualSpecialistModelPath must be nil or a non-empty path"
+        case .missingAdapterForVisualSpecialist:
+            return "a visual specialist requires its conditioned adapterPath"
         case let .invalidMaxOutputTokens(value):
             return "maxOutputTokens must be in 64...4096, got \(value)"
         case let .invalidTemperature(value):
@@ -31,6 +37,9 @@ public struct QwenRuntimeConfig: Codable, Equatable, Sendable {
 
     public var modelPath: String
     public var adapterPath: String?
+    /// Compiled Core ML specialist (`.mlmodelc`) used by conditioned adapters.
+    /// Nil preserves the legacy, unconditioned prompt contract.
+    public var visualSpecialistModelPath: String?
     public var runtimePolicy: RuntimePolicy
     public var maxOutputTokens: Int
     public var temperature: Double
@@ -42,6 +51,7 @@ public struct QwenRuntimeConfig: Codable, Equatable, Sendable {
     public init(
         modelPath: String = QwenRuntimeConfig.recommendedModelID,
         adapterPath: String? = nil,
+        visualSpecialistModelPath: String? = nil,
         runtimePolicy: RuntimePolicy = .mlxOnly,
         maxOutputTokens: Int = 512,
         temperature: Double = 0.1,
@@ -50,6 +60,7 @@ public struct QwenRuntimeConfig: Codable, Equatable, Sendable {
     ) {
         self.modelPath = modelPath
         self.adapterPath = adapterPath
+        self.visualSpecialistModelPath = visualSpecialistModelPath
         self.runtimePolicy = runtimePolicy
         self.maxOutputTokens = maxOutputTokens
         self.temperature = temperature
@@ -61,6 +72,16 @@ public struct QwenRuntimeConfig: Codable, Equatable, Sendable {
     public func validated() throws -> QwenRuntimeConfig {
         if modelPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             throw RuntimeConfigError.emptyModelPath
+        }
+        if let visualSpecialistModelPath,
+           visualSpecialistModelPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            throw RuntimeConfigError.emptyVisualSpecialistModelPath
+        }
+        if visualSpecialistModelPath != nil {
+            guard let adapterPath,
+                  !adapterPath.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+                throw RuntimeConfigError.missingAdapterForVisualSpecialist
+            }
         }
         if !(64...4096).contains(maxOutputTokens) {
             throw RuntimeConfigError.invalidMaxOutputTokens(maxOutputTokens)

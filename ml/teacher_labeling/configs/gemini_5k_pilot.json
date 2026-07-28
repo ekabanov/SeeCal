@@ -1,0 +1,15 @@
+{
+  "schema_version": 1,
+  "run_id": "gemini-5k-pilot",
+  "enabled_providers": [
+    "google"
+  ],
+  "caps_usd": {
+    "total": "25.00",
+    "google": "25.00",
+    "openai": "0.00"
+  },
+  "safety_reserve_usd": "5.00",
+  "reservation_usage_buffer": "0.20",
+  "max_records_per_batch": 500
+}

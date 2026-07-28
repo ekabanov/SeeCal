@@ -52,12 +52,14 @@ public enum SeeCalBootstrap {
     public static func makeProductionViewModel(
         config: QwenRuntimeConfig,
         mlxRunner: @escaping MLXSwiftQwenVisionEngine.Runner,
-        mnnRunner: MNNQwenVisionEngine.Runner? = nil
+        mnnRunner: MNNQwenVisionEngine.Runner? = nil,
+        visualSpecialist: (any VisualSpecialistPredicting)? = nil
     ) throws -> AppViewModel {
         return try SeeCalProductionFactory.makeViewModel(
             config: config,
             mlxRunner: mlxRunner,
-            mnnRunner: mnnRunner
+            mnnRunner: mnnRunner,
+            visualSpecialist: visualSpecialist
         )
     }
 
@@ -67,12 +69,19 @@ public enum SeeCalBootstrap {
         mnnRunner: MNNQwenVisionEngine.Runner? = nil
     ) async throws -> AppViewModel {
         let engine = try await SeeCalMLXEngine.make(config: config)
+        let visualSpecialist: (any VisualSpecialistPredicting)?
+        if let modelPath = config.visualSpecialistModelPath {
+            visualSpecialist = try CoreMLVisualSpecialist(modelPath: modelPath)
+        } else {
+            visualSpecialist = nil
+        }
         return try SeeCalProductionFactory.makeViewModel(
             config: config,
             mlxRunner: { imagePath, prompt in
                 try await engine.generate(imagePath: imagePath, prompt: prompt)
             },
-            mnnRunner: mnnRunner
+            mnnRunner: mnnRunner,
+            visualSpecialist: visualSpecialist
         )
     }
 

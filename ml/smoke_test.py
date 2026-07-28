@@ -32,6 +32,7 @@ def main():
     ap.add_argument("--max-seq-length", type=int, default=2048)
     ap.add_argument("--batch-size", type=int, default=2)
     ap.add_argument("--records", type=int, default=4)
+    ap.add_argument("--offset", type=int, default=0)
     args = ap.parse_args()
 
     import mlx_vlm
@@ -49,7 +50,12 @@ def main():
     processor = AutoProcessor.from_pretrained(str(args.model_dir))
     image_pad_id = processor.tokenizer.convert_tokens_to_ids("<|image_pad|>")
 
-    hf_ds = load_dataset("json", data_files=str(args.data), split=f"train[:{args.records}]")
+    stop = args.offset + args.records
+    hf_ds = load_dataset(
+        "json",
+        data_files=str(args.data),
+        split=f"train[{args.offset}:{stop}]",
+    )
 
     failures = []
 

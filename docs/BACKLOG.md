@@ -2,6 +2,280 @@
 
 Deferred work items. Not scheduled; picked up when prioritized. Dated when added.
 
+## Hint-assisted photo re-analysis (added 2026-07-28)
+
+**Goal:** when the photo is usable but the model identifies a food incorrectly,
+let the user add a short fact such as “the white cubes are tofu” or “this is
+turkey, not chicken” and re-run nutrition estimation on the same photo.
+
+**Why this is more useful than renaming an item:** editing already lets the user
+rename “chicken” to “tofu”, but a rename deliberately preserves the current
+nutrition density. That is correct for ordinary corrections, but not when the
+identity error also makes calories/macros wrong. A hinted re-run gives the model
+the opportunity to recompute the whole estimate using the corrected identity.
+
+**Dormant plumbing is not a feature:** `FoodScanRequest.userHint` already exists,
+`QwenPromptBuilder` appends `\nUser hint: …`, and `ScanFlowController` always
+passes `nil`. Do **not** expose that field as-is. `adapters_v7b` was trained only
+on the fixed no-hint prompt; an appended hint is a new prompt distribution and
+could hurt JSON reliability, food accuracy, or not-food refusal. Prompt parity
+still applies: every hint form used by the app must be represented exactly in
+training and in parity tests.
+
+**Recommended product shape:**
+- Add “Improve result” to a fresh result sheet. It opens one short, optional
+  text field with examples, then re-analyzes the **same stored photo**.
+- Keep the current draft visible and unchanged until the hinted inference
+  succeeds. On failure, return to it with an error; never replace a usable result
+  with a failed re-run.
+- A successful re-run replaces the model estimate. Make the replacement explicit
+  if the user has already edited or added items; do not silently discard edits.
+- Normalize whitespace, reject control characters, and cap the hint (for example
+  160 characters). The model is on-device, so this is principally an output-
+  reliability guard rather than a remote security boundary.
+- Do not retain the hint after logging in v1. It is inference context, not an
+  ingredient or a verified fact.
+
+**Training/evaluation approach:**
+1. First run a paired zero-shot pilot on `adapters_v7b`: the same 50 diverse food
+   images with no hint and with a correct, ground-truth-derived hint. Include
+   ambiguous identity hints, a deliberately wrong hint set, and held-out
+   not-food images with food-sounding hints. This tells us whether the existing
+   adapter can use hints at all; it is not a ship gate by itself.
+2. If zero-shot is unstable, make a teacher-generated hint-conditioned dataset
+   variant. Keep most train records byte-identical to v7b and add a short hint
+   to a deterministic minority (feature dropout). An initial mix worth testing
+   is 75% unchanged/no-hint and 25% hinted: roughly 15% positive identity
+   (“the cubes are tofu”), 7.5% contrastive correction (“tofu, not chicken”),
+   and 2.5% preparation or otherwise visually useful clarification. Treat those
+   percentages as an ablation parameter, not a product constant.
+3. Extend `check_prompt_parity.py` and Swift prompt tests to cover no-hint and
+   every supported hint envelope. The no-hint string must remain byte-identical
+   to v7b.
+4. Gate on paired results: no-hint food MAE/parse rate remain a statistical tie
+   with v7b; correct hints improve ingredient identification and do not worsen
+   calorie MAE; incorrect hints fail gracefully; food-sounding hints do not
+   materially bypass v7b’s not-food refusal.
+
+### Teacher-generated synthetic hints
+
+The teacher should not freely relabel the image. Give it the photo **and** the
+authoritative Nutrition5K ingredient names, and ask it to express one sparse fact
+that a user could realistically type. The measured/source list remains the truth;
+the teacher supplies wording and, for contrastive hints, a plausible visual
+confusion. This is safer than asking a teacher to infer the hint from the image
+alone, which can reproduce exactly the recognition error the hint is meant to
+correct.
+
+The strongest version also gives the teacher `adapters_v7b`’s baseline item names
+for that **train-split** image. When the prediction conflicts with the measured
+ingredient list, ask for the smallest hint that corrects the actual error:
+baseline “chicken” + source “tofu” becomes “the cubes are tofu, not chicken”.
+Prefer these real student-error corrections over teacher-invented confusions.
+Use ordinary positive hints on correctly recognized records so every hinted
+example does not imply that a contrastive correction is required.
+
+Use a structured teacher response, for example:
+
+```json
+{
+  "abstain": false,
+  "kind": "contrastive_identity",
+  "text": "the cubes are tofu, not chicken",
+  "supported_items": ["tofu"],
+  "excluded_items": ["chicken"]
+}
+```
+
+Fail closed unless every supported item maps to the dish’s source ingredients,
+every excluded item is absent, the hint contains no calories/macros/grams, and
+the text is short enough for the app’s limit. Ask for at most one or two facts;
+do not let the teacher paste the complete ingredient list into every prompt or
+Qwen will learn a synthetic shortcut unlike real user behavior. `abstain` is the
+right answer when no useful, visually grounded hint can be made.
+
+Reuse the existing `ml/teacher_labeling/` batch, budget, raw-response, prompt-hash,
+and provenance machinery. The current 5,000-image semantic bake-off found
+Gemini Flash-Lite cheaper and better on the registered extraction screen, so it
+is the natural first generator to test; hint quality still needs its own
+200-record audited pilot before scaling. Store the teacher model/version, exact
+prompt and schema hashes, raw result, normalized hint, source item mapping, and
+accept/reject reason with each record.
+
+Apply hint selection deterministically by record/dish ID so datasets regenerate
+exactly. Replace the prompt on the selected 25% rather than duplicating them,
+which would otherwise overweight those dishes. When a dish has multiple views,
+mix hinted and unchanged views where possible so the model sees both conditions
+without changing dish-level split isolation. Within the hinted slice, prioritize
+records where v7b’s normalized item names disagree with the source list, then
+fill the remaining quota with correctly recognized but visually useful examples.
+Store the baseline output and matching decision as provenance; teacher wording
+must never override the measured label.
+
+Teacher-generate training hints from the **train split only**. After the
+generation prompt and acceptance rules are frozen, create validation hints
+separately. Keep the final paired hint gate human-written or at least
+human-audited, with wording not produced by the training teacher, so success is
+not merely adaptation to one model’s synthetic prose.
+
+**First step:** add an offline paired-hint evaluation mode to `infer.py` and a
+200-record teacher-hint preparation/audit mode alongside the existing semantic
+teacher pipeline; do not start with UI work or a full paid labeling run. This is
+an ML behavior experiment with a small UI tail, not just a text-field feature.
+
+## Add a meal manually, with no photo (added 2026-07-28)
+
+**Goal:** allow logging when the user has no photo, already knows the nutrition,
+or wants to enter a snack quickly. No inference and no network are involved.
+
+**Existing leverage:** manual **ingredients** already work inside the shared
+result/edit sheet and persist with `modelEstimate == nil`. What is missing is a
+way to create the containing meal without first taking a photo.
+
+**Recommended product shape:**
+- Add a visible “Add meal” action to Today’s MEALS section. Keep the center Scan
+  FAB as the one-tap camera path; do not add an action sheet to every scan.
+- Start a new draft at the current time and inferred meal slot, immediately open
+  one blank “Added manually” ingredient editor, and reuse all current validation,
+  density scaling, add/delete/Undo, meal-name editing, and Log meal behavior.
+- A cancelled first ingredient may return to an empty draft, but Log stays
+  disabled until there is at least one valid item. Blank nutrition values remain
+  zero, matching the shipped manual-ingredient contract.
+- Use a neutral utensil/manual glyph wherever a photo thumbnail would appear.
+  Do not manufacture a placeholder image file.
+- A later extension can make date/time editable for back-filling older meals;
+  keep v1 at “now” unless that need is prioritized separately.
+
+**Required model/persistence work:**
+- Make `MealLogEntry.imagePath` optional and decode all existing string-valued
+  entries unchanged. Update thumbnail, result-header, deletion, and photo-cleanup
+  paths to handle `nil`.
+- Add a manual-new-meal initializer to `MealEditDraft` rather than fabricating a
+  `FoodScanResult` or fake scan context.
+- Consider an entry-level origin (`photo`, `manual`, later `barcode`) only if the
+  UI or analytics needs it; absence of a photo is sufficient for the v1 behavior.
+
+**Acceptance gates:** manual meals round-trip through persistence, contribute to
+Today/History totals, can be edited and deleted, never touch the inference
+runtime, and do not attempt photo deletion. Old meal JSON remains compatible.
+
+**Effort/value:** small-to-medium and high-confidence. This should land before
+barcode entry because barcode results need the same photo-less meal path.
+
+## Add packaged food by barcode (added 2026-07-28)
+
+**Goal:** scan a UPC/EAN/GTIN on packaged food, retrieve its label nutrition,
+enter the amount actually consumed, and add it as a source-backed meal item.
+This complements photo estimation; it does not help restaurant or unpackaged
+food.
+
+**Important distinction:** a normal retail barcode is primarily a product
+identifier, not a nutrition payload. SeeCal must query a product database, and
+the package quantity is not the consumed quantity. The user still has to confirm
+grams, millilitres, or servings eaten.
+
+### Data-source survey
+
+**Recommended v1 source — Open Food Facts.** Its current v3 API can retrieve a
+product directly by barcode, read access needs no API key, and records can include
+product name, ingredients, serving size, quantity, and normalized nutrition per
+100 g / 100 ml or serving. It is global and free, but crowdsourced, incomplete,
+and explicitly provides no accuracy guarantee. Product reads are currently
+limited to 15 requests/minute/IP, which is ample for direct user scans.
+
+- API and limits:
+  [Open Food Facts API introduction](https://openfoodfacts.github.io/documentation/docs/Product-Opener/api/)
+- Barcode endpoint:
+  [GET product by code](https://openfoodfacts.github.io/documentation/docs/Product-Opener/v3/products/get-api-v3-product-code/)
+- Nutrition field semantics:
+  [product nutrition schema](https://openfoodfacts.github.io/documentation/docs/Product-Opener/schemas/schemas/product_nutrition/)
+- Licensing: the database is ODbL, individual contents are DbCL, and product
+  images are separately CC BY-SA. Follow their attribution/reuse guidance and
+  review compliance before shipping:
+  [Open Food Facts licensing guide](https://openfoodfacts.github.io/documentation/docs/Product-Opener/api/tutorials/license-be-on-the-legal-side/)
+
+**Possible later fallback — USDA FoodData Central.** Its data is public domain
+and its Branded Foods data includes GTIN/UPC, but it is US-oriented and every API
+request requires a data.gov key that the USDA says must not be made public. The
+default limit is 1,000 requests/hour. A production integration therefore needs a
+SeeCal backend/proxy or a periodically prepared local subset; embedding the key
+in the iOS app is not acceptable. That conflicts with the present no-backend
+architecture, so it is not recommended for v1.
+
+- [FoodData Central API, key, limits, and licensing](https://fdc.nal.usda.gov/api-guide/)
+- [FoodData Central downloadable datasets](https://fdc.nal.usda.gov/download-datasets/)
+
+**Not a nutrition source — Verified by GS1.** It is useful for verifying that a
+GTIN is valid and who assigned it, with some basic product data when available.
+Its public service is limited to 30 single queries/day and enterprise/API access
+is arranged through a local GS1 office. It is not a general, open nutrition
+database and is not the right primary lookup for SeeCal.
+
+- [Verified by GS1 overview](https://www.gs1.org/services/verified-by-gs1)
+
+### Recommended v1 architecture and behavior
+
+1. Land photo-less manual meals first, then add a “Scan barcode” route alongside
+   “Add manually” from Today’s Add meal flow. Use Apple VisionKit’s
+   `DataScannerViewController` for live barcode recognition where supported,
+   with a clear unavailable/manual-code fallback.
+2. Normalize and checksum-validate the GTIN, then call only Open Food Facts’
+   product-by-code endpoint through a `BarcodeProductLookup` protocol. Send an
+   identifying User-Agent as their API requests recommend.
+3. Request only the needed fields and consume normalized
+   `energy-kcal_100g`, `proteins_100g`, `fat_100g`, and
+   `carbohydrates_100g` values. Treat a missing product or any missing required
+   macro as incomplete: show what was found and let the user finish it manually;
+   never silently turn missing fields into trusted zeroes.
+4. Ask for consumed amount before adding. Prefer the package serving as a
+   convenience default only when it has a normalized quantity; never assume the
+   whole package was eaten.
+5. Address liquids explicitly. Open Food Facts’ normalized `_100g` fields mean
+   per 100 g **or per 100 ml for liquids**, while SeeCal currently models every
+   amount as grams. Either extend `MealItem` to carry `g`/`ml`/`serving` units,
+   or constrain the first release to mass-based products. Do not silently equate
+   1 ml with 1 g.
+6. Store a nutrition snapshot in the meal so old logs do not change when the
+   community record changes. Also store barcode, provider, lookup timestamp, and
+   the immutable imported reference so Reset can return to the scanned label.
+   The current `modelEstimate` concept should evolve into a source-neutral
+   reference (`model`, `barcode`, or none/manual) instead of pretending barcode
+   data came from Qwen.
+7. Cache successful lookups by barcode on-device for speed and offline reuse.
+   On a cache miss without connectivity, offer code entry/manual nutrition; do
+   not block meal logging.
+8. Omit remote product images in v1. This avoids unnecessary traffic/storage and
+   a separate CC BY-SA image-attribution surface; the meal row can use a barcode
+   or package glyph.
+
+**Privacy/product copy:** barcode lookup is not fully on-device. The app sends
+the numeric barcode—not the meal photo—to Open Food Facts. Replace absolute copy
+such as “nothing is uploaded” with precise language: photo analysis stays on
+this iPhone; barcode lookup contacts Open Food Facts. The feature should be
+clearly unavailable/offline when the user has no network.
+
+**Data-quality spike before implementation:** scan 50–100 packaged products from
+the actual launch market (including Estonian/EU store brands, imported products,
+solids, drinks, and serving-only labels). Record barcode hit rate, presence of all
+four required nutrition fields, usable serving quantity, and obvious label
+mismatches. The global database size is not a substitute for local coverage.
+Set a ship/no-ship threshold from that evidence before building the full UI.
+
+**Acceptance gates:** a recognized complete product produces the same totals as
+its label for the entered amount; incomplete/not-found/offline cases fall back
+cleanly to manual entry; repeat scans use the cache; provider attribution and
+privacy copy are visible; no API secret is shipped; existing photo and manual
+meals remain unchanged.
+
+## Suggested order for these three
+
+1. **Manual meal without a photo** — lowest risk and creates the shared
+   photo-less entry path.
+2. **Barcode coverage spike, then Open Food Facts v1 if coverage is good** —
+   product-value feature with network, unit, provenance, and licensing work.
+3. **Hint-assisted re-analysis experiment** — potentially high value, but its
+   real cost/risk is adapter training and regression evaluation, not UI.
+
 ## Out-of-distribution test set (added 2026-07-28)
 
 **Goal:** measure accuracy on images that look like what users actually shoot.
@@ -31,7 +305,7 @@ ingredients, pixel masks — but **no nutrition or weights**, so ingredient ID o
 `eval.sh adapters_v7b` against it. Expect the MAE to be worse than 63.4; the
 point is to learn *how much*, not to pass a gate.
 
-## Multi-view training (v8?) (added 2026-07-28)
+## Further multi-view Qwen training (v9?) (added 2026-07-28)
 
 **Goal:** train on the side-angle cameras as well as overhead, for viewpoint
 robustness — real users will not shoot perfectly top-down.

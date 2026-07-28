@@ -337,3 +337,29 @@ without downscaling first.
   dosage experiment ≈ a full working day of GPU time.
 - Seven adapters trained; four were silent failures, one (v6) a measured tie, one (v7)
   a measured regression, one shipped. Zero of the four early failures visible in loss.
+
+## Splitting “what is it?” from “how much is there?”
+
+The next accuracy track tested a hybrid instead of asking one VLM to do every
+job. A MobileNetV3 specialist learned five whole-meal numeric distributions
+(mass, calories, protein, fat, carbs), while Qwen kept the hard generalization
+work: open-vocabulary ingredients, food refusal, and coherent per-item JSON.
+The specialist does not send classes, container labels, or a hard
+food/not-food decision—only calibrated p10/p50/p90 intervals explicitly
+described as fallible evidence.
+
+The full 325-dish result was 56.8 kcal MAE / 29.7 median with zero parse
+failures and 29/29 non-food refusal. Against v5 on the 322 shared dishes, the
+paired gain was modest (−1.8 kcal, bootstrap 95% CI −8.3 to +4.7), so this is
+not a story about a miraculous benchmark jump. The valuable result is a clean
+architecture boundary: a 9.5 MB Core ML model can improve or adapt numeric
+vision independently while the pretrained 4B model preserves semantic
+generalization. If the specialist fails, Qwen receives the exact
+`{"available":false}` form it saw during training.
+
+The deployment detail that matters is again formatting. Python and Swift emit
+the same fixed field order and one-decimal JSON, and the app runs the
+specialist sequentially before MLX Qwen to avoid overlapping their peak
+memory. The trained checkpoint exported to Core ML and ran a real macOS image
+through the Swift integration in 0.67 seconds; iPhone thermals and memory remain
+a physical-device gate, not something inferred from the Mac.

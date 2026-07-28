@@ -1,4 +1,4 @@
-# Training history: the road to `adapters_v5`
+# Training history: from broken adapters to conditioned v8
 
 This is the forensic record of every training run and bug that predates the
 current, working pipeline (`ml/setup.sh` → `ml/prep.sh` → `ml/train.sh` →
@@ -62,15 +62,15 @@ calories MAE 83.4 / median 63.9, protein MAE 6.7, fat MAE 4.9, carbs MAE 12.4,
 0 parse failures — this became the number v5 needed to beat. Do not use
 `adapters_v4/` for anything beyond historical reference.
 
-### The toolchain rewrite, and `adapters_v5/` (shipping)
+### The toolchain rewrite, and `adapters_v5/` (historical food baseline)
 Runs 1–4 all trained against a hand-patched, ancient mlx-vlm checkout on a
 Python 3.14 venv. On 2026-07-26 a second, unpatched toolchain
 (`mlx-vlm==0.6.7`) was stood up and the legacy one retired outright (see
 "Toolchain rewrite" below) — every legacy patch (fixes #14–17) turned out to
 already be fixed upstream. `adapters_v5` trained clean on the new stack, 2
 epochs, LR 1e-4: calories MAE 54.4 / median 36.2 on the same 50-dish set,
-1/50 parse failures. It is the shipping adapter — see `ml/README.md` for the
-full expected-metrics table and how to reproduce it.
+1/50 parse failures. It became the first working baseline and later the food
+control for v7/v8 — see `ml/README.md` for metrics and reproduction.
 
 ### The depth track, and `adapters_v6/` (reference only, not shipped)
 A parallel effort added a depth-sensor volume estimate to the prompt
@@ -82,9 +82,27 @@ line appended to the prompt) looked promising at the 1000-iteration probe
 (33% better calories MAE than the matched v5 probe) but came back a
 statistical tie with v5 on the full 2-epoch run (50 dishes paired: +5.2 kcal,
 t=0.56; v6 59.2 vs v5 54.4 MAE) — not a real improvement. **The depth track is
-stopped; `adapters_v5` remains the shipping adapter.** `adapters_v6` is kept
+stopped.** `adapters_v6` is kept
 for reference only. See `docs/design/2026-07-26-depth-design-brief.md` for
 the full design rationale.
+
+### The conditioned specialist track, and `adapters_v8_numeric_4b/` (shipping)
+
+The v8 track separates numeric visual estimation from open-vocabulary food
+reasoning. A 9.5 MB Core ML MobileNetV3 specialist predicts calibrated
+p10/p50/p90 intervals for total mass, calories, protein, fat, and carbs. A
+fresh Qwen3.5-4B LoRA sees the original image plus that fallible measurement
+block and retains responsibility for food refusal, ingredient names, and
+per-item allocation.
+
+The full untouched 325-dish result is 56.8 kcal MAE / 29.7 median with zero
+parse failures; macros are 5.1/4.4/6.0 MAE and held-out not-food refusal is
+29/29. On the 322 dishes shared with v5, v8 is 57.2 versus 59.0 kcal MAE
+(paired −1.8 kcal, bootstrap 95% CI −8.3 to +4.7): directionally better but
+not statistically decisive. The user selected the system for its complete
+schema reliability, best median, and extensible calibrated specialist path.
+The exact research/evaluation record is
+`docs/plans/2026-07-28-visual-specialist-conditioned-qwen-plan.md`.
 
 ## Toolchain rewrite (2026-07-26)
 

@@ -3,27 +3,24 @@
 Point your phone at a plate of food. Get calories, macros, and a per-ingredient
 breakdown back — entirely on-device, no server, no network call.
 
-SeeCal fine-tunes **Qwen3.5-4B** (natively multimodal — vision is built in,
-no separate VL model) on the **Nutrition5k** dataset with a LoRA adapter, then
-runs the resulting base-model-plus-adapter directly on iPhone via MLX Swift.
+SeeCal combines a compact Core ML visual specialist with a conditioned
+**Qwen3.5-4B** LoRA trained on **Nutrition5k**, then runs both models directly
+on iPhone with no server.
 
 ## How it works
 
 ```mermaid
 flowchart LR
-    A[Nutrition5k photos + labels] -->|ml/ pipeline| B[LoRA adapter]
-    B -->|convert_adapter_for_swift.py| C[adapters_vN_swift/]
-    C -->|bundled at build time| D[SeeCal iOS app]
-    E[Qwen3.5-4B base model] -->|bundled at build time| D
-    D -->|photo in, JSON out, on-device| F[Calories / macros / ingredients]
+    A[Meal photo] --> B[Core ML specialist]
+    A --> D[Qwen3.5-4B + conditioned LoRA]
+    B -->|calibrated mass/calorie/macro intervals| D
+    D -->|JSON, on-device| F[Calories / macros / ingredients]
 ```
 
 The two halves — the training pipeline and the iOS app — never share code.
-They agree only on a narrow contract: a converted adapter directory, and a
-prompt string that must be byte-identical on both sides (Qwen's chat
-template is unforgiving about this — see `docs/architecture.md`). That
-contract is what lets the ml side retrain and the iOS side ship UI changes
-independently.
+They agree on a narrow contract: converted model artifacts and a prompt string,
+including the specialist measurement block, that must be byte-identical on
+both sides (see `docs/architecture.md`).
 
 ## Results
 
@@ -34,7 +31,8 @@ MAE / median absolute calorie error on the **full 325-dish** held-out set
 |---|---:|---:|---:|:--:|
 | Base model (no adapter) | 83.4¹ | 63.9¹ | 0 | no |
 | `adapters_v5` | 59.0 (n=322) | 31.4 | 3 | no |
-| **`adapters_v7b` (shipping)** | **63.4 (n=324)** | **30.5** | **1** | **yes** |
+| `adapters_v7b` | 63.4 (n=324) | 30.5 | 1 | yes |
+| **Conditioned 4B + specialist (shipping)** | **56.8 (n=325)** | **29.7** | **0** | **yes** |
 
 ¹ 50-dish sample; the base model was never run over the full set.
 
@@ -43,8 +41,14 @@ v5's 59.0 (n=322) and v7b's 63.4 (n=324) are computed over *different dish
 sets* and are not directly comparable. Paired on the 324 dishes both answered,
 v5 is 62.5 and v7b 63.4 — a difference of +0.87 kcal (t = 0.23, not
 significant), with v7b's median better and its parse failures fewer. v7b adds
-not-food refusal (100% recall on 29 held-out non-food images, 0 false refusals
-on 324 real dishes) at no measurable food-accuracy cost.
+not-food refusal at no measurable food-accuracy cost.
+
+The conditioned system answers all 325 dishes and retains 29/29 held-out
+not-food refusal. On the 322 dishes shared with v5 its calorie MAE is 57.2
+versus 59.0 (paired mean delta −1.8 kcal; 95% bootstrap CI −8.3 to +4.7), so
+the historical-set gain is directional rather than statistically decisive.
+Its advantages are the best median, zero parse failures, calibrated auxiliary
+uncertainty, and a clean on-device path for future specialist improvements.
 
 See `ml/README.md` for the complete metrics table (including the
 depth-augmented `adapters_v6`, a measured tie that was not shipped, and
@@ -65,9 +69,8 @@ export MODEL_PATH=~/models/mlx-community/Qwen3.5-4B-MLX-4bit
 ./prep.sh && ./train.sh && ./eval.sh adapters_v5 --limit 325 && ./convert.sh adapters_v5
 ```
 
-To reproduce the **shipping** adapter (v7b, which adds not-food refusal), see
-"Reproducing v7b from scratch" in `AGENTS.md` — it needs the COCO negatives
-step (`./download_negatives.sh`) in addition to the above.
+The exact conditioned-system reproduction and artifact paths are documented in
+`docs/plans/2026-07-28-visual-specialist-conditioned-qwen-plan.md`.
 
 Full walkthrough, hardware requirements, and the validation ladder (never
 skip straight to a multi-hour training run) in **`ml/README.md`**.

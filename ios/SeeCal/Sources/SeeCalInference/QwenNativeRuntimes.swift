@@ -1,4 +1,5 @@
 import Foundation
+import os
 import SeeCalDomain
 
 public protocol NativeQwenVisionEngine: Sendable {
@@ -34,7 +35,11 @@ public struct MNNQwenVisionEngine: NativeQwenVisionEngine {
 public struct QwenPromptBuilder: Sendable {
     public init() {}
 
-    public func buildPrompt(request: FoodScanRequest) -> String {
+    public func buildPrompt(
+        request: FoodScanRequest,
+        visualSpecialistPrediction: VisualSpecialistPrediction? = nil,
+        includeVisualSpecialistBlock: Bool = false
+    ) -> String {
         // Must match 02_prepare_finetune.py exactly (SYSTEM_PROMPT + "\n\n" + USER_PROMPT)
         // so the fine-tuned model sees the same conditioning it trained on.
         var prompt = """
@@ -52,6 +57,9 @@ public struct QwenPromptBuilder: Sendable {
         if let hint = request.userHint, !hint.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
             prompt += "\nUser hint: \(hint)"
         }
+        if includeVisualSpecialistBlock {
+            prompt += "\n\n" + VisualSpecialistPromptRenderer.render(visualSpecialistPrediction)
+        }
 
         return prompt
     }
@@ -63,10 +71,20 @@ public struct MLXQwenRuntime: InferenceRuntime {
 
     private let engine: NativeQwenVisionEngine
     private let promptBuilder: QwenPromptBuilder
+    private let visualSpecialist: (any VisualSpecialistPredicting)?
+    private let includeVisualSpecialistBlock: Bool
+    private static let logger = Logger(subsystem: "SeeCal", category: "VisualSpecialist")
 
-    public init(engine: NativeQwenVisionEngine, promptBuilder: QwenPromptBuilder = QwenPromptBuilder()) {
+    public init(
+        engine: NativeQwenVisionEngine,
+        promptBuilder: QwenPromptBuilder = QwenPromptBuilder(),
+        visualSpecialist: (any VisualSpecialistPredicting)? = nil,
+        includeVisualSpecialistBlock: Bool = false
+    ) {
         self.engine = engine
         self.promptBuilder = promptBuilder
+        self.visualSpecialist = visualSpecialist
+        self.includeVisualSpecialistBlock = includeVisualSpecialistBlock
     }
 
     public func isAvailable() async -> Bool {
@@ -74,7 +92,24 @@ public struct MLXQwenRuntime: InferenceRuntime {
     }
 
     public func infer(request: FoodScanRequest) async throws -> FoodScanResult {
-        let prompt = promptBuilder.buildPrompt(request: request)
+        let measurement: VisualSpecialistPrediction?
+        if includeVisualSpecialistBlock, let visualSpecialist {
+            do {
+                measurement = try await visualSpecialist.predict(imagePath: request.imagePath)
+            } catch {
+                Self.logger.error(
+                    "Specialist prediction failed; using trained unavailable block: \(String(describing: error), privacy: .public)"
+                )
+                measurement = nil
+            }
+        } else {
+            measurement = nil
+        }
+        let prompt = promptBuilder.buildPrompt(
+            request: request,
+            visualSpecialistPrediction: measurement,
+            includeVisualSpecialistBlock: includeVisualSpecialistBlock
+        )
         let raw = try await engine.run(imagePath: request.imagePath, prompt: prompt)
         // v7: a not-food refusal (`{"not_food": true}`) is a definitive answer,
         // checked before parseStrict (which would throw missingItems on it).
@@ -93,10 +128,20 @@ public struct MNNQwenRuntime: InferenceRuntime {
 
     private let engine: NativeQwenVisionEngine
     private let promptBuilder: QwenPromptBuilder
+    private let visualSpecialist: (any VisualSpecialistPredicting)?
+    private let includeVisualSpecialistBlock: Bool
+    private static let logger = Logger(subsystem: "SeeCal", category: "VisualSpecialist")
 
-    public init(engine: NativeQwenVisionEngine, promptBuilder: QwenPromptBuilder = QwenPromptBuilder()) {
+    public init(
+        engine: NativeQwenVisionEngine,
+        promptBuilder: QwenPromptBuilder = QwenPromptBuilder(),
+        visualSpecialist: (any VisualSpecialistPredicting)? = nil,
+        includeVisualSpecialistBlock: Bool = false
+    ) {
         self.engine = engine
         self.promptBuilder = promptBuilder
+        self.visualSpecialist = visualSpecialist
+        self.includeVisualSpecialistBlock = includeVisualSpecialistBlock
     }
 
     public func isAvailable() async -> Bool {
@@ -104,7 +149,24 @@ public struct MNNQwenRuntime: InferenceRuntime {
     }
 
     public func infer(request: FoodScanRequest) async throws -> FoodScanResult {
-        let prompt = promptBuilder.buildPrompt(request: request)
+        let measurement: VisualSpecialistPrediction?
+        if includeVisualSpecialistBlock, let visualSpecialist {
+            do {
+                measurement = try await visualSpecialist.predict(imagePath: request.imagePath)
+            } catch {
+                Self.logger.error(
+                    "Specialist prediction failed; using trained unavailable block: \(String(describing: error), privacy: .public)"
+                )
+                measurement = nil
+            }
+        } else {
+            measurement = nil
+        }
+        let prompt = promptBuilder.buildPrompt(
+            request: request,
+            visualSpecialistPrediction: measurement,
+            includeVisualSpecialistBlock: includeVisualSpecialistBlock
+        )
         let raw = try await engine.run(imagePath: request.imagePath, prompt: prompt)
         if ScanJSONParser.isNotFood(raw) { throw InferenceError.notFood }
         do {

@@ -20,12 +20,18 @@ public enum SeeCalProductionFactory {
         config: QwenRuntimeConfig,
         mlxRunner: @escaping MLXSwiftQwenVisionEngine.Runner,
         mnnRunner: MNNQwenVisionEngine.Runner? = nil,
+        visualSpecialist: (any VisualSpecialistPredicting)? = nil,
         store: MealLogStore = FileBackedMealLogStore(),
         preferencesStore: UserPreferencesStore = FileBackedUserPreferencesStore(),
         weightStore: WeightLogStore = FileBackedWeightLogStore()
     ) throws -> AppViewModel {
         let validatedConfig = try config.validated()
-        let mlxRuntime = MLXQwenRuntime(engine: MLXSwiftQwenVisionEngine(runner: mlxRunner))
+        let conditioned = validatedConfig.visualSpecialistModelPath != nil
+        let mlxRuntime = MLXQwenRuntime(
+            engine: MLXSwiftQwenVisionEngine(runner: mlxRunner),
+            visualSpecialist: visualSpecialist,
+            includeVisualSpecialistBlock: conditioned
+        )
 
         let runtimes: [InferenceRuntime]
         switch validatedConfig.runtimePolicy {
@@ -35,7 +41,11 @@ public enum SeeCalProductionFactory {
             guard let mnnRunner else {
                 throw ProductionFactoryError.mnnRunnerRequiredForPolicy
             }
-            let mnnRuntime = MNNQwenRuntime(engine: MNNQwenVisionEngine(runner: mnnRunner))
+            let mnnRuntime = MNNQwenRuntime(
+                engine: MNNQwenVisionEngine(runner: mnnRunner),
+                visualSpecialist: visualSpecialist,
+                includeVisualSpecialistBlock: conditioned
+            )
             runtimes = [mlxRuntime, mnnRuntime]
         }
 

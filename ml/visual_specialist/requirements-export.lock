@@ -1,0 +1,6 @@
+# Core ML 9.0 officially provides Python 3.13 wheels. Keep conversion isolated
+# from the Python 3.14 training environment.
+coremltools==9.0
+torch==2.13.0
+torchvision==0.28.0
+numpy==2.5.1

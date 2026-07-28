@@ -1,0 +1,4 @@
+# Isolated reader for the downloaded Deep Lake 2.2.2 FRB v2.0 mirror.
+# Python 3.9 is used because this legacy dependency does not support 3.14.
+deeplake==3.9.52
+Pillow==10.4.0

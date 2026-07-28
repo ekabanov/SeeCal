@@ -1,14 +1,14 @@
 # Architecture
 
 SeeCal is two independent halves that only agree to meet at one narrow
-contract: **an adapter directory and an exact prompt string**. Everything
+contract: **model artifacts and an exact prompt string**. Everything
 upstream of that (dataset, training) and downstream of it (UI, persistence)
 never needs to change in lockstep.
 
 ```mermaid
 flowchart LR
     subgraph ML["ml/  (training pipeline, Python + mlx-vlm)"]
-        A[Nutrition5k dataset] --> B[select_images.py]
+        A[Nutrition5k + licensed food photos] --> B[data preparation]
         B --> C[prepare_finetune.py]
         C --> D[train/valid/test JSONL]
         D --> E[smoke_test.py]
@@ -16,17 +16,22 @@ flowchart LR
         F --> G[adapter checkpoint]
         G --> H[eval.sh / infer.py]
         G --> I[convert_adapter_for_swift.py]
+        A --> Q[visual specialist training]
+        Q --> R[Core ML export]
     end
 
     subgraph Contract["The contract"]
         I --> J["adapter_config.json +\nadapters.safetensors\n(+ seecal_adapter_version)"]
-        K["Qwen chat-template prompt\n(byte-identical both sides)"]
+        R --> S["SeeCalVisualSpecialist.mlmodelc"]
+        K["Qwen prompt + auxiliary block\n(byte-identical both sides)"]
     end
 
     subgraph IOS["ios/  (on-device app, Swift)"]
         J --> L[LoRAContainer]
+        S --> T[CoreMLVisualSpecialist]
         K --> M[MLXQwen35RunnerBuilder]
         L --> M
+        T --> M
         M --> N[JSON scan result]
         N --> O[SeeCalDomain validation]
         O --> P[SeeCalPersistence + UI]
@@ -37,21 +42,20 @@ flowchart LR
 
 ## The two halves
 
-**`ml/`** owns everything from raw Nutrition5k data to a trained LoRA
-adapter: image selection, JSONL generation, the validation ladder, LoRA
-fine-tuning (mlx-vlm on Apple Silicon), evaluation, and the final conversion
-step that hands an adapter to iOS. See `ml/README.md` for the full
+**`ml/`** owns everything from source data to the trained visual specialist
+and Qwen LoRA: manifests, validation, training, evaluation, Core ML export,
+and adapter conversion. See `ml/README.md` for the full
 walkthrough and `docs/training-history.md` for how that pipeline reached its
 current, working shape.
 
 **`ios/`** owns everything from a captured photo to a persisted meal: camera
-capture, on-device MLX inference (base model + optional LoRA adapter),
+capture, sequential Core ML specialist + MLX inference,
 strict JSON validation, meal storage, and the SwiftUI screens. See
 `ios/README.md` and `ios/SeeCal/README.md`.
 
-Neither half imports the other's code. The only things that cross the
-boundary are files (an adapter directory) and a shared understanding of
-*exactly* what text gets sent to the model.
+Neither half imports the other's code. The boundary consists of the converted
+adapter, compiled specialist, and a shared understanding of *exactly* what
+text gets sent to Qwen.
 
 ## The contract, in detail
 
@@ -94,6 +98,10 @@ collapses (see the Run 1–3 post-mortems).
   `{"role": "user", "content": [{"type": "image", ...}, {"type": "text", ...}]}`
   records with no system message (folded into the user text instead — Qwen's
   chat template rejects list content in the system role).
+- **Conditioned v8**: `ml/visual_specialist/auxiliary.py` appends a compact
+  calibrated block with fixed key order and one-decimal numbers. Swift's
+  `VisualSpecialistPromptRenderer` reproduces that representation exactly.
+  Individual specialist failures use the trained `{"available":false}` form.
 - **Inference side (Python)**: `ml/infer.py` builds the prompt via
   `mlx_vlm.prompt_utils.apply_chat_template`, then strips the trailing
   `<think>\n` Qwen3.5 appends for direct JSON output.
@@ -109,9 +117,9 @@ collapses (see the Run 1–3 post-mortems).
   pipeline (processor + config only, no model weights, ~1 minute) and fails
   loudly on every failure mode that has previously broken this contract:
   missing `pixel_values`, an empty or leaking completion mask, or an
-  image-token count that doesn't match `image_grid_thw`. Neither of these
-  gates has a Swift-side automated equivalent yet — Swift-side parity is
-  currently verified by manual probe (see `docs/training-history.md`, Run 4).
+  image-token count that doesn't match `image_grid_thw`. These gates are
+  complemented by Swift unit tests for the canonical conditioned block and
+  unchanged legacy prompt.
 
 ### 3. Adapter format + version stamping
 
@@ -140,18 +148,17 @@ bridges them:
 
 ### 4. Weights bundling
 
-Neither the base model nor any adapter is committed to git. `ios/App`'s
+Neither model, adapter, nor specialist weights are committed to git. `ios/App`'s
 "Bundle model weights" build phase (`ios/App/copy_weights.sh`) copies a
-`$MODELS_DIR` (containing the base model under `mlx-community/...` and,
-optionally, a converted adapter under `adapters/`) into the app bundle at
-build time. `ModelAssetResolver`
+`$MODELS_DIR` base model plus the local converted adapter and compiled
+specialist into the app bundle at build time. Conditioned device builds fail
+loudly if either paired artifact is missing or the adapter version stamp is
+wrong. `ModelAssetResolver`
 (`ios/App/Sources/ModelAssetResolver.swift`) then resolves, at runtime, in
 order: bundled resources → (device only) `Documents/`/`Application Support`
 for side-loading or download-on-first-launch → (simulator only) a hardcoded
 local development path, used only if it happens to exist on the machine
-running the simulator. A missing adapter is a logged, non-fatal degradation
-(the app runs the base model); an adapter directory that exists but fails to
-load is treated as a bug and raises, with no silent fallback. See
+running the simulator. See
 `ios/README.md`'s "Weights bundling" section for the exact directory layout.
 
 ## Data flow: one inference request
@@ -160,13 +167,16 @@ load is treated as a bug and raises, with no silent fallback. See
 sequenceDiagram
     participant User
     participant Camera as Camera capture
+    participant Specialist as Core ML specialist
     participant Runner as MLXQwen35RunnerBuilder
     participant Model as Qwen3.5-4B (+ LoRA)
     participant Domain as SeeCalDomain
     participant Store as SeeCalPersistence
 
     User->>Camera: take photo
-    Camera->>Runner: image + fixed prompt text
+    Camera->>Specialist: RGB image
+    Specialist-->>Runner: calibrated mass/calorie/macro intervals
+    Camera->>Runner: same RGB image
     Runner->>Model: chat-template prompt (parity-checked)
     Model-->>Runner: raw generated text
     Runner->>Domain: attempt strict JSON decode

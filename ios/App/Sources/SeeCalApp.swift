@@ -16,6 +16,7 @@ struct SeeCalHostApp: App {
                 config: QwenRuntimeConfig(
                     modelPath: ModelAssetResolver.resolveModelPath(),
                     adapterPath: ModelAssetResolver.resolveAdapterPath(),
+                    visualSpecialistModelPath: ModelAssetResolver.resolveVisualSpecialistModelPath(),
                     runtimePolicy: .mlxOnly,
                     // Matches the eval's max_tokens (ml/infer.py) so the app can't
                     // truncate a long ingredient list where the eval had headroom.

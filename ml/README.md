@@ -1,7 +1,7 @@
 # SeeCal — ML Pipeline
 
-Fine-tunes Qwen3.5-4B (natively multimodal) on the Nutrition5k dataset to
-estimate calories, macros, and ingredients from a single food photo. All
+Trains SeeCal's compact visual specialist and a conditioned Qwen3.5-4B LoRA
+to estimate calories, macros, and ingredients from a single food photo. All
 commands in this document are run from `ml/` (paths inside the generated
 JSONL are relative to this directory, not to any subdirectory).
 
@@ -190,7 +190,16 @@ order — skipping straight to a long run is exactly how a past training run
 Only after all three are green should `./train.sh` run unattended for
 hours.
 
-## Expected metrics
+## Current shipping metrics
+
+The selected `v8-conditioned` system runs the S1 MobileNetV3 specialist before
+Qwen3.5-4B. On all 325 untouched test dishes it scores 56.8 kcal MAE / 29.7
+median with zero parse failures; it also refuses 29/29 held-out non-food
+images. See
+`../docs/plans/2026-07-28-visual-specialist-conditioned-qwen-plan.md` and
+`visual_specialist/README.md` for the complete pipeline and artifact contract.
+
+## Historical 50-dish metrics
 
 MAE / median absolute error on a 50-dish held-out sample (`finetune_data_v2/test.jsonl`,
 `infer.py`/`eval.sh`). The full 325-dish test-set evaluation is tracked as a
@@ -200,16 +209,15 @@ numbers as directionally reliable, not final.
 | Model                              | Calories MAE | Calories median | Parse failures (/50) |
 |-------------------------------------|-------------:|----------------:|----------------------:|
 | Base model (no adapter)             |         83.4 |            63.9 |                      0 |
-| `adapters_v5` (shipping)            |         54.4 |            36.2 |                      1 |
+| `adapters_v5` (historical food baseline) |    54.4 |            36.2 |                      1 |
 | `adapters_v6` (depth-augmented, text)  |     59.2 |            44.7 |                      0 |
 
 `adapters_v6` adds a depth-sensor volume line to the prompt (the depth
 track's variant B, see `docs/design/2026-07-26-depth-design-brief.md`).
 Its 1000-iteration probe beat the matched v5 probe by 33% calories MAE, but
 the full 2-epoch run came back a statistical tie with v5 (50 dishes paired:
-+5.2 kcal, t=0.56) — not a real improvement. **The depth track is stopped;
-`adapters_v5` remains the shipping adapter**, and `adapters_v6` is kept only
-for reference. See `runs/eval_v5/`, `runs/eval_v6/`, and
++5.2 kcal, t=0.56) — not a real improvement. **The depth track is stopped.**
+`adapters_v6` is kept only for reference. See `runs/eval_v5/`, `runs/eval_v6/`, and
 `runs/eval_v4_baseline/` for the raw per-sample data behind this table, and
 AGENTS.md for the complete run-by-run history (including the four broken
 training runs that preceded v5).
