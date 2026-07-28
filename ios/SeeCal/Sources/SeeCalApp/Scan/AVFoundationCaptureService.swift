@@ -1,6 +1,7 @@
 #if os(iOS)
 import AVFoundation
 import CoreMotion
+import SeeCalDiagnostics
 import SwiftUI
 import UIKit
 
@@ -33,18 +34,39 @@ public final class AVFoundationCaptureService: CaptureService {
     }
 
     public func requestAccess() async -> CameraAuthorization {
+        let before = authorizationStatus
         if authorizationStatus == .notDetermined {
             _ = await AVCaptureDevice.requestAccess(for: .video)
         }
-        return authorizationStatus
+        let after = authorizationStatus
+        SeeCalDiagnostics.record(
+            .notice,
+            category: "camera",
+            name: "authorization_resolved",
+            fields: [
+                "before": Self.authorizationName(before),
+                "after": Self.authorizationName(after)
+            ]
+        )
+        return after
     }
 
     public func startSession() {
-        guard authorizationStatus == .authorized else { return }
+        guard authorizationStatus == .authorized else {
+            SeeCalDiagnostics.record(
+                .error,
+                category: "camera",
+                name: "session_start_blocked_by_authorization",
+                fields: ["authorization": Self.authorizationName(authorizationStatus)]
+            )
+            return
+        }
+        SeeCalDiagnostics.record(.info, category: "camera", name: "session_start_requested")
         camera.start()
     }
 
     public func stopSession() {
+        SeeCalDiagnostics.record(.info, category: "camera", name: "session_stop_requested")
         camera.stop()
         motion.stop()
     }
@@ -67,6 +89,14 @@ public final class AVFoundationCaptureService: CaptureService {
 
     public func makePreviewView() -> AnyView {
         AnyView(CameraPreviewView(session: camera.session).ignoresSafeArea())
+    }
+
+    private static func authorizationName(_ authorization: CameraAuthorization) -> String {
+        switch authorization {
+        case .notDetermined: return "not_determined"
+        case .authorized: return "authorized"
+        case .denied: return "denied"
+        }
     }
 }
 
@@ -116,8 +146,25 @@ private final class CameraSessionBox: NSObject, AVCapturePhotoCaptureDelegate, A
     func start() {
         queue.async {
             self.configureIfNeeded()
-            guard self.configurationError == nil, !self.session.isRunning else { return }
+            if let error = self.configurationError {
+                SeeCalDiagnostics.record(
+                    .error,
+                    category: "camera",
+                    name: "session_start_configuration_failed",
+                    fields: SeeCalDiagnostics.errorFields(error)
+                )
+                return
+            }
+            guard !self.session.isRunning else {
+                SeeCalDiagnostics.record(.debug, category: "camera", name: "session_already_running")
+                return
+            }
             self.session.startRunning()
+            SeeCalDiagnostics.record(
+                self.session.isRunning ? .notice : .error,
+                category: "camera",
+                name: self.session.isRunning ? "session_started" : "session_start_did_not_run"
+            )
         }
     }
 
@@ -125,6 +172,7 @@ private final class CameraSessionBox: NSObject, AVCapturePhotoCaptureDelegate, A
         queue.async {
             guard self.session.isRunning else { return }
             self.session.stopRunning()
+            SeeCalDiagnostics.record(.info, category: "camera", name: "session_stopped")
         }
     }
 
@@ -132,6 +180,12 @@ private final class CameraSessionBox: NSObject, AVCapturePhotoCaptureDelegate, A
         queue.async {
             self.configureIfNeeded()
             if let error = self.configurationError {
+                SeeCalDiagnostics.record(
+                    .error,
+                    category: "camera",
+                    name: "capture_blocked_by_configuration",
+                    fields: SeeCalDiagnostics.errorFields(error)
+                )
                 DispatchQueue.main.async { completion(.failure(error)) }
                 return
             }
@@ -140,6 +194,12 @@ private final class CameraSessionBox: NSObject, AVCapturePhotoCaptureDelegate, A
             }
             let settings = AVCapturePhotoSettings()
             let id = settings.uniqueID
+            SeeCalDiagnostics.record(
+                .info,
+                category: "camera",
+                name: "photo_capture_submitted",
+                fields: ["capture_id": String(id), "session_running": String(self.session.isRunning)]
+            )
             self.pendingCaptures.register(id: id) { result in
                 DispatchQueue.main.async { completion(result) }
             }
@@ -147,6 +207,12 @@ private final class CameraSessionBox: NSObject, AVCapturePhotoCaptureDelegate, A
             // wins, so the continuation is resumed exactly once.
             self.queue.asyncAfter(deadline: .now() + Self.captureTimeout) { [weak self] in
                 guard let self, let timedOut = self.pendingCaptures.claim(id: id) else { return }
+                SeeCalDiagnostics.record(
+                    .error,
+                    category: "camera",
+                    name: "photo_capture_timed_out",
+                    fields: ["capture_id": String(id)]
+                )
                 timedOut(.failure(CaptureServiceError.captureFailed(
                     "camera did not respond in time — try again")))
             }
@@ -180,6 +246,7 @@ private final class CameraSessionBox: NSObject, AVCapturePhotoCaptureDelegate, A
             session.canAddOutput(metadataOutput)
         else {
             configurationError = CaptureServiceError.cameraUnavailable
+            SeeCalDiagnostics.record(.error, category: "camera", name: "session_configuration_unavailable")
             return
         }
         session.addInput(input)
@@ -188,6 +255,7 @@ private final class CameraSessionBox: NSObject, AVCapturePhotoCaptureDelegate, A
         metadataOutput.setMetadataObjectsDelegate(self, queue: queue)
         metadataOutput.metadataObjectTypes = [.ean8, .ean13, .upce, .code128]
         succeeded = true
+        SeeCalDiagnostics.record(.notice, category: "camera", name: "session_configuration_succeeded")
     }
 
     /// The session hit a runtime error. Fail every in-flight capture so the
@@ -195,14 +263,35 @@ private final class CameraSessionBox: NSObject, AVCapturePhotoCaptureDelegate, A
     /// restart attempt — these errors are usually transient (the device log shows
     /// AVFoundation recovering on its own).
     @objc private func sessionRuntimeError(_ notification: Notification) {
-        let reason = (notification.userInfo?[AVCaptureSessionErrorKey] as? NSError)?
-            .localizedDescription ?? "capture session failed"
+        let sessionError = notification.userInfo?[AVCaptureSessionErrorKey] as? NSError
+        let reason = sessionError?.localizedDescription ?? "capture session failed"
+        let errorDomain = sessionError?.domain
+        let errorCode = sessionError.map { String($0.code) }
         queue.async {
-            for completion in self.pendingCaptures.claimAll() {
+            let completions = self.pendingCaptures.claimAll()
+            var fields = ["pending_capture_count": String(completions.count)]
+            if let errorDomain {
+                fields["error_domain"] = errorDomain
+            }
+            if let errorCode {
+                fields["error_code"] = errorCode
+            }
+            SeeCalDiagnostics.record(
+                .error,
+                category: "camera",
+                name: "session_runtime_error",
+                fields: fields
+            )
+            for completion in completions {
                 completion(.failure(CaptureServiceError.captureFailed(reason)))
             }
             guard !self.session.isRunning else { return }
             self.session.startRunning()
+            SeeCalDiagnostics.record(
+                self.session.isRunning ? .notice : .error,
+                category: "camera",
+                name: self.session.isRunning ? "session_restart_succeeded" : "session_restart_failed"
+            )
         }
     }
 
@@ -219,10 +308,29 @@ private final class CameraSessionBox: NSObject, AVCapturePhotoCaptureDelegate, A
             // nil => the watchdog (or a session failure) already completed this one.
             guard let completion = self.pendingCaptures.claim(id: uniqueID) else { return }
             if let error {
+                SeeCalDiagnostics.record(
+                    .error,
+                    category: "camera",
+                    name: "photo_processing_failed",
+                    fields: ["capture_id": String(uniqueID)]
+                        .merging(SeeCalDiagnostics.errorFields(error)) { current, _ in current }
+                )
                 completion(.failure(CaptureServiceError.captureFailed(error.localizedDescription)))
             } else if let data {
+                SeeCalDiagnostics.record(
+                    .notice,
+                    category: "camera",
+                    name: "photo_processing_succeeded",
+                    fields: ["capture_id": String(uniqueID), "bytes": String(data.count)]
+                )
                 completion(.success(data))
             } else {
+                SeeCalDiagnostics.record(
+                    .error,
+                    category: "camera",
+                    name: "photo_processing_returned_no_data",
+                    fields: ["capture_id": String(uniqueID)]
+                )
                 completion(.failure(CaptureServiceError.captureFailed("no image data produced")))
             }
         }

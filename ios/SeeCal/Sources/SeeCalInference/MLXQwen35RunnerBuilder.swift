@@ -1,7 +1,7 @@
 import CoreImage
 import Darwin
 import Foundation
-import os
+import SeeCalDiagnostics
 
 #if canImport(MLXLMCommon) && canImport(MLXVLM)
 import MLX
@@ -48,8 +48,6 @@ public enum MLXRunnerBuilderError: Error, Equatable, CustomStringConvertible {
 }
 
 public enum MLXQwen35RunnerBuilder {
-    private static let logger = Logger(subsystem: "SeeCal", category: "MLXRunnerBuilder")
-
     /// Returns the process resident memory in MB, or -1 on failure.
     private static func memMB() -> String {
         var info = mach_task_basic_info()
@@ -83,22 +81,37 @@ public enum MLXQwen35RunnerBuilder {
     /// MLX's own docs note even ~2 MB performs comparably; 48 MB is a safe margin.
     private static let mlxCacheLimitBytes = 48 * 1024 * 1024
 
+    private static func memoryFields() -> [String: String] {
+        ["resident_memory": memMB(), "mlx_memory": mlxMem()]
+    }
+
+    private static func elapsedMilliseconds(since date: Date) -> String {
+        String(Int(Date().timeIntervalSince(date) * 1_000))
+    }
+
     public static func makeRunner(config: QwenRuntimeConfig) async throws -> MLXSwiftQwenVisionEngine.Runner {
         _ = try config.validated()
 
         #if canImport(MLXLMCommon) && canImport(MLXVLM)
-        // Cap the Metal buffer cache BEFORE any allocation so the cache never
-        // grows to the multi-GB default during model load, adapter fuse, and
-        // warmup. This is the primary guard against the launch-time OOM.
-        MLX.Memory.cacheLimit = mlxCacheLimitBytes
-        print("[SeeCal][MLXRunnerBuilder] MLX cache limit set to \(mlxCacheLimitBytes / (1024 * 1024))MB")
-        print("[SeeCal][MLXRunnerBuilder] makeRunner start modelPath=\(config.modelPath)")
+        SeeCalDiagnostics.record(
+            .notice,
+            category: "mlx",
+            name: "runner_build_started",
+            fields: [
+                "cache_limit_mb": String(mlxCacheLimitBytes / (1024 * 1024)),
+                "model_source": config.modelPath.hasPrefix("/") ? "local_directory" : "model_id",
+                "adapter_configured": String(config.adapterPath != nil)
+            ]
+        )
         if config.modelPath.hasPrefix("/") {
             var isDirectory: ObjCBool = false
             let exists = FileManager.default.fileExists(atPath: config.modelPath, isDirectory: &isDirectory)
             guard exists && isDirectory.boolValue else {
-                logger.error("Configured local model path does not exist: \(config.modelPath, privacy: .public)")
-                print("[SeeCal][MLXRunnerBuilder] local path missing: \(config.modelPath)")
+                SeeCalDiagnostics.record(
+                    .fault,
+                    category: "mlx",
+                    name: "local_model_directory_missing"
+                )
                 throw MLXRunnerBuilderError.localModelPathNotFound(config.modelPath)
             }
             logLocalModelPreflight(path: config.modelPath)
@@ -112,17 +125,24 @@ public enum MLXQwen35RunnerBuilder {
             try validateAdapterDirectory(path: adapterPath)
         }
 
+        // Cap the Metal buffer cache after filesystem-only preflight but BEFORE
+        // any model allocation. Keeping preflight first means a missing adapter
+        // still fails cleanly in host tests where no Metal library is present.
+        MLX.Memory.cacheLimit = mlxCacheLimitBytes
+        SeeCalDiagnostics.record(
+            .info,
+            category: "mlx",
+            name: "cache_limit_configured",
+            fields: ["cache_limit_mb": String(mlxCacheLimitBytes / (1024 * 1024))]
+        )
+
         let modelConfiguration: ModelConfiguration
         if config.modelPath.hasPrefix("/") {
             modelConfiguration = ModelConfiguration(directory: URL(fileURLWithPath: config.modelPath, isDirectory: true))
-            logger.log("Starting MLX runner build from local directory: \(config.modelPath, privacy: .public)")
-            print("[SeeCal][MLXRunnerBuilder] loading from local directory")
         } else {
             modelConfiguration = ModelConfiguration(id: config.modelPath)
-            logger.log("Starting MLX runner build for model id: \(config.modelPath, privacy: .public)")
-            print("[SeeCal][MLXRunnerBuilder] loading from model id")
         }
-        // Background memory monitor: prints every 3 s while loadContainer runs.
+        // Background memory monitor: records every 3 s while loadContainer runs.
         // If the crash is fatalError/precondition (bypasses catch), the last
         // tick line and mem reading show exactly how far loading got.
         let memMonitor = Task {
@@ -131,17 +151,32 @@ public enum MLXQwen35RunnerBuilder {
                 try? await Task.sleep(nanoseconds: 3_000_000_000)
                 guard !Task.isCancelled else { break }
                 tick += 1
-                print("[SeeCal][MLXRunnerBuilder] loading… tick=\(tick) mem=\(memMB()) mlx=\(mlxMem())")
+                SeeCalDiagnostics.record(
+                    .info,
+                    category: "mlx",
+                    name: "model_container_loading",
+                    fields: ["tick": String(tick)].merging(memoryFields()) { current, _ in current }
+                )
             }
         }
 
         do {
             let loadStarted = Date()
-            print("[SeeCal][MLXRunnerBuilder] loadContainer start mem=\(memMB())")
+            SeeCalDiagnostics.record(
+                .notice,
+                category: "mlx",
+                name: "model_container_load_started",
+                fields: memoryFields()
+            )
             let modelContainer = try await VLMModelFactory.shared.loadContainer(configuration: modelConfiguration)
             memMonitor.cancel()
-            logger.log("Model container loaded for model id: \(config.modelPath, privacy: .public)")
-            print("[SeeCal][MLXRunnerBuilder] model container loaded in \(String(format: "%.2f", Date().timeIntervalSince(loadStarted)))s mem=\(memMB()) mlx=\(mlxMem())")
+            SeeCalDiagnostics.record(
+                .notice,
+                category: "mlx",
+                name: "model_container_loaded",
+                fields: ["duration_ms": elapsedMilliseconds(since: loadStarted)]
+                    .merging(memoryFields()) { current, _ in current }
+            )
 
             // Apply the LoRA adapter (produced by convert_adapter_for_swift.py from an
             // mlx-vlm training run) before warmup so warmup compiles the adapted graph.
@@ -153,7 +188,12 @@ public enum MLXQwen35RunnerBuilder {
             // Text-only warmup (~0.5s) doesn't trigger vision kernels; a real image does.
             // Without this the first user inference takes 60-90s instead of ~15s.
             let warmupStarted = Date()
-            print("[SeeCal][MLXRunnerBuilder] warmup start mem=\(memMB())")
+            SeeCalDiagnostics.record(
+                .notice,
+                category: "mlx",
+                name: "warmup_started",
+                fields: memoryFields()
+            )
             let warmupImage: CIImage = {
                 // Match actual food photo resolution (576×768) so the same Metal kernel
                 // specializations are triggered as during real inference.
@@ -175,10 +215,21 @@ public enum MLXQwen35RunnerBuilder {
             // them back to the system so steady-state memory settles near the
             // model's resident size rather than the warmup peak.
             MLX.Memory.clearCache()
-            print("[SeeCal][MLXRunnerBuilder] warmup done in \(String(format: "%.2f", Date().timeIntervalSince(warmupStarted)))s mem=\(memMB()) mlx=\(mlxMem())")
+            SeeCalDiagnostics.record(
+                .notice,
+                category: "mlx",
+                name: "warmup_succeeded",
+                fields: ["duration_ms": elapsedMilliseconds(since: warmupStarted)]
+                    .merging(memoryFields()) { current, _ in current }
+            )
 
             return { imagePath, prompt in
                 guard FileManager.default.fileExists(atPath: imagePath) else {
+                    SeeCalDiagnostics.record(
+                        .error,
+                        category: "mlx",
+                        name: "inference_image_missing"
+                    )
                     throw MLXRunnerBuilderError.invalidImagePath(imagePath)
                 }
 
@@ -188,9 +239,16 @@ public enum MLXQwen35RunnerBuilder {
                     additionalContext: ["enable_thinking": false]
                 )
                 let inferStarted = Date()
-                print("[SeeCal][MLXRunnerBuilder] infer start imagePath=\(imagePath) mem=\(memMB())")
-                print("[SeeCal][MLXRunnerBuilder] prompt (\(prompt.count) chars): \(prompt)")
-                print("[SeeCal][MLXRunnerBuilder] params: maxTokens=\(config.maxOutputTokens) temp=\(config.temperature) repPenalty=1.1 enable_thinking=false")
+                SeeCalDiagnostics.record(
+                    .notice,
+                    category: "mlx",
+                    name: "inference_started",
+                    fields: [
+                        "prompt_characters": String(prompt.count),
+                        "max_output_tokens": String(config.maxOutputTokens),
+                        "temperature": String(config.temperature)
+                    ].merging(memoryFields()) { current, _ in current }
+                )
 
                 let parameters = GenerateParameters(
                     maxTokens: config.maxOutputTokens,
@@ -201,7 +259,15 @@ public enum MLXQwen35RunnerBuilder {
                 let prepareStarted = Date()
                 let prepared = try await modelContainer.prepare(input: input)
                 let tokenCount = prepared.text.tokens.shape.reduce(1, *)
-                print("[SeeCal][MLXRunnerBuilder] prepare done in \(String(format: "%.2f", Date().timeIntervalSince(prepareStarted)))s tokens=\(tokenCount) mem=\(memMB())")
+                SeeCalDiagnostics.record(
+                    .info,
+                    category: "mlx",
+                    name: "input_prepared",
+                    fields: [
+                        "duration_ms": elapsedMilliseconds(since: prepareStarted),
+                        "token_count": String(tokenCount)
+                    ].merging(memoryFields()) { current, _ in current }
+                )
                 let generateStarted = Date()
                 let stream = try await modelContainer.generate(input: prepared, parameters: parameters)
                 for await event in stream {
@@ -209,7 +275,15 @@ public enum MLXQwen35RunnerBuilder {
                         generated.append(text)
                     }
                 }
-                print("[SeeCal][MLXRunnerBuilder] generate done in \(String(format: "%.2f", Date().timeIntervalSince(generateStarted)))s mem=\(memMB()) mlx=\(mlxMem())")
+                SeeCalDiagnostics.record(
+                    .info,
+                    category: "mlx",
+                    name: "generation_finished",
+                    fields: [
+                        "duration_ms": elapsedMilliseconds(since: generateStarted),
+                        "generated_characters": String(generated.count)
+                    ].merging(memoryFields()) { current, _ in current }
+                )
                 // Release this scan's activation + KV-cache buffers so repeated
                 // scans don't accumulate memory over a session. The cache cap
                 // already bounds the pool, but freeing per-inference keeps
@@ -217,7 +291,12 @@ public enum MLXQwen35RunnerBuilder {
                 // the log across scans: if it climbs, that's a live-tensor leak
                 // to chase; if only cache/peak spike, this clear handles it.
                 MLX.Memory.clearCache()
-                print("[SeeCal][MLXRunnerBuilder] post-clear mlx=\(mlxMem())")
+                SeeCalDiagnostics.record(
+                    .info,
+                    category: "mlx",
+                    name: "inference_cache_cleared",
+                    fields: memoryFields()
+                )
 
                 var text = generated.trimmingCharacters(in: .whitespacesAndNewlines)
                 guard !text.isEmpty else {
@@ -259,24 +338,47 @@ public enum MLXQwen35RunnerBuilder {
                             text = candidate
                                 + String(repeating: "]", count: bracketDepth)
                                 + String(repeating: "}", count: braceDepth)
-                            print("[SeeCal][MLXRunnerBuilder] repaired truncated JSON: added \(bracketDepth)] and \(braceDepth)}")
+                            SeeCalDiagnostics.record(
+                                .error,
+                                category: "mlx",
+                                name: "truncated_json_repaired",
+                                fields: [
+                                    "brackets_added": String(bracketDepth),
+                                    "braces_added": String(braceDepth)
+                                ]
+                            )
                         }
                     }
                 }
 
-                print("[SeeCal][MLXRunnerBuilder] infer done total \(String(format: "%.2f", Date().timeIntervalSince(inferStarted)))s chars=\(text.count)")
-                print("[SeeCal][MLXRunnerBuilder] raw output (\(text.count) chars): \(text)")
+                SeeCalDiagnostics.record(
+                    .notice,
+                    category: "mlx",
+                    name: "inference_finished",
+                    fields: [
+                        "duration_ms": elapsedMilliseconds(since: inferStarted),
+                        "output_characters": String(text.count)
+                    ]
+                )
                 return text
             }
         } catch {
             memMonitor.cancel()
-            logger.error("Failed to build MLX runner for model id: \(config.modelPath, privacy: .public). Error: \(String(describing: error), privacy: .public)")
-            print("[SeeCal][MLXRunnerBuilder] model load FAILED mem=\(memMB()) error=\(String(describing: error))")
+            SeeCalDiagnostics.record(
+                .fault,
+                category: "mlx",
+                name: "runner_build_failed",
+                fields: SeeCalDiagnostics.errorFields(error)
+                    .merging(memoryFields()) { current, _ in current }
+            )
             throw error
         }
         #else
-        logger.error("MLX packages are not linked in app target")
-        print("[SeeCal][MLXRunnerBuilder] MLX packages not linked")
+        SeeCalDiagnostics.record(
+            .fault,
+            category: "mlx",
+            name: "mlx_packages_not_linked"
+        )
         throw MLXRunnerBuilderError.mlxPackagesNotLinked
         #endif
     }
@@ -287,8 +389,11 @@ public enum MLXQwen35RunnerBuilder {
         let fm = FileManager.default
         var isDirectory: ObjCBool = false
         guard fm.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue else {
-            logger.error("Configured adapter path does not exist: \(path, privacy: .public)")
-            print("[SeeCal][MLXRunnerBuilder] adapter path missing: \(path)")
+            SeeCalDiagnostics.record(
+                .fault,
+                category: "mlx",
+                name: "adapter_directory_missing"
+            )
             throw MLXRunnerBuilderError.adapterPathNotFound(path)
         }
         let directory = URL(fileURLWithPath: path, isDirectory: true)
@@ -297,8 +402,12 @@ public enum MLXQwen35RunnerBuilder {
             !fm.fileExists(atPath: directory.appendingPathComponent($0).path)
         }
         guard missing.isEmpty else {
-            logger.error("Adapter directory is missing files: \(missing.joined(separator: ", "), privacy: .public)")
-            print("[SeeCal][MLXRunnerBuilder] adapter dir missing files: \(missing.joined(separator: ", "))")
+            SeeCalDiagnostics.record(
+                .fault,
+                category: "mlx",
+                name: "adapter_files_missing",
+                fields: ["missing_files": missing.sorted().joined(separator: ",")]
+            )
             throw MLXRunnerBuilderError.adapterLoadFailed(
                 path: path,
                 underlying: "missing required files: \(missing.joined(separator: ", "))"
@@ -313,7 +422,12 @@ public enum MLXQwen35RunnerBuilder {
     /// configured but cannot be applied must never silently degrade to the base model.
     private static func applyAdapter(at path: String, to modelContainer: ModelContainer) async throws {
         let started = Date()
-        print("[SeeCal][MLXRunnerBuilder] adapter load start path=\(path) mem=\(memMB())")
+        SeeCalDiagnostics.record(
+            .notice,
+            category: "mlx",
+            name: "adapter_fuse_started",
+            fields: memoryFields()
+        )
         do {
             let adapterURL = URL(fileURLWithPath: path, isDirectory: true)
             let adapter = try LoRAContainer.from(directory: adapterURL)
@@ -332,12 +446,22 @@ public enum MLXQwen35RunnerBuilder {
             // Drop them immediately so they don't stack under the warmup.
             MLX.Memory.clearCache()
         } catch {
-            logger.error("Adapter load failed for path: \(path, privacy: .public). Error: \(String(describing: error), privacy: .public)")
-            print("[SeeCal][MLXRunnerBuilder] adapter load FAILED path=\(path) error=\(String(describing: error))")
+            SeeCalDiagnostics.record(
+                .fault,
+                category: "mlx",
+                name: "adapter_fuse_failed",
+                fields: SeeCalDiagnostics.errorFields(error)
+                    .merging(memoryFields()) { current, _ in current }
+            )
             throw MLXRunnerBuilderError.adapterLoadFailed(path: path, underlying: String(describing: error))
         }
-        logger.log("LoRA adapter fused from: \(path, privacy: .public)")
-        print("[SeeCal][MLXRunnerBuilder] adapter fused in \(String(format: "%.2f", Date().timeIntervalSince(started)))s mem=\(memMB())")
+        SeeCalDiagnostics.record(
+            .notice,
+            category: "mlx",
+            name: "adapter_fused",
+            fields: ["duration_ms": elapsedMilliseconds(since: started)]
+                .merging(memoryFields()) { current, _ in current }
+        )
     }
     #endif
 
@@ -354,37 +478,70 @@ public enum MLXQwen35RunnerBuilder {
         ]
         let existing = required.filter { fm.fileExists(atPath: URL(fileURLWithPath: path).appendingPathComponent($0).path) }
         let missing = required.filter { !existing.contains($0) }
-        logger.log("Local model preflight. Existing required files: \(existing.joined(separator: ", "), privacy: .public)")
-        print("[SeeCal][MLXRunnerBuilder] preflight existing files: \(existing.joined(separator: ", "))")
+        SeeCalDiagnostics.record(
+            .info,
+            category: "mlx",
+            name: "local_model_preflight",
+            fields: [
+                "required_file_count": String(required.count),
+                "existing_file_count": String(existing.count),
+                "missing_file_count": String(missing.count)
+            ]
+        )
         if !missing.isEmpty {
-            logger.error("Local model preflight missing files: \(missing.joined(separator: ", "), privacy: .public)")
-            print("[SeeCal][MLXRunnerBuilder] preflight missing files: \(missing.joined(separator: ", "))")
+            SeeCalDiagnostics.record(
+                .error,
+                category: "mlx",
+                name: "local_model_preflight_files_missing",
+                fields: ["missing_files": missing.sorted().joined(separator: ",")]
+            )
         }
 
         do {
             let topLevel = try fm.contentsOfDirectory(atPath: path).sorted()
-            logger.log("Local model directory entries (\(topLevel.count, privacy: .public)): \(topLevel.joined(separator: ", "), privacy: .public)")
-            print("[SeeCal][MLXRunnerBuilder] top-level entries count=\(topLevel.count)")
+            SeeCalDiagnostics.record(
+                .debug,
+                category: "mlx",
+                name: "local_model_directory_inspected",
+                fields: ["entry_count": String(topLevel.count)]
+            )
         } catch {
-            logger.error("Failed to read local model directory entries. Error: \(String(describing: error), privacy: .public)")
-            print("[SeeCal][MLXRunnerBuilder] failed to list directory: \(String(describing: error))")
+            SeeCalDiagnostics.record(
+                .error,
+                category: "mlx",
+                name: "local_model_directory_inspection_failed",
+                fields: SeeCalDiagnostics.errorFields(error)
+            )
         }
     }
 
     private static func validateLocalModelType(path: String) {
         let configURL = URL(fileURLWithPath: path).appendingPathComponent("config.json")
         guard let data = try? Data(contentsOf: configURL) else {
-            print("[SeeCal][MLXRunnerBuilder] could not read config.json at \(configURL.path)")
+            SeeCalDiagnostics.record(
+                .error,
+                category: "mlx",
+                name: "model_config_unreadable"
+            )
             return
         }
         guard
             let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
             let modelType = object["model_type"] as? String
         else {
-            print("[SeeCal][MLXRunnerBuilder] could not parse model_type from config.json")
+            SeeCalDiagnostics.record(
+                .error,
+                category: "mlx",
+                name: "model_type_unreadable"
+            )
             return
         }
 
-        print("[SeeCal][MLXRunnerBuilder] detected model_type=\(modelType)")
+        SeeCalDiagnostics.record(
+            .info,
+            category: "mlx",
+            name: "model_type_detected",
+            fields: ["model_type": modelType]
+        )
     }
 }

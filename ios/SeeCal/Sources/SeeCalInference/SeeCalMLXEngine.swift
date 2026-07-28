@@ -1,9 +1,8 @@
 import Foundation
-import os
+import SeeCalDiagnostics
 
 public actor SeeCalMLXEngine {
     private let runner: MLXSwiftQwenVisionEngine.Runner
-    private static let logger = Logger(subsystem: "SeeCal", category: "MLXEngine")
 
     public init(runner: @escaping MLXSwiftQwenVisionEngine.Runner) {
         self.runner = runner
@@ -12,10 +11,19 @@ public actor SeeCalMLXEngine {
     public static func make(config: QwenRuntimeConfig) async throws -> SeeCalMLXEngine {
         do {
             let runner = try await MLXQwen35RunnerBuilder.makeRunner(config: config)
-            logger.log("MLX engine initialized for model id: \(config.modelPath, privacy: .public)")
+            SeeCalDiagnostics.record(
+                .notice,
+                category: "model_load",
+                name: "mlx_engine_initialized"
+            )
             return SeeCalMLXEngine(runner: runner)
         } catch {
-            logger.error("MLX engine init failed for model id: \(config.modelPath, privacy: .public). Error: \(String(describing: error), privacy: .public)")
+            SeeCalDiagnostics.record(
+                .fault,
+                category: "model_load",
+                name: "mlx_engine_initialization_failed",
+                fields: SeeCalDiagnostics.errorFields(error)
+            )
             throw error
         }
     }

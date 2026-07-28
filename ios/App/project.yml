@@ -109,6 +109,8 @@ targets:
     dependencies:
       - package: SeeCalPackage
         product: SeeCalApp
+      - package: SeeCalPackage
+        product: SeeCalDiagnostics
 
 schemes:
   SeeCal:

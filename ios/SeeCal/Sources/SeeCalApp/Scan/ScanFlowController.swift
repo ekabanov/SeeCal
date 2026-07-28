@@ -1,4 +1,5 @@
 import Foundation
+import SeeCalDiagnostics
 import SeeCalDomain
 import SeeCalInference
 import SeeCalPersistence
@@ -139,6 +140,9 @@ public final class ScanFlowController: ObservableObject {
     private let barcodeLookup: BarcodeProductLookup
     private let barcodeDebounceNanoseconds: UInt64
     private let now: @Sendable () -> Date
+    /// Per-scan correlation only. This random value is not persisted with a
+    /// meal and contains no device or user identity.
+    private var diagnosticScanID: UUID?
     /// Exposed for tests to await inference completion deterministically.
     private(set) var inferenceTask: Task<Void, Never>?
     private var toastTask: Task<Void, Never>?
@@ -208,6 +212,7 @@ public final class ScanFlowController: ObservableObject {
         switch phase {
         case .idle:
             resetBarcodeRecognition()
+            beginDiagnosticScan(entryPoint: "scan_button")
             phase = .capturing
             isScanSurfaceVisible = true
         case .capturing, .analyzing:
@@ -221,6 +226,7 @@ public final class ScanFlowController: ObservableObject {
             if let imagePath = draft.imagePath {
                 photoStore.delete(atPath: imagePath)
             }
+            beginDiagnosticScan(entryPoint: "replace_pending_result")
             phase = .capturing
             isScanSurfaceVisible = true
         case .presentingResult:
@@ -240,6 +246,13 @@ public final class ScanFlowController: ObservableObject {
             return
         }
         photoStore.delete(atPath: photoPath)
+        SeeCalDiagnostics.record(
+            .info,
+            category: "scan_flow",
+            name: "terminal_photo_discarded",
+            fields: diagnosticFields()
+        )
+        beginDiagnosticScan(entryPoint: "new_scan_after_terminal_state")
         phase = .capturing
         isScanSurfaceVisible = true
     }
@@ -248,9 +261,16 @@ public final class ScanFlowController: ObservableObject {
     /// viewfinder's ✕ "returns to Today", not to whatever tab was selected).
     public func closeCamera() {
         guard case .capturing = phase else { return }
+        SeeCalDiagnostics.record(
+            .info,
+            category: "scan_flow",
+            name: "camera_closed",
+            fields: diagnosticFields()
+        )
         phase = .idle
         isScanSurfaceVisible = false
         resetBarcodeRecognition()
+        diagnosticScanID = nil
         onRequestTabSwitch?(.today)
     }
 
@@ -261,7 +281,22 @@ public final class ScanFlowController: ObservableObject {
         guard isScanSurfaceVisible else { return }
         isScanSurfaceVisible = false
         if case .capturing = phase {
+            SeeCalDiagnostics.record(
+                .info,
+                category: "scan_flow",
+                name: "camera_left_via_tab",
+                fields: diagnosticFields()
+            )
             phase = .idle
+            resetBarcodeRecognition()
+            diagnosticScanID = nil
+        } else if case .analyzing = phase {
+            SeeCalDiagnostics.record(
+                .info,
+                category: "scan_flow",
+                name: "analysis_continued_in_background",
+                fields: diagnosticFields()
+            )
         }
     }
 
@@ -269,18 +304,46 @@ public final class ScanFlowController: ObservableObject {
 
     public func shutterTapped() async {
         guard case .capturing = phase else { return }
+        SeeCalDiagnostics.record(
+            .notice,
+            category: "scan_flow",
+            name: "capture_started",
+            fields: diagnosticFields()
+        )
         do {
             let photo = try await captureService.capturePhoto()
             // The camera may have been closed (✕ / tab tap) while the capture
             // was in flight; an abandoned viewfinder must not start an analysis.
-            guard case .capturing = phase else { return }
+            guard case .capturing = phase else {
+                SeeCalDiagnostics.record(
+                    .info,
+                    category: "scan_flow",
+                    name: "capture_completed_after_abandonment",
+                    fields: diagnosticFields()
+                )
+                return
+            }
             let path = try photoStore.save(photo.imageData)
+            SeeCalDiagnostics.record(
+                .notice,
+                category: "scan_flow",
+                name: "capture_saved",
+                fields: diagnosticFields([
+                    "captured_bytes": String(photo.imageData.count)
+                ])
+            )
             startAnalysis(photoPath: path)
         } catch {
             // Same re-check on the failure path: a capture aborted BECAUSE the
             // camera closed must not park a stale alert for the next open.
             guard case .capturing = phase else { return }
             captureError = error.localizedDescription
+            SeeCalDiagnostics.record(
+                .error,
+                category: "scan_flow",
+                name: "capture_failed",
+                fields: diagnosticFields(SeeCalDiagnostics.errorFields(error))
+            )
         }
     }
 
@@ -294,14 +357,30 @@ public final class ScanFlowController: ObservableObject {
         default:
             return
         }
+        SeeCalDiagnostics.record(
+            .notice,
+            category: "scan_flow",
+            name: "analysis_retry_requested",
+            fields: diagnosticFields()
+        )
         startAnalysis(photoPath: photoPath)
     }
 
     private func startAnalysis(photoPath: String) {
         guard inferenceTask == nil else { return } // one inference at a time
+        if diagnosticScanID == nil {
+            beginDiagnosticScan(entryPoint: "analysis_without_camera")
+        }
         phase = .analyzing(photoPath: photoPath)
         let mealType = Self.mealType(for: now())
         let request = FoodScanRequest(imagePath: photoPath, mealType: mealType, userHint: nil)
+        let startedAt = DispatchTime.now().uptimeNanoseconds
+        SeeCalDiagnostics.record(
+            .notice,
+            category: "scan_flow",
+            name: "analysis_started",
+            fields: diagnosticFields()
+        )
         inferenceTask = Task { [weak self] in
             // Runs on the main actor (inherited); the await inside suspends
             // without blocking UI.
@@ -309,6 +388,14 @@ public final class ScanFlowController: ObservableObject {
             do {
                 let result = try await self.inference.infer(request: request)
                 self.inferenceTask = nil
+                SeeCalDiagnostics.record(
+                    .notice,
+                    category: "scan_flow",
+                    name: "analysis_succeeded",
+                    fields: self.diagnosticFields([
+                        "duration_ms": Self.elapsedMilliseconds(since: startedAt)
+                    ])
+                )
                 self.finishAnalysis(result: result, photoPath: photoPath, mealType: mealType)
             } catch InferenceError.notFood {
                 // Definitive refusal — a correct answer, not a failure. Distinct
@@ -316,9 +403,26 @@ public final class ScanFlowController: ObservableObject {
                 // red error/Retry screen.
                 self.inferenceTask = nil
                 self.phase = .notFood(photoPath: photoPath)
+                SeeCalDiagnostics.record(
+                    .notice,
+                    category: "scan_flow",
+                    name: "analysis_not_food",
+                    fields: self.diagnosticFields([
+                        "duration_ms": Self.elapsedMilliseconds(since: startedAt)
+                    ])
+                )
             } catch {
                 self.inferenceTask = nil
                 self.phase = .error(message: error.localizedDescription, photoPath: photoPath)
+                SeeCalDiagnostics.record(
+                    .error,
+                    category: "scan_flow",
+                    name: "analysis_failed",
+                    fields: self.diagnosticFields(
+                        ["duration_ms": Self.elapsedMilliseconds(since: startedAt)]
+                            .merging(SeeCalDiagnostics.errorFields(error)) { current, _ in current }
+                    )
+                )
             }
         }
     }
@@ -333,9 +437,21 @@ public final class ScanFlowController: ObservableObject {
         if isScanSurfaceVisible {
             // Analyzing screen is frontmost → auto-present the result sheet.
             phase = .presentingResult(draft: draft)
+            SeeCalDiagnostics.record(
+                .info,
+                category: "scan_flow",
+                name: "result_presented",
+                fields: diagnosticFields()
+            )
         } else {
             // User navigated away mid-analysis → persistent review banner.
             phase = .ready(draft: draft)
+            SeeCalDiagnostics.record(
+                .info,
+                category: "scan_flow",
+                name: "result_ready_in_background",
+                fields: diagnosticFields()
+            )
         }
     }
 
@@ -343,6 +459,12 @@ public final class ScanFlowController: ObservableObject {
 
     public func bannerTapped() {
         guard case let .ready(draft) = phase else { return }
+        SeeCalDiagnostics.record(
+            .info,
+            category: "scan_flow",
+            name: "result_banner_opened",
+            fields: diagnosticFields()
+        )
         phase = .presentingResult(draft: draft)
     }
 
@@ -351,6 +473,12 @@ public final class ScanFlowController: ObservableObject {
     /// come back to it. (Explicit Discard is `discardResult()`.)
     public func resultSheetDismissed() {
         guard case let .presentingResult(draft) = phase else { return }
+        SeeCalDiagnostics.record(
+            .info,
+            category: "scan_flow",
+            name: "result_sheet_dismissed",
+            fields: diagnosticFields()
+        )
         if draft.origin == .photo {
             phase = .ready(draft: draft)
         } else {
@@ -375,6 +503,13 @@ public final class ScanFlowController: ObservableObject {
         if let imagePath = draft.imagePath {
             photoStore.delete(atPath: imagePath)
         }
+        SeeCalDiagnostics.record(
+            .info,
+            category: "scan_flow",
+            name: "result_discarded",
+            fields: diagnosticFields()
+        )
+        beginDiagnosticScan(entryPoint: "discard_to_camera")
         phase = .capturing
         isScanSurfaceVisible = true
     }
@@ -383,6 +518,12 @@ public final class ScanFlowController: ObservableObject {
     public func beginManualMeal() {
         guard case .capturing = phase, activeSheetDraft == nil else { return }
         resetBarcodeRecognition()
+        SeeCalDiagnostics.record(
+            .info,
+            category: "scan_flow",
+            name: "manual_entry_started",
+            fields: diagnosticFields()
+        )
         let draft = MealEditDraft(manualMealType: Self.mealType(for: now()))
         phase = .presentingResult(draft: draft)
         isScanSurfaceVisible = true
@@ -397,6 +538,12 @@ public final class ScanFlowController: ObservableObject {
         else { return }
         barcodeLookupTask?.cancel()
         barcodeState = .idle
+        SeeCalDiagnostics.record(
+            .info,
+            category: "scan_flow",
+            name: "barcode_entry_presented",
+            fields: diagnosticFields()
+        )
         phase = .presentingResult(draft: draft)
         isScanSurfaceVisible = true
     }
@@ -410,6 +557,12 @@ public final class ScanFlowController: ObservableObject {
         else { return }
         guard normalized != currentBarcode, normalized != pendingBarcode else { return }
 
+        SeeCalDiagnostics.record(
+            .debug,
+            category: "scan_flow",
+            name: "barcode_detected",
+            fields: diagnosticFields()
+        )
         barcodeLookupTask?.cancel()
         pendingBarcode = normalized
         barcodeLookupTask = Task { [weak self] in
@@ -432,6 +585,12 @@ public final class ScanFlowController: ObservableObject {
             self.pendingBarcode = nil
             self.currentBarcode = normalized
             self.barcodeState = .lookingUp(code: normalized)
+            SeeCalDiagnostics.record(
+                .info,
+                category: "scan_flow",
+                name: "barcode_lookup_started",
+                fields: self.diagnosticFields()
+            )
             do {
                 let product = try await self.barcodeLookup.lookup(
                     barcode: DetectedBarcode(value: normalized, symbology: detected.symbology)
@@ -439,10 +598,22 @@ public final class ScanFlowController: ObservableObject {
                 guard !Task.isCancelled, case .capturing = self.phase else { return }
                 self.barcodeState = .found(product)
                 self.barcodeLookupTask = nil
+                SeeCalDiagnostics.record(
+                    .info,
+                    category: "scan_flow",
+                    name: "barcode_lookup_succeeded",
+                    fields: self.diagnosticFields()
+                )
             } catch {
                 guard !Task.isCancelled, case .capturing = self.phase else { return }
                 self.barcodeState = .failed(code: normalized, message: error.localizedDescription)
                 self.barcodeLookupTask = nil
+                SeeCalDiagnostics.record(
+                    .error,
+                    category: "scan_flow",
+                    name: "barcode_lookup_failed",
+                    fields: self.diagnosticFields(SeeCalDiagnostics.errorFields(error))
+                )
             }
         }
     }
@@ -457,6 +628,12 @@ public final class ScanFlowController: ObservableObject {
                 code: product.barcode,
                 message: "Nutrition is incomplete. Enter this product manually."
             )
+            SeeCalDiagnostics.record(
+                .notice,
+                category: "scan_flow",
+                name: "barcode_nutrition_incomplete",
+                fields: diagnosticFields()
+            )
             return
         }
         beginBarcodeMeal(draft)
@@ -465,6 +642,14 @@ public final class ScanFlowController: ObservableObject {
     public func enterBarcodeProductManually(_ product: BarcodeProduct? = nil) {
         guard case .capturing = phase else { return }
         resetBarcodeRecognition()
+        SeeCalDiagnostics.record(
+            .info,
+            category: "scan_flow",
+            name: "barcode_manual_fallback_started",
+            fields: diagnosticFields([
+                "had_product": product == nil ? "false" : "true"
+            ])
+        )
         let title = product?.name ?? "Manual meal"
         let draft = MealEditDraft(manualMealType: Self.mealType(for: now()), name: title)
         phase = .presentingResult(draft: draft)
@@ -476,6 +661,12 @@ public final class ScanFlowController: ObservableObject {
         barcodeLookupTask = nil
         pendingBarcode = nil
         barcodeState = .idle
+        SeeCalDiagnostics.record(
+            .debug,
+            category: "scan_flow",
+            name: "barcode_result_dismissed",
+            fields: diagnosticFields()
+        )
         // Keep `currentBarcode` so the same code in every video frame does not
         // immediately reopen the dismissed card.
     }
@@ -502,8 +693,21 @@ public final class ScanFlowController: ObservableObject {
             todayScrollToTopToken = UUID()
             onRequestTabSwitch?(.today)
             showToast("Logged to Today")
+            SeeCalDiagnostics.record(
+                .notice,
+                category: "scan_flow",
+                name: "result_logged",
+                fields: diagnosticFields()
+            )
+            diagnosticScanID = nil
         } catch {
             viewModel.lastError = error.localizedDescription
+            SeeCalDiagnostics.record(
+                .error,
+                category: "scan_flow",
+                name: "result_commit_failed",
+                fields: diagnosticFields(SeeCalDiagnostics.errorFields(error))
+            )
         }
     }
 
@@ -555,6 +759,31 @@ public final class ScanFlowController: ObservableObject {
             guard !Task.isCancelled else { return }
             self?.toastMessage = nil
         }
+    }
+
+    // MARK: Diagnostics
+
+    private func beginDiagnosticScan(entryPoint: String) {
+        diagnosticScanID = UUID()
+        SeeCalDiagnostics.record(
+            .notice,
+            category: "scan_flow",
+            name: "scan_started",
+            fields: diagnosticFields(["entry_point": entryPoint])
+        )
+    }
+
+    private func diagnosticFields(_ fields: [String: String] = [:]) -> [String: String] {
+        var result = fields
+        if let diagnosticScanID {
+            result["scan_id"] = diagnosticScanID.uuidString
+        }
+        return result
+    }
+
+    nonisolated private static func elapsedMilliseconds(since startedAt: UInt64) -> String {
+        let elapsed = DispatchTime.now().uptimeNanoseconds - startedAt
+        return String(elapsed / 1_000_000)
     }
 
     // MARK: Derivations

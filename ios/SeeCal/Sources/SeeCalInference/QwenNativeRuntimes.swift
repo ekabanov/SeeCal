@@ -1,4 +1,5 @@
 import Foundation
+import SeeCalDiagnostics
 import SeeCalDomain
 
 public protocol NativeQwenVisionEngine: Sendable {
@@ -76,12 +77,32 @@ public struct MLXQwenRuntime: InferenceRuntime {
     public func infer(request: FoodScanRequest) async throws -> FoodScanResult {
         let prompt = promptBuilder.buildPrompt(request: request)
         let raw = try await engine.run(imagePath: request.imagePath, prompt: prompt)
+        SeeCalDiagnostics.record(
+            .info,
+            category: "inference",
+            name: "generation_received",
+            fields: ["runtime": name, "character_count": String(raw.count)]
+        )
         // v7: a not-food refusal (`{"not_food": true}`) is a definitive answer,
         // checked before parseStrict (which would throw missingItems on it).
         if ScanJSONParser.isNotFood(raw) { throw InferenceError.notFood }
         do {
-            return try ScanJSONParser.parseStrict(from: raw)
+            let result = try ScanJSONParser.parseStrict(from: raw)
+            SeeCalDiagnostics.record(
+                .info,
+                category: "inference",
+                name: "generation_parsed",
+                fields: ["runtime": name]
+            )
+            return result
         } catch {
+            SeeCalDiagnostics.record(
+                .error,
+                category: "inference",
+                name: "generation_parse_failed",
+                fields: ["runtime": name]
+                    .merging(SeeCalDiagnostics.errorFields(error)) { current, _ in current }
+            )
             throw InferenceError.parsingFailed(error.localizedDescription)
         }
     }
@@ -106,10 +127,30 @@ public struct MNNQwenRuntime: InferenceRuntime {
     public func infer(request: FoodScanRequest) async throws -> FoodScanResult {
         let prompt = promptBuilder.buildPrompt(request: request)
         let raw = try await engine.run(imagePath: request.imagePath, prompt: prompt)
+        SeeCalDiagnostics.record(
+            .info,
+            category: "inference",
+            name: "generation_received",
+            fields: ["runtime": name, "character_count": String(raw.count)]
+        )
         if ScanJSONParser.isNotFood(raw) { throw InferenceError.notFood }
         do {
-            return try ScanJSONParser.parseStrict(from: raw)
+            let result = try ScanJSONParser.parseStrict(from: raw)
+            SeeCalDiagnostics.record(
+                .info,
+                category: "inference",
+                name: "generation_parsed",
+                fields: ["runtime": name]
+            )
+            return result
         } catch {
+            SeeCalDiagnostics.record(
+                .error,
+                category: "inference",
+                name: "generation_parse_failed",
+                fields: ["runtime": name]
+                    .merging(SeeCalDiagnostics.errorFields(error)) { current, _ in current }
+            )
             throw InferenceError.parsingFailed(error.localizedDescription)
         }
     }

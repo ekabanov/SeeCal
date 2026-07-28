@@ -1,4 +1,5 @@
 import SwiftUI
+import SeeCalDiagnostics
 import SeeCalDomain
 
 /// Spec §8 / `#scr-settings`: persisted capture coaching, a Sync card of
@@ -10,6 +11,9 @@ import SeeCalDomain
 /// `docs/design/prototype/seecal-prototype.html` lines 828-854.
 public struct SettingsScreen: View {
     @ObservedObject private var viewModel: AppViewModel
+    @State private var diagnosticSheet: DiagnosticSheet?
+    @State private var diagnosticReportToDelete: URL?
+    @State private var diagnosticError: String?
 
     public init(viewModel: AppViewModel) {
         self.viewModel = viewModel
@@ -57,11 +61,35 @@ public struct SettingsScreen: View {
 
                 SectionLabel("Data sources")
                 openFoodFactsCard
+
+                SectionLabel("Diagnostics")
+                diagnosticsCard
             }
             .padding(.horizontal, 18)
             .padding(.bottom, Theme.screenBottomInset)
         }
         .background(Theme.appBg)
+        #if os(iOS)
+        .sheet(item: $diagnosticSheet, onDismiss: cleanUpDiagnosticReport) { sheet in
+            switch sheet.destination {
+            case .mail:
+                DiagnosticMailComposeView(
+                    reportURL: sheet.reportURL,
+                    recipient: DiagnosticReportFactory.configuredRecipient
+                )
+            case .share:
+                DiagnosticActivityView(reportURL: sheet.reportURL)
+            }
+        }
+        #endif
+        .alert("Couldn’t prepare diagnostics", isPresented: Binding(
+            get: { diagnosticError != nil },
+            set: { if !$0 { diagnosticError = nil } }
+        )) {
+            Button("OK", role: .cancel) { diagnosticError = nil }
+        } message: {
+            Text(diagnosticError ?? "Please try again.")
+        }
     }
 
     // MARK: - Capture toggle row (`.setrow` + `.switch`)
@@ -177,6 +205,129 @@ public struct SettingsScreen: View {
             }
         }
     }
+
+    // MARK: - Diagnostics
+
+    private var diagnosticsCard: some View {
+        Card {
+            VStack(alignment: .leading, spacing: 0) {
+                Text("Share technical logs when something goes wrong. Reports include app, device, model, timing, memory, camera, and error information.")
+                    .font(.system(size: 12.5))
+                    .foregroundStyle(Theme.appInk2)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .padding(.bottom, 12)
+
+                Label {
+                    Text("No photos, meal details, profile values, prompts, or raw model output are included.")
+                        .font(.system(size: 12, weight: .medium))
+                        .foregroundStyle(Theme.appInk2)
+                } icon: {
+                    Image(systemName: "lock.shield.fill")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundStyle(Theme.basil)
+                }
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.bottom, 12)
+
+                Divider().overlay(Theme.appLine)
+
+                diagnosticButton(
+                    title: "Email diagnostics",
+                    subtitle: DiagnosticReportFactory.canSendMail
+                        ? "Compose a message with the report attached"
+                        : "Apple Mail isn’t configured on this device",
+                    systemImage: "envelope",
+                    enabled: DiagnosticReportFactory.canSendMail
+                ) {
+                    prepareDiagnostics(for: .mail)
+                }
+
+                Divider().overlay(Theme.appLine)
+
+                diagnosticButton(
+                    title: "Share or save",
+                    subtitle: "Use AirDrop, Files, Messages, or another app",
+                    systemImage: "square.and.arrow.up",
+                    enabled: true
+                ) {
+                    prepareDiagnostics(for: .share)
+                }
+            }
+        }
+    }
+
+    private func diagnosticButton(
+        title: String,
+        subtitle: String,
+        systemImage: String,
+        enabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 16, weight: .semibold))
+                    .foregroundStyle(enabled ? Theme.basil : Theme.appInk2)
+                    .frame(width: 22)
+                rowLabel(title: title, subtitle: subtitle)
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(Theme.appInk2)
+            }
+            .contentShape(Rectangle())
+            .padding(.vertical, 13)
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+        .opacity(enabled ? 1 : 0.55)
+    }
+
+    private func prepareDiagnostics(for destination: DiagnosticDestination) {
+        SeeCalDiagnostics.record(
+            .notice,
+            category: "diagnostics",
+            name: "report_requested",
+            fields: ["destination": destination.rawValue]
+        )
+        do {
+            let reportURL = try DiagnosticReportFactory.makeReport(for: viewModel)
+            #if os(iOS)
+            diagnosticReportToDelete = reportURL
+            diagnosticSheet = DiagnosticSheet(destination: destination, reportURL: reportURL)
+            #else
+            try? FileManager.default.removeItem(at: reportURL)
+            diagnosticError = "Sharing diagnostic reports is available in the iOS app."
+            #endif
+        } catch {
+            SeeCalDiagnostics.record(
+                .error,
+                category: "diagnostics",
+                name: "report_creation_failed",
+                fields: SeeCalDiagnostics.errorFields(error)
+            )
+            diagnosticError = "The report could not be created. Please try again."
+        }
+    }
+
+    private func cleanUpDiagnosticReport() {
+        if let reportURL = diagnosticReportToDelete {
+            try? FileManager.default.removeItem(at: reportURL)
+        }
+        diagnosticReportToDelete = nil
+        diagnosticSheet = nil
+    }
+}
+
+private enum DiagnosticDestination: String {
+    case mail
+    case share
+}
+
+private struct DiagnosticSheet: Identifiable {
+    let id = UUID()
+    let destination: DiagnosticDestination
+    let reportURL: URL
 }
 
 // MARK: - Switch (`.switch`)

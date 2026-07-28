@@ -46,12 +46,36 @@ current, working shape.
 
 **`ios/`** owns everything from a captured photo to a persisted meal: camera
 capture, on-device MLX inference (base model + optional LoRA adapter),
-strict JSON validation, meal storage, and the SwiftUI screens. See
+strict JSON validation, meal storage, privacy-bounded diagnostics, and the SwiftUI screens. See
 `ios/README.md` and `ios/SeeCal/README.md`.
 
 Neither half imports the other's code. The only things that cross the
 boundary are files (an adapter directory) and a shared understanding of
 *exactly* what text gets sent to the model.
+
+## On-device diagnostics
+
+`SeeCalDiagnostics` is a small dependency of the app, inference, and
+persistence targets. It accepts deliberately selected structured fields and
+writes each event to two local sinks:
+
+- Apple's unified logging system, for attached-device debugging.
+- Rotating JSON Lines files under Application Support, for reports that
+  survive relaunches, crashes, and memory terminations.
+
+The file sink synchronously flushes each event. Its bounded retention policy
+is one current 1 MB file plus four previous files, with files older than seven
+days pruned. Settings lets the user generate a human-readable plain-text
+report and explicitly hand it to Apple's Mail composer or the system share
+sheet. There is no background upload and no embedded service credential.
+
+The privacy boundary is part of the diagnostics contract: events may contain
+technical states, opaque per-scan correlation IDs, counts, durations, memory
+measurements, component versions, and error type/domain/code. They must not
+contain photos, profile values, meal or ingredient names, nutrition values,
+model prompts, raw model output, localized error descriptions, or absolute
+paths. Call sites select only permitted fields, and the store additionally
+scrubs path-like values and control characters before writing either sink.
 
 ## The contract, in detail
 
@@ -213,4 +237,5 @@ sequenceDiagram
 | Adapter scale convention is translated, not copy-pasted | `ml/convert_adapter_for_swift.py` (detects legacy vs. current mlx-vlm by weight-key suffix) |
 | App always knows which adapter it's running | `ModelInfoResolver` (reads `seecal_adapter_version`, falls back to directory-name parsing, never fabricates a version) |
 | App never sends inference to a broken adapter silently | `ModelAssetResolver` + `MLXQwen35RunnerBuilder` (missing adapter = logged fallback to base model; invalid adapter = hard error) |
+| Diagnostic reports stay bounded and exclude user content | `SeeCalDiagnostics` (rotation, retention, path scrub, allowlisted call-site fields) + `SeeCalDiagnosticsTests` |
 | Weights never enter git | `.gitignore` (`ml/adapters*/`, `*.safetensors`, `ml/Nutrition5K/`, etc.); `ios/App` build phase fails loudly if `$MODELS_DIR` is unset (unless `SEECAL_ALLOW_NO_WEIGHTS=1`) |

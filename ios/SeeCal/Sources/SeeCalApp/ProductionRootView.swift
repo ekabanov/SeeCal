@@ -1,12 +1,11 @@
 import SwiftUI
+import SeeCalDiagnostics
 import SeeCalInference
-import os
 #if canImport(UIKit)
 import UIKit
 #endif
 
 public struct ProductionRootView: View {
-    private let logger = Logger(subsystem: "SeeCal", category: "ProductionRootView")
     public enum LoadState {
         case loading
         case loaded(AppViewModel)
@@ -48,8 +47,17 @@ public struct ProductionRootView: View {
         .onReceive(NotificationCenter.default.publisher(
             for: UIApplication.didReceiveMemoryWarningNotification
         )) { _ in
-            logger.log("Memory warning — releasing MLX caches.")
+            SeeCalDiagnostics.record(
+                .fault,
+                category: "memory",
+                name: "memory_warning_received"
+            )
             SeeCalMemory.releaseCaches()
+            SeeCalDiagnostics.record(
+                .notice,
+                category: "memory",
+                name: "mlx_cache_released_after_warning"
+            )
         }
 #endif
     }
@@ -62,21 +70,39 @@ public struct ProductionRootView: View {
         // abort no Swift `catch` can intercept. Simulator builds therefore run
         // the mock inference engine so the full UI is usable for development and
         // visual QA. Device builds always use MLX (the #else branch below).
-        logger.log("Simulator build — using development mock engine (MLX-Metal unavailable on simulator).")
-        print("[SeeCal][ProductionRootView] simulator: using development mock engine")
+        SeeCalDiagnostics.record(
+            .notice,
+            category: "model_load",
+            name: "simulator_mock_engine_selected"
+        )
         loadState = .loaded(SeeCalBootstrap.makeDevelopmentViewModel())
 #else
         do {
-            logger.log("Starting model load for model id: \(config.modelPath, privacy: .public)")
-            print("[SeeCal][ProductionRootView] load start modelPath=\(config.modelPath)")
+            let startedAt = DispatchTime.now().uptimeNanoseconds
+            SeeCalDiagnostics.record(
+                .notice,
+                category: "model_load",
+                name: "production_model_load_started",
+                fields: ["adapter_configured": String(config.adapterPath != nil)]
+            )
             let vm = try await SeeCalBootstrap.makeProductionViewModelUsingMLX(config: config)
             loadState = .loaded(vm)
-            logger.log("Model load succeeded for model id: \(config.modelPath, privacy: .public)")
-            print("[SeeCal][ProductionRootView] load success")
+            SeeCalDiagnostics.record(
+                .notice,
+                category: "model_load",
+                name: "production_model_load_succeeded",
+                fields: [
+                    "duration_ms": String((DispatchTime.now().uptimeNanoseconds - startedAt) / 1_000_000)
+                ]
+            )
         } catch {
             let message = debugMessage(for: error)
-            logger.error("Model load failed for model id: \(config.modelPath, privacy: .public). Error: \(message, privacy: .public)")
-            print("[SeeCal][ProductionRootView] load failed error=\(message)")
+            SeeCalDiagnostics.record(
+                .fault,
+                category: "model_load",
+                name: "production_model_load_failed",
+                fields: SeeCalDiagnostics.errorFields(error)
+            )
             loadState = .failed(message)
         }
 #endif

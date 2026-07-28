@@ -8,6 +8,7 @@ let package = Package(
         .macOS(.v14)
     ],
     products: [
+        .library(name: "SeeCalDiagnostics", targets: ["SeeCalDiagnostics"]),
         .library(name: "SeeCalDomain", targets: ["SeeCalDomain"]),
         .library(name: "SeeCalInference", targets: ["SeeCalInference"]),
         .library(name: "SeeCalPersistence", targets: ["SeeCalPersistence"]),
@@ -28,11 +29,15 @@ let package = Package(
     ],
     targets: [
         .target(
+            name: "SeeCalDiagnostics"
+        ),
+        .target(
             name: "SeeCalDomain"
         ),
         .target(
             name: "SeeCalInference",
             dependencies: [
+                "SeeCalDiagnostics",
                 "SeeCalDomain",
                 .product(name: "MLX", package: "mlx-swift"),
                 .product(name: "MLXLMCommon", package: "mlx-swift-lm"),
@@ -41,11 +46,15 @@ let package = Package(
         ),
         .target(
             name: "SeeCalPersistence",
-            dependencies: ["SeeCalDomain"]
+            dependencies: ["SeeCalDiagnostics", "SeeCalDomain"]
         ),
         .target(
             name: "SeeCalApp",
-            dependencies: ["SeeCalDomain", "SeeCalInference", "SeeCalPersistence"]
+            dependencies: ["SeeCalDiagnostics", "SeeCalDomain", "SeeCalInference", "SeeCalPersistence"]
+        ),
+        .testTarget(
+            name: "SeeCalDiagnosticsTests",
+            dependencies: ["SeeCalDiagnostics"]
         ),
         .testTarget(
             name: "SeeCalDomainTests",

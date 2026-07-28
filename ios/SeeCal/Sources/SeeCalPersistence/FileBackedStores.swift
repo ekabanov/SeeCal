@@ -1,5 +1,5 @@
 import Foundation
-import os
+import SeeCalDiagnostics
 import SeeCalDomain
 
 /// Well-known on-disk locations for SeeCal's persisted state. All file-backed stores
@@ -32,22 +32,39 @@ public enum FileBackedStoreLocations {
 /// Shared JSON read/write helpers used by the file-backed stores below. Writes are
 /// atomic so a crash mid-write can never leave a half-written, corrupt file behind.
 enum FileBackedStoreIO {
-    private static let logger = Logger(subsystem: "SeeCal", category: "FileBackedStoreIO")
-
     static func read<T: Decodable>(_ type: T.Type, from fileURL: URL) -> T? {
         guard let data = try? Data(contentsOf: fileURL), !data.isEmpty else {
+            SeeCalDiagnostics.record(
+                .debug,
+                category: "persistence",
+                name: "store_empty_or_missing",
+                fields: ["store": storeName(fileURL)]
+            )
             return nil
         }
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
         do {
-            return try decoder.decode(T.self, from: data)
+            let value = try decoder.decode(T.self, from: data)
+            SeeCalDiagnostics.record(
+                .info,
+                category: "persistence",
+                name: "store_read_succeeded",
+                fields: ["store": storeName(fileURL), "bytes": String(data.count)]
+            )
+            return value
         } catch {
             // Never silently discard an unreadable store file: the next save() would
             // overwrite it, permanently destroying data a future app version might have
             // been able to migrate. Preserve the original bytes as a timestamped backup
             // and start fresh.
-            logger.error("Failed to decode \(fileURL.lastPathComponent, privacy: .public): \(String(describing: error), privacy: .public)")
+            SeeCalDiagnostics.record(
+                .error,
+                category: "persistence",
+                name: "store_decode_failed",
+                fields: ["store": storeName(fileURL)]
+                    .merging(SeeCalDiagnostics.errorFields(error)) { current, _ in current }
+            )
             backUpUnreadableFile(at: fileURL)
             return nil
         }
@@ -63,9 +80,20 @@ enum FileBackedStoreIO {
             .appendingPathComponent("\(fileURL.lastPathComponent).bak-\(timestamp)")
         do {
             try FileManager.default.moveItem(at: fileURL, to: backupURL)
-            logger.error("Preserved unreadable store file as \(backupURL.lastPathComponent, privacy: .public)")
+            SeeCalDiagnostics.record(
+                .notice,
+                category: "persistence",
+                name: "unreadable_store_preserved",
+                fields: ["store": storeName(fileURL)]
+            )
         } catch {
-            logger.error("Failed to back up unreadable store file \(fileURL.lastPathComponent, privacy: .public): \(String(describing: error), privacy: .public)")
+            SeeCalDiagnostics.record(
+                .error,
+                category: "persistence",
+                name: "unreadable_store_backup_failed",
+                fields: ["store": storeName(fileURL)]
+                    .merging(SeeCalDiagnostics.errorFields(error)) { current, _ in current }
+            )
         }
     }
 
@@ -78,6 +106,21 @@ enum FileBackedStoreIO {
         encoder.dateEncodingStrategy = .iso8601
         let data = try encoder.encode(value)
         try data.write(to: fileURL, options: .atomic)
+        SeeCalDiagnostics.record(
+            .info,
+            category: "persistence",
+            name: "store_write_succeeded",
+            fields: ["store": storeName(fileURL), "bytes": String(data.count)]
+        )
+    }
+
+    private static func storeName(_ fileURL: URL) -> String {
+        switch fileURL.lastPathComponent {
+        case "meal_log.json": return "meal_log"
+        case "preferences.json": return "preferences"
+        case "weight_log.json": return "weight_log"
+        default: return "custom_store"
+        }
     }
 }
 

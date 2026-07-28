@@ -1,9 +1,7 @@
 import Foundation
-import os
+import SeeCalDiagnostics
 
 enum ModelAssetResolver {
-    private static let logger = Logger(subsystem: "SeeCal", category: "ModelAssetResolver")
-
     // Add the model folder to app resources at:
     // Models/mlx-community/Qwen3.5-4B-MLX-4bit
     private static let bundledSubdirectory = "Models/mlx-community"
@@ -18,14 +16,22 @@ enum ModelAssetResolver {
 
     static func resolveModelPath() -> String {
         if let bundledPath = bundledModelPath() {
-            logger.log("Using bundled model path: \(bundledPath, privacy: .public)")
-            print("[SeeCal][ModelAssetResolver] using bundled path: \(bundledPath)")
+            SeeCalDiagnostics.record(
+                .notice,
+                category: "model_assets",
+                name: "model_resolved",
+                fields: ["source": "bundled"]
+            )
             return bundledPath
         }
 
         if let discoveredPath = discoverBundledModelPath() {
-            logger.log("Using discovered bundled model path: \(discoveredPath, privacy: .public)")
-            print("[SeeCal][ModelAssetResolver] using discovered path: \(discoveredPath)")
+            SeeCalDiagnostics.record(
+                .notice,
+                category: "model_assets",
+                name: "model_resolved",
+                fields: ["source": "discovered_bundle"]
+            )
             return discoveredPath
         }
 
@@ -33,8 +39,12 @@ enum ModelAssetResolver {
         let localDevPath = "/Users/jevgenikabanov/models/mlx-community/Qwen3.5-4B-MLX-4bit"
         var isDirectory: ObjCBool = false
         if FileManager.default.fileExists(atPath: localDevPath, isDirectory: &isDirectory), isDirectory.boolValue {
-            logger.log("Bundled model not found; using simulator fallback path: \(localDevPath, privacy: .public)")
-            print("[SeeCal][ModelAssetResolver] using simulator fallback path: \(localDevPath)")
+            SeeCalDiagnostics.record(
+                .notice,
+                category: "model_assets",
+                name: "model_resolved",
+                fields: ["source": "simulator_fallback"]
+            )
             return localDevPath
         }
 #else
@@ -51,8 +61,12 @@ enum ModelAssetResolver {
         for candidate in candidates {
             var isDir: ObjCBool = false
             if fm.fileExists(atPath: candidate.path, isDirectory: &isDir), isDir.boolValue {
-                logger.log("Using device model path: \(candidate.path, privacy: .public)")
-                print("[SeeCal][ModelAssetResolver] using device path: \(candidate.path)")
+                SeeCalDiagnostics.record(
+                    .notice,
+                    category: "model_assets",
+                    name: "model_resolved",
+                    fields: ["source": "device_side_load"]
+                )
                 return candidate.path
             }
         }
@@ -63,8 +77,11 @@ enum ModelAssetResolver {
             .appendingPathComponent(bundledSubdirectory, isDirectory: true)
             .appendingPathComponent(bundledModelFolderName, isDirectory: true)
             .path
-        logger.error("Bundled model folder is missing. Expected at: \(expected, privacy: .public)")
-        print("[SeeCal][ModelAssetResolver] bundled folder missing, expected: \(expected)")
+        SeeCalDiagnostics.record(
+            .fault,
+            category: "model_assets",
+            name: "model_not_found"
+        )
         return expected
     }
 
@@ -75,8 +92,12 @@ enum ModelAssetResolver {
     /// loudly if a configured adapter cannot actually be loaded.
     static func resolveAdapterPath() -> String? {
         if let bundledPath = bundledAdapterPath() {
-            logger.log("Using bundled adapter path: \(bundledPath, privacy: .public)")
-            print("[SeeCal][ModelAssetResolver] using bundled adapter path: \(bundledPath)")
+            SeeCalDiagnostics.record(
+                .notice,
+                category: "model_assets",
+                name: "adapter_resolved",
+                fields: ["source": "bundled"]
+            )
             return bundledPath
         }
 
@@ -91,8 +112,12 @@ enum ModelAssetResolver {
             "/Users/jevgenikabanov/Documents/Projects/Claude/SeeCal/ml/adapters_v4_swift"
         ]
         for localDevPath in localDevPaths where isAdapterDirectory(localDevPath) {
-            logger.log("Bundled adapter not found; using simulator fallback adapter path: \(localDevPath, privacy: .public)")
-            print("[SeeCal][ModelAssetResolver] using simulator fallback adapter path: \(localDevPath)")
+            SeeCalDiagnostics.record(
+                .notice,
+                category: "model_assets",
+                name: "adapter_resolved",
+                fields: ["source": "simulator_fallback"]
+            )
             return localDevPath
         }
 #else
@@ -107,14 +132,21 @@ enum ModelAssetResolver {
             appSupport.appendingPathComponent("\(bundledAdapterSubdirectory)/\(bundledAdapterFolderName)", isDirectory: true),
         ]
         for candidate in candidates where isAdapterDirectory(candidate.path) {
-            logger.log("Using device adapter path: \(candidate.path, privacy: .public)")
-            print("[SeeCal][ModelAssetResolver] using device adapter path: \(candidate.path)")
+            SeeCalDiagnostics.record(
+                .notice,
+                category: "model_assets",
+                name: "adapter_resolved",
+                fields: ["source": "device_side_load"]
+            )
             return candidate.path
         }
 #endif
 
-        logger.log("No LoRA adapter found; running base model")
-        print("[SeeCal][ModelAssetResolver] no adapter found, running base model")
+        SeeCalDiagnostics.record(
+            .error,
+            category: "model_assets",
+            name: "adapter_not_found_base_model_selected"
+        )
         return nil
     }
 

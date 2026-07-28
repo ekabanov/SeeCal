@@ -1,4 +1,5 @@
 import Foundation
+import SeeCalDiagnostics
 import SeeCalDomain
 import SeeCalInference
 import SeeCalPersistence
@@ -127,9 +128,20 @@ public final class AppViewModel: ObservableObject {
         self.dailyTarget = dailyTarget
         self.modelInfo = ModelInfoResolver.resolve(modelPath: modelPath, adapterPath: adapterPath)
         self.now = now
+        SeeCalDiagnostics.record(
+            .info,
+            category: "app_state",
+            name: "view_model_created",
+            fields: [
+                "model": self.modelInfo.modelLabel,
+                "adapter": self.modelInfo.adapterVersionLabel ?? "none",
+                "quantization": self.modelInfo.quantizationLabel ?? "unknown"
+            ]
+        )
     }
 
     public func loadEntries() async {
+        SeeCalDiagnostics.record(.info, category: "app_state", name: "initial_data_load_started")
         do {
             userProfile = try await preferencesStore.loadUserProfile()
             if let userProfile {
@@ -147,8 +159,24 @@ public final class AppViewModel: ObservableObject {
             }
             mealEntries = try await store.fetchAll()
             weightEntries = try await weightStore.fetchAll()
+            SeeCalDiagnostics.record(
+                .notice,
+                category: "app_state",
+                name: "initial_data_load_succeeded",
+                fields: [
+                    "has_profile": String(userProfile != nil),
+                    "meal_count": String(mealEntries.count),
+                    "weight_entry_count": String(weightEntries.count)
+                ]
+            )
         } catch {
             lastError = error.localizedDescription
+            SeeCalDiagnostics.record(
+                .error,
+                category: "app_state",
+                name: "initial_data_load_failed",
+                fields: SeeCalDiagnostics.errorFields(error)
+            )
         }
     }
 
@@ -158,8 +186,20 @@ public final class AppViewModel: ObservableObject {
         do {
             capturePreferences = preferences
             try await preferencesStore.saveCapturePreferences(preferences)
+            SeeCalDiagnostics.record(
+                .info,
+                category: "app_state",
+                name: "capture_preferences_saved",
+                fields: ["coaching_enabled": String(preferences.captureCoachingEnabled)]
+            )
         } catch {
             lastError = error.localizedDescription
+            SeeCalDiagnostics.record(
+                .error,
+                category: "app_state",
+                name: "capture_preferences_save_failed",
+                fields: SeeCalDiagnostics.errorFields(error)
+            )
         }
     }
 
@@ -189,8 +229,20 @@ public final class AppViewModel: ObservableObject {
                 try await weightStore.save(WeightEntry(date: now(), weightKg: profile.weightKg))
                 weightEntries = try await weightStore.fetchAll()
             }
+            SeeCalDiagnostics.record(
+                .info,
+                category: "app_state",
+                name: "profile_saved",
+                fields: ["weight_changed": String(weightChanged)]
+            )
         } catch {
             lastError = error.localizedDescription
+            SeeCalDiagnostics.record(
+                .error,
+                category: "app_state",
+                name: "profile_save_failed",
+                fields: SeeCalDiagnostics.errorFields(error)
+            )
         }
     }
 
@@ -202,8 +254,20 @@ public final class AppViewModel: ObservableObject {
         do {
             try await store.save(entry)
             mealEntries = try await store.fetchAll()
+            SeeCalDiagnostics.record(
+                .notice,
+                category: "app_state",
+                name: "meal_saved",
+                fields: ["meal_count": String(mealEntries.count)]
+            )
         } catch {
             lastError = error.localizedDescription
+            SeeCalDiagnostics.record(
+                .error,
+                category: "app_state",
+                name: "meal_save_failed",
+                fields: SeeCalDiagnostics.errorFields(error)
+            )
         }
     }
 
@@ -213,8 +277,20 @@ public final class AppViewModel: ObservableObject {
         do {
             try await store.update(entry)
             mealEntries = try await store.fetchAll()
+            SeeCalDiagnostics.record(
+                .notice,
+                category: "app_state",
+                name: "meal_updated",
+                fields: ["meal_count": String(mealEntries.count)]
+            )
         } catch {
             lastError = error.localizedDescription
+            SeeCalDiagnostics.record(
+                .error,
+                category: "app_state",
+                name: "meal_update_failed",
+                fields: SeeCalDiagnostics.errorFields(error)
+            )
         }
     }
 
@@ -229,8 +305,20 @@ public final class AppViewModel: ObservableObject {
             if let imagePath {
                 try? FileManager.default.removeItem(atPath: imagePath)
             }
+            SeeCalDiagnostics.record(
+                .notice,
+                category: "app_state",
+                name: "meal_deleted",
+                fields: ["meal_count": String(mealEntries.count), "photo_cleanup_attempted": String(imagePath != nil)]
+            )
         } catch {
             lastError = error.localizedDescription
+            SeeCalDiagnostics.record(
+                .error,
+                category: "app_state",
+                name: "meal_delete_failed",
+                fields: SeeCalDiagnostics.errorFields(error)
+            )
         }
     }
 
@@ -241,8 +329,20 @@ public final class AppViewModel: ObservableObject {
             }
             try await weightStore.save(WeightEntry(date: date, weightKg: kg))
             weightEntries = try await weightStore.fetchAll()
+            SeeCalDiagnostics.record(
+                .info,
+                category: "app_state",
+                name: "weight_entry_saved",
+                fields: ["weight_entry_count": String(weightEntries.count)]
+            )
         } catch {
             lastError = error.localizedDescription
+            SeeCalDiagnostics.record(
+                .error,
+                category: "app_state",
+                name: "weight_entry_save_failed",
+                fields: SeeCalDiagnostics.errorFields(error)
+            )
         }
     }
 }

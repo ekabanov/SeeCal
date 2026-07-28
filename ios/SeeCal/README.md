@@ -10,6 +10,7 @@ This directory contains a Swift package foundation for the SeeCal iPhone app wit
 ## Modules
 
 - `SeeCalDomain`: strict scan request/result contracts and JSON validation.
+- `SeeCalDiagnostics`: privacy-bounded structured event logging and report export.
 - `SeeCalInference`: runtime abstractions, Qwen prompt contract, and runtime gate evaluator.
 - `SeeCalPersistence`: meal log storage models.
 - `SeeCalApp`: app view model + root view scaffold.
@@ -54,6 +55,31 @@ you disable that check:
 swift build -Xcxx -DFMT_CONSTEVAL=
 swift test -Xcxx -DFMT_CONSTEVAL=
 ```
+
+The package currently has 195 tests with one additional environment-gated model-parity test
+skipped when local weights are unavailable.
+
+## Diagnostics and log sharing
+
+Production builds persist structured diagnostic events under Application Support and mirror the
+same events to Apple's unified logging system. Each event is synchronously flushed so the latest
+breadcrumb is available after a crash or memory termination. Files rotate at 1 MB, retain the
+current file plus four previous files, and are pruned after seven days.
+
+Settings → Diagnostics offers two explicit, user-controlled export paths:
+
+- **Email Diagnostic Report** opens Apple's Mail composer with a plain-text report attached.
+- **Share or Save Report** opens the system share sheet for AirDrop, Files, another mail client,
+  or any installed compatible destination.
+
+Nothing uploads automatically. The generated report includes app, OS, device, model and adapter
+versions plus technical events, timings, memory measurements and error codes. Instrumentation is
+deliberately forbidden from recording meal photos, profile values, meal or ingredient names,
+nutrition values, prompts, raw model output or absolute file paths. Tests enforce path scrubbing
+and that error capture cannot leak a localized description.
+
+Mail is left unaddressed by default. A distribution build can prefill a support address by setting
+the `SeeCalDiagnosticsEmail` Info.plist key; the address is configuration, not a credential.
 
 ## Inference reliability defaults
 

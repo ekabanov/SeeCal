@@ -1,5 +1,6 @@
 import SwiftUI
 import SeeCalApp
+import SeeCalDiagnostics
 import SeeCalInference
 
 /// Thin app shell around the SeeCal SwiftPM package (ios/SeeCal).
@@ -10,6 +11,10 @@ import SeeCalInference
 /// see `ModelAssetResolver`).
 @main
 struct SeeCalHostApp: App {
+    init() {
+        SeeCalDiagnostics.record(.notice, category: "app", name: "process_started")
+    }
+
     var body: some Scene {
         WindowGroup {
             ProductionRootView(

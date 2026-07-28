@@ -1,4 +1,5 @@
 import Foundation
+import SeeCalDiagnostics
 import SeeCalDomain
 
 public enum InferenceError: Error, Equatable, CustomStringConvertible, LocalizedError {
@@ -74,26 +75,82 @@ public actor RuntimeOrchestrator {
 
     public func infer(request: FoodScanRequest) async throws -> FoodScanResult {
         var failures: [InferenceError.RuntimeFailure] = []
+        let overallStartedAt = DispatchTime.now().uptimeNanoseconds
+        SeeCalDiagnostics.record(
+            .notice,
+            category: "inference",
+            name: "orchestration_started",
+            fields: [
+                "runtime_count": String(runtimes.count),
+                "max_attempts": String(maxAttemptsPerRuntime),
+                "timeout_ms": String(timeoutNanoseconds / 1_000_000)
+            ]
+        )
 
         for runtime in runtimes {
             guard await runtime.isAvailable() else {
+                SeeCalDiagnostics.record(
+                    .error,
+                    category: "inference",
+                    name: "runtime_unavailable",
+                    fields: ["runtime": runtime.name]
+                )
                 failures.append(.init(runtimeName: runtime.name, errorDescription: "runtime unavailable"))
                 continue
             }
 
             var lastError: Error?
-            for _ in 0..<maxAttemptsPerRuntime {
+            for attempt in 0..<maxAttemptsPerRuntime {
+                let attemptStartedAt = DispatchTime.now().uptimeNanoseconds
+                SeeCalDiagnostics.record(
+                    .info,
+                    category: "inference",
+                    name: "runtime_attempt_started",
+                    fields: ["runtime": runtime.name, "attempt": String(attempt + 1)]
+                )
                 do {
-                    return try await withTimeout(timeoutNanoseconds) {
+                    let result = try await withTimeout(timeoutNanoseconds) {
                         try await runtime.infer(request: request)
                     }
+                    SeeCalDiagnostics.record(
+                        .notice,
+                        category: "inference",
+                        name: "runtime_attempt_succeeded",
+                        fields: [
+                            "runtime": runtime.name,
+                            "attempt": String(attempt + 1),
+                            "duration_ms": Self.elapsedMilliseconds(since: attemptStartedAt),
+                            "overall_duration_ms": Self.elapsedMilliseconds(since: overallStartedAt)
+                        ]
+                    )
+                    return result
                 } catch InferenceError.notFood {
                     // Definitive "this isn't food" — surface it as-is. Retrying or
                     // falling through to another runtime would only re-derive the
                     // same answer (or, worse, let a weaker runtime hallucinate food).
+                    SeeCalDiagnostics.record(
+                        .notice,
+                        category: "inference",
+                        name: "runtime_returned_not_food",
+                        fields: [
+                            "runtime": runtime.name,
+                            "attempt": String(attempt + 1),
+                            "duration_ms": Self.elapsedMilliseconds(since: attemptStartedAt)
+                        ]
+                    )
                     throw InferenceError.notFood
                 } catch {
                     lastError = error
+                    SeeCalDiagnostics.record(
+                        .error,
+                        category: "inference",
+                        name: "runtime_attempt_failed",
+                        fields: [
+                            "runtime": runtime.name,
+                            "attempt": String(attempt + 1),
+                            "duration_ms": Self.elapsedMilliseconds(since: attemptStartedAt)
+                        ].merging(SeeCalDiagnostics.errorFields(error)) { current, _ in current }
+                    )
                     continue
                 }
             }
@@ -103,7 +160,20 @@ public actor RuntimeOrchestrator {
             }
         }
 
+        SeeCalDiagnostics.record(
+            .fault,
+            category: "inference",
+            name: "all_runtimes_failed",
+            fields: [
+                "failure_count": String(failures.count),
+                "overall_duration_ms": Self.elapsedMilliseconds(since: overallStartedAt)
+            ]
+        )
         throw InferenceError.allRuntimesFailed(failures)
+    }
+
+    private static func elapsedMilliseconds(since startedAt: UInt64) -> String {
+        String((DispatchTime.now().uptimeNanoseconds - startedAt) / 1_000_000)
     }
 }
 
