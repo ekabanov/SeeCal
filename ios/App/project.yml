@@ -70,7 +70,12 @@ targets:
         NSCameraUsageDescription: "SeeCal photographs your meal to estimate calories, macros, and ingredients on-device."
         NSMotionUsageDescription: "SeeCal uses device motion to steady the camera while you capture a meal photo."
         UIFileSharingEnabled: true
-        UILaunchScreen: {}
+        # Match the system-owned launch screen to the SwiftUI model-loading
+        # screen so startup reads as one continuous branded experience.
+        UILaunchScreen:
+          UIColorName: SeeCalLaunchBackground
+          UIImageName: SeeCalStartupIcon
+          UIImageRespectsSafeAreaInsets: true
         UISupportedInterfaceOrientations:
           - UIInterfaceOrientationPortrait
     entitlements:

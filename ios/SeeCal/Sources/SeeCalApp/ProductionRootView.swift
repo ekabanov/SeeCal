@@ -24,24 +24,16 @@ public struct ProductionRootView: View {
         Group {
             switch loadState {
             case .loading:
-                VStack(spacing: 12) {
-                    ProgressView()
-                    Text("Loading MLX model…")
-                }
+                StartupLoadingView()
             case let .loaded(viewModel):
                 RootView(viewModel: viewModel)
             case let .failed(message):
-                VStack(spacing: 12) {
-                    Text("Failed to load model")
-                        .font(.headline)
-                    Text(message)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                    Button("Retry") {
-                        Task { await load() }
+                StartupFailureView(message: message) {
+                    loadState = .loading
+                    Task {
+                        await load()
                     }
                 }
-                .padding()
             }
         }
         .task {
