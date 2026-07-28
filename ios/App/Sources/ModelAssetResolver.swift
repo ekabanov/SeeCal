@@ -13,6 +13,9 @@ enum ModelAssetResolver {
     private static let bundledAdapterSubdirectory = "Models"
     private static let bundledAdapterFolderName = "adapters"
     private static let adapterRequiredFiles = ["adapter_config.json", "adapters.safetensors"]
+    private static let conditionedAdapterVersion = "v8-conditioned"
+    private static let bundledSpecialistSubdirectory = "Models/visual-specialist"
+    private static let bundledSpecialistFolderName = "SeeCalVisualSpecialist.mlmodelc"
 
     static func resolveModelPath() -> String {
         if let bundledPath = bundledModelPath() {
@@ -87,9 +90,9 @@ enum ModelAssetResolver {
 
     /// Resolves the LoRA adapter directory using the same lookup order as the model:
     /// bundled resources, then (device) Documents / Application Support.
-    /// Returns nil when no adapter is present — the app then runs the base model.
-    /// If a directory is found it is returned as-is; MLXQwen35RunnerBuilder fails
-    /// loudly if a configured adapter cannot actually be loaded.
+    /// Returns nil when no correctly stamped adapter is present; conditioned
+    /// runtime validation then fails explicitly instead of silently pairing
+    /// the specialist with the base model or a legacy adapter.
     static func resolveAdapterPath() -> String? {
         if let bundledPath = bundledAdapterPath() {
             SeeCalDiagnostics.record(
@@ -102,16 +105,12 @@ enum ModelAssetResolver {
         }
 
 #if targetEnvironment(simulator)
-        // Shipping order, most-preferred first: v7b (adds not-food refusal, food
-        // accuracy a statistical tie with v5) then v5. v4 is a dead adapter
-        // (50/50 parse failures) kept only as a last resort. Keep this list in
-        // sync with SHIPPING_ADAPTER in ios/App/copy_weights.sh.
+        // Keep the selected conditioned adapter in sync with
+        // SHIPPING_ADAPTER in ios/App/copy_weights.sh.
         let localDevPaths = [
-            "/Users/jevgenikabanov/Documents/Projects/Claude/SeeCal/ml/adapters_v7b_swift",
-            "/Users/jevgenikabanov/Documents/Projects/Claude/SeeCal/ml/adapters_v5_swift",
-            "/Users/jevgenikabanov/Documents/Projects/Claude/SeeCal/ml/adapters_v4_swift"
+            "/Users/jevgenikabanov/Documents/Projects/Claude/SeeCal/ml/adapters_v8_numeric_4b_swift"
         ]
-        for localDevPath in localDevPaths where isAdapterDirectory(localDevPath) {
+        for localDevPath in localDevPaths where isConditionedAdapterDirectory(localDevPath) {
             SeeCalDiagnostics.record(
                 .notice,
                 category: "model_assets",
@@ -131,7 +130,7 @@ enum ModelAssetResolver {
             documents.appendingPathComponent("\(bundledAdapterFolderName)", isDirectory: true),
             appSupport.appendingPathComponent("\(bundledAdapterSubdirectory)/\(bundledAdapterFolderName)", isDirectory: true),
         ]
-        for candidate in candidates where isAdapterDirectory(candidate.path) {
+        for candidate in candidates where isConditionedAdapterDirectory(candidate.path) {
             SeeCalDiagnostics.record(
                 .notice,
                 category: "model_assets",
@@ -145,9 +144,79 @@ enum ModelAssetResolver {
         SeeCalDiagnostics.record(
             .error,
             category: "model_assets",
-            name: "adapter_not_found_base_model_selected"
+            name: "conditioned_adapter_not_found"
         )
         return nil
+    }
+
+    /// Resolve the compiled Core ML visual specialist paired with the
+    /// conditioned v8 adapter. Unlike an optional legacy adapter, this asset is
+    /// part of the model contract: callers receive the expected path even when
+    /// it is missing so bootstrap fails explicitly.
+    static func resolveVisualSpecialistModelPath() -> String {
+        if let base = Bundle.main.resourceURL?
+            .appendingPathComponent(bundledSpecialistSubdirectory, isDirectory: true) {
+            let bundled = base
+                .appendingPathComponent(bundledSpecialistFolderName, isDirectory: true)
+                .path
+            if isDirectory(bundled) {
+                SeeCalDiagnostics.record(
+                    .notice,
+                    category: "model_assets",
+                    name: "visual_specialist_resolved",
+                    fields: ["source": "bundled"]
+                )
+                return bundled
+            }
+        }
+
+#if targetEnvironment(simulator)
+        let localDevPath =
+            "/Users/jevgenikabanov/Documents/Projects/Claude/SeeCal/ml/runs/visual-specialist/deployment/SeeCalVisualSpecialist.mlmodelc"
+        if isDirectory(localDevPath) {
+            SeeCalDiagnostics.record(
+                .notice,
+                category: "model_assets",
+                name: "visual_specialist_resolved",
+                fields: ["source": "simulator_fallback"]
+            )
+            return localDevPath
+        }
+#else
+        let fm = FileManager.default
+        let documents = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let candidates = [
+            documents.appendingPathComponent(
+                "\(bundledSpecialistSubdirectory)/\(bundledSpecialistFolderName)",
+                isDirectory: true
+            ),
+            appSupport.appendingPathComponent(
+                "\(bundledSpecialistSubdirectory)/\(bundledSpecialistFolderName)",
+                isDirectory: true
+            ),
+        ]
+        for candidate in candidates where isDirectory(candidate.path) {
+            SeeCalDiagnostics.record(
+                .notice,
+                category: "model_assets",
+                name: "visual_specialist_resolved",
+                fields: ["source": "device_side_load"]
+            )
+            return candidate.path
+        }
+#endif
+
+        let expected = Bundle.main.bundleURL
+            .appendingPathComponent(bundledSpecialistSubdirectory, isDirectory: true)
+            .appendingPathComponent(bundledSpecialistFolderName, isDirectory: true)
+            .path
+        SeeCalDiagnostics.record(
+            .fault,
+            category: "model_assets",
+            name: "visual_specialist_not_found"
+        )
+        return expected
     }
 
     private static func bundledAdapterPath() -> String? {
@@ -159,7 +228,7 @@ enum ModelAssetResolver {
         }
 
         let adapterPath = base.appendingPathComponent(bundledAdapterFolderName, isDirectory: true).path
-        return isAdapterDirectory(adapterPath) ? adapterPath : nil
+        return isConditionedAdapterDirectory(adapterPath) ? adapterPath : nil
     }
 
     private static func isAdapterDirectory(_ path: String) -> Bool {
@@ -172,6 +241,24 @@ enum ModelAssetResolver {
         return adapterRequiredFiles.allSatisfy {
             fm.fileExists(atPath: directory.appendingPathComponent($0).path)
         }
+    }
+
+    private static func isConditionedAdapterDirectory(_ path: String) -> Bool {
+        guard isAdapterDirectory(path) else { return false }
+        let configURL = URL(fileURLWithPath: path, isDirectory: true)
+            .appendingPathComponent("adapter_config.json")
+        guard let data = try? Data(contentsOf: configURL),
+              let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let version = object["seecal_adapter_version"] as? String else {
+            return false
+        }
+        return version == conditionedAdapterVersion
+    }
+
+    private static func isDirectory(_ path: String) -> Bool {
+        var isDirectory: ObjCBool = false
+        return FileManager.default.fileExists(atPath: path, isDirectory: &isDirectory)
+            && isDirectory.boolValue
     }
 
     private static func bundledModelPath() -> String? {

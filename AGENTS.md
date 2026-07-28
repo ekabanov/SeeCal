@@ -34,6 +34,9 @@ they exist; on a fresh clone they do not, and some cost hours to rebuild:
 
 | Path | Size | How to regenerate |
 |---|---|---|
+| `ml/adapters_v8_numeric_4b/` | 1.3 GB | retrain from `finetune_data_v8_numeric` (see visual-specialist plan) |
+| `ml/adapters_v8_numeric_4b_swift/` | 128 MB | `cd ml && ./convert.sh adapters_v8_numeric_4b --version v8-conditioned` |
+| `ml/runs/visual-specialist/deployment/SeeCalVisualSpecialist.mlmodelc/` | 9.5 MB | export S1 best checkpoint, then `xcrun coremlcompiler compile` |
 | `ml/adapters_v7b/` | 1.3 GB | **~3.5 h retrain** (see "Reproducing v7b") |
 | `ml/adapters_v7b_swift/` | 124 MB | `cd ml && ./convert.sh adapters_v7b --version v7b` |
 | `ml/adapters_v5/` | 1.3 GB | ~3.5 h retrain on `finetune_data_v2` |
@@ -42,10 +45,9 @@ they exist; on a fresh clone they do not, and some cost hours to rebuild:
 | `ml/negatives/`, `ml/coco/` | 48 + 19 MB | `cd ml && ./download_negatives.sh` then `make_negatives.py jsonl` |
 | `ml/finetune_data_v7b/` | 5.1 MB | `make_v7_data.py --neg-train-cap 100 --out-dir finetune_data_v7b` |
 
-**`adapters_v7b` is the shipping adapter and exists only on this machine.** Do
-not delete it casually. `ml/negatives_cull.txt` and `finetune_data_v2/*.jsonl`
-ARE committed, so the training *data* is fully reproducible — only the trained
-weights are not.
+**`adapters_v8_numeric_4b` is the shipping adapter; `adapters_v7b` remains the
+protected rollback baseline.** Both exist only on this machine. Do not delete
+either casually.
 
 ## Conventions
 
@@ -69,8 +71,8 @@ weights are not.
 ## Build & test
 
 ```bash
-cd ml && .venv/bin/python -m pytest tests/        # ml pipeline unit tests (41)
-cd ios/SeeCal && swift test -Xcxx -DFMT_CONSTEVAL= # Swift package tests (205; 1 env-gated skip)
+cd ml && .venv/bin/python -m pytest tests/        # ml pipeline unit tests (90)
+cd ios/SeeCal && swift test -Xcxx -DFMT_CONSTEVAL= # Swift package tests (219; 3 env-gated skips)
 scripts/test.sh                                    # both of the above + iOS build check
 scripts/test.sh --skip-build                       # skip the slow xcodebuild step
 scripts/build.sh --device                          # signed device build (bundles weights)
@@ -153,7 +155,16 @@ verified off a green `swift test`.
 
 ## Current state (2026-07-28)
 
-- **Shipping adapter: `adapters_v7b`** — v5's food data + 100 not-food
+- **Shipping system: conditioned 4B + S1 specialist.** The 4B adapter is
+  `adapters_v8_numeric_4b`, stamped `v8-conditioned`; the compiled specialist
+  is `runs/visual-specialist/deployment/SeeCalVisualSpecialist.mlmodelc`.
+  Full test325: 56.8 kcal MAE / 29.7 median, 0 parse failures, 29/29 held-out
+  negative refusal. Paired with v5 on 322 dishes: −1.8 kcal (95% bootstrap CI
+  −8.3 to +4.7), a directional but non-significant improvement. Swift runs the
+  specialist first and appends its calibrated mass/calorie/macro intervals.
+  Exact contract and results:
+  `docs/plans/2026-07-28-visual-specialist-conditioned-qwen-plan.md`.
+- **Rollback baseline: `adapters_v7b`** — v5's food data + 100 not-food
   negatives. Emits `{"not_food": true}` on non-food photos. **All five gates
   green:** 100% refusal recall (29/29 held-out negatives), 0 over-refusal on
   324 real-food dishes, food accuracy a statistical tie with v5 (paired
@@ -174,9 +185,11 @@ verified off a green `swift test`.
   E4B is 5.15 GB plain / 7.48 GB OptiQ, too big to bundle. Qwen3.5-4B stays.
   Fine-tuning, not base-model choice, does the heavy lifting.
 - **iOS app**: full product build-out complete against the prototype spec.
-  205 Swift (1 env-gated skip) + 41 ml tests; `scripts/build.sh` /
-  `scripts/test.sh` green;
-  device build bundles v7b and verifies `seecal_adapter_version: v7b`.
+  219 Swift (3 env-gated skips) + 90 ml tests; `scripts/build.sh` /
+  `scripts/test.sh` green. The signed device build bundles the
+  `v8-conditioned` adapter and 9.5 MB compiled Core ML specialist. The real
+  specialist Core ML scaffold passes on macOS; physical-device
+  latency/memory/thermal validation remains required.
 - Camera-first manual and barcode entry shipped (2026-07-28): Scan still opens
   the viewfinder; Manual opens a photo-less editable draft, while EAN/UPC/Code
   128 detection shares the photo capture session and resolves normalized GTINs
@@ -230,7 +243,7 @@ See `docs/BACKLOG.md` for detail. Highest-value items:
    scene diversity, not mixed food.
 2. **On-device depth (v6)** — blocked on calibrating iPhone LiDAR to the
    Nutrition5K rig scale; that calibration is the entire difficulty.
-3. **Multi-view training (v8?)** — `side_angles` (cameras A–D, ~115
+3. **Further multi-view Qwen training (v9?)** — `side_angles` (cameras A–D, ~115
    frames/dish) are downloaded but unused: a 1920×1080 side frame is ~2040
    image tokens against `--max-seq-length 2048`, so those records would
    truncate. Needs downscaling first. Would take training data from 2,594 to

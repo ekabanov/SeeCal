@@ -1,0 +1,6 @@
+# Specialist training environment, frozen after the MobileNetV3/MPS probe.
+torch==2.13.0
+torchvision==0.28.0
+numpy==2.5.1
+Pillow==12.3.0
+pytest==9.0.2

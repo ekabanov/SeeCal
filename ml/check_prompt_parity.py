@@ -7,6 +7,7 @@ Mirrors mlx-vlm 0.6.7 trainer/datasets.py exactly:
 infer.py builds apply_chat_template(processor, config, record_text, num_images=N)
 (= mask prefix) and strips the trailing '<think>\n' before generation.
 """
+import argparse
 import json
 import sys
 from pathlib import Path
@@ -55,19 +56,29 @@ def check(jsonl, n=5):
         print(f"  [{status}] {n_img} img(s), depth_line={'depth sensor' in text}")
     return fails
 
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--data", type=Path)
+parser.add_argument("--records", type=int, default=5)
+args = parser.parse_args()
+
+paths = (
+    [("requested    ", args.data)]
+    if args.data
+    else [
+        ("v5 control   ", REPO / "finetune_data_v2/train.jsonl"),
+        ("variant B txt", REPO / "finetune_data_v2d_txt/train.jsonl"),
+        ("variant A img", REPO / "finetune_data_v2d_img/train.jsonl"),
+        # v7 not-food track: refusal records use the byte-identical v5 prompt
+        # (only the completion differs), so they must pass the same gate.
+        ("v7 negatives ", REPO / "negatives/train.jsonl"),
+        ("v7 mixed     ", REPO / "finetune_data_v7/train.jsonl"),
+        ("v8 numeric   ", REPO / "finetune_data_v8_numeric/train.jsonl"),
+    ]
+)
 total = 0
-for name, path in [
-    ("v5 control   ", REPO / "finetune_data_v2/train.jsonl"),
-    ("variant B txt", REPO / "finetune_data_v2d_txt/train.jsonl"),
-    ("variant A img", REPO / "finetune_data_v2d_img/train.jsonl"),
-    # v7 not-food track: refusal records use the byte-identical v5 prompt (only
-    # the completion differs), so they must pass the same gate. Checks the
-    # all-refusal negatives file and the mixed v7 train set.
-    ("v7 negatives ", REPO / "negatives/train.jsonl"),
-    ("v7 mixed     ", REPO / "finetune_data_v7/train.jsonl"),
-]:
+for name, path in paths:
     print(f"{name}: {path}")
-    total += check(path)
+    total += check(path, n=args.records)
 
 print("\nPARITY GATE:", "PASSED" if total == 0 else f"FAILED ({total} records)")
 sys.exit(1 if total else 0)

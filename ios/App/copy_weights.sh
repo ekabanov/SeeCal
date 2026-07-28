@@ -8,6 +8,8 @@
 #
 # Required MODELS_DIR layout (matches ModelAssetResolver's bundled paths):
 #   $MODELS_DIR/mlx-community/Qwen3.5-4B-MLX-4bit/   base model (~2.3 GB)
+# Optional local override:
+#   $MODELS_DIR/visual-specialist/SeeCalVisualSpecialist.mlmodelc/
 #
 # The LoRA adapter is NOT expected in MODELS_DIR: it is a build artifact of the
 # ml/ pipeline and is sourced from ml/<SHIPPING_ADAPTER> in the repo by default
@@ -81,7 +83,8 @@ rsync -a --delete "${MODEL_SRC}/" "${DEST}/${MODEL_FOLDER}/"
 # — no manual staging into MODELS_DIR is required. To ship a different adapter,
 # either update SHIPPING_ADAPTER below or drop one at $MODELS_DIR/adapters/
 # (which takes precedence when present).
-SHIPPING_ADAPTER="adapters_v7b_swift"  # ml/<this> — change when the shipping adapter changes
+SHIPPING_ADAPTER="adapters_v8_numeric_4b_swift"
+SHIPPING_ADAPTER_VERSION="v8-conditioned"
 REPO_ADAPTER="${PROJECT_DIR}/../../ml/${SHIPPING_ADAPTER}"
 
 ADAPTER_SRC=""
@@ -91,14 +94,40 @@ elif [[ -f "${REPO_ADAPTER}/adapter_config.json" && -f "${REPO_ADAPTER}/adapters
     ADAPTER_SRC="${REPO_ADAPTER}"
 fi
 
-if [[ -n "${ADAPTER_SRC}" ]]; then
-    echo "Bundling LoRA adapter from ${ADAPTER_SRC}..."
-    rsync -a --delete "${ADAPTER_SRC}/" "${DEST}/adapters/"
-else
-    echo "warning: no adapter found (looked in ${MODELS_DIR}/adapters and ${REPO_ADAPTER}) —" >&2
-    echo "         app will run the BASE model, not the fine-tune. Run ml/convert.sh adapters_v7b" >&2
-    echo "         to produce ml/${SHIPPING_ADAPTER}, or stage one at ${MODELS_DIR}/adapters." >&2
-    rm -rf "${DEST}/adapters"
+if [[ -z "${ADAPTER_SRC}" ]]; then
+    echo "error: conditioned adapter not found (looked in ${MODELS_DIR}/adapters and ${REPO_ADAPTER})." >&2
+    echo "Run: cd ml && ./convert.sh adapters_v8_numeric_4b --version ${SHIPPING_ADAPTER_VERSION}" >&2
+    exit 1
 fi
+
+FOUND_ADAPTER_VERSION="$(/usr/bin/plutil -extract seecal_adapter_version raw -o - "${ADAPTER_SRC}/adapter_config.json" 2>/dev/null || true)"
+if [[ "${FOUND_ADAPTER_VERSION}" != "${SHIPPING_ADAPTER_VERSION}" ]]; then
+    echo "error: adapter at ${ADAPTER_SRC} is '${FOUND_ADAPTER_VERSION:-unstamped}', expected '${SHIPPING_ADAPTER_VERSION}'." >&2
+    echo "Remove a stale MODELS_DIR/adapters override or convert the conditioned adapter." >&2
+    exit 1
+fi
+echo "Bundling conditioned LoRA adapter from ${ADAPTER_SRC}..."
+rsync -a --delete "${ADAPTER_SRC}/" "${DEST}/adapters/"
+
+# The conditioned adapter was trained to receive this specialist block.
+# Prefer an explicitly staged model, otherwise use the locally exported R&D
+# artifact. Both remain gitignored.
+SPECIALIST_NAME="SeeCalVisualSpecialist.mlmodelc"
+STAGED_SPECIALIST="${MODELS_DIR}/visual-specialist/${SPECIALIST_NAME}"
+REPO_SPECIALIST="${PROJECT_DIR}/../../ml/runs/visual-specialist/deployment/${SPECIALIST_NAME}"
+SPECIALIST_SRC=""
+if [[ -d "${STAGED_SPECIALIST}" ]]; then
+    SPECIALIST_SRC="${STAGED_SPECIALIST}"
+elif [[ -d "${REPO_SPECIALIST}" ]]; then
+    SPECIALIST_SRC="${REPO_SPECIALIST}"
+fi
+if [[ -z "${SPECIALIST_SRC}" ]]; then
+    echo "error: compiled visual specialist not found." >&2
+    echo "Export the trained checkpoint and compile it to ${REPO_SPECIALIST}." >&2
+    exit 1
+fi
+echo "Bundling visual specialist from ${SPECIALIST_SRC}..."
+mkdir -p "${DEST}/visual-specialist"
+rsync -a --delete "${SPECIALIST_SRC}/" "${DEST}/visual-specialist/${SPECIALIST_NAME}/"
 
 echo "Model weights bundled into ${DEST}"

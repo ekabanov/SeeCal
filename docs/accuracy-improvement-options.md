@@ -188,6 +188,7 @@ percentage improvements.
 | Weighed phone-data collection | Highest long-term | High operational effort | Consent/licensing/data governance | **P0** |
 | Cafe2 + sampled side-angle views | Medium | Low–medium | Low | **P1** |
 | Tail-aware sampling / loss | Medium | Low–medium | Low | **P1** |
+| Teacher-distilled visual supervision | Medium for recognition/OOD; uncertain for calories | Medium | Pseudo-label bias and dataset rights | **P1 when collection is unavailable** |
 | Simplified structured target + nutrition DB | Medium–high | Medium | Ingredient mapping/versioning | **P1** |
 | Visual LoRA / projector tuning | Medium–high | Medium–high | Training and Swift adapter changes | **P1** |
 | Per-item RGB-D geometry/fusion | High if calibrated | High | LiDAR coverage, UX, sensor domain shift | **P1 after phone data** |
@@ -208,8 +209,10 @@ percentage improvements.
 | Nutrition5k side angles | 271,616 frames already local; multiple cameras and views | Viewpoint/domain augmentation | Near-duplicates; 19 GB; must downscale and split by dish |
 | NutritionVerse-Real | 889 iPhone images, 251 dishes, 45 food types, weighed ingredients and segmentation masks | **First untouched OOD benchmark**; later target-domain fine-tuning | Small; preserve a dish-level test split; verify dataset terms before training |
 | NutritionVerse-Synth | 84,984 rendered images with nutrition, depth, instance and semantic masks | Segmentation/depth pretraining before real fine-tuning | Synthetic-to-real gap; audit license and constituent assets |
+| MyFoodRepo-273 | 24,119 crowdsourced meal images and 39,325 segmented food polygons in 273 classes | Real phone-photo recognition and segmentation pretraining | CC BY 4.0, but no weighed portions or calorie ground truth |
 | FoodSeg103 | 7,118 images, 103 ingredient classes, pixel masks | Ingredient segmentation/visual-encoder pretraining | No mass or nutrition; curated recipe images differ from phone capture |
 | FastFood | 84,446 images, 908 categories, ingredients and nutrition | Food/ingredient representation pretraining | Portion variation and product applicability need validation; audit image/data rights |
+| Open Food Facts | Crowdsourced packaged-product images, ingredients, and label nutrition | Packaged-food recognition, OCR, and nutrition-name normalization | Not plated meals; database is ODbL and images are CC BY-SA; compliance needs review |
 | MetaFood3D | 637+ scanned food objects, RGB-D/3D/nutrition/weight | Geometry, rendering, and portion-estimation research | Current site is CC BY-NC 4.0; do not train a commercial shipping model without permission |
 | SimpleFood45 | 513 phone images of 45 items with volume, mass, energy and a checkerboard | Geometry sanity benchmark | Only 12 food types; reference marker; too small/simple as main training data |
 | Food2K / Recipe1M+ | Very large category/recipe corpora | General food representation or ingredient retrieval | No weighed portion ground truth; web-image rights and product licensing need careful review |
@@ -276,6 +279,229 @@ edits are not measured ground truth. They are most trustworthy for ingredient
 identity and failure discovery. Gram and calorie supervision should be marked
 as measured, package-derived, user-estimated, or model-derived rather than
 mixed together.
+
+### 3.4 Capacity-constrained alternative: distill from public photos
+
+This is viable, with a narrower claim than “distil calorie estimation.” A
+large **vision-language model** can cheaply annotate or clean a large image
+corpus and transfer food recognition, ingredient vocabulary, segmentation
+prompts, cooking method, container type, and uncertainty to a smaller student.
+It cannot manufacture the portion measurement that the source photo lacks.
+
+The useful decomposition is:
+
+```text
+licensed photo + source metadata
+            │
+            ├─► large VLM: normalize, enrich, reject, estimate uncertainty
+            ├─► segmentation model: masks from labels/boxes/points
+            └─► existing factual labels remain authoritative
+                              │
+                              ▼
+        visual student / projector with per-field loss masks
+                              │
+         measured nutrition data only ─► numeric heads / calibration
+```
+
+#### What to distil
+
+Good pseudo-label targets are:
+
+- food/not-food and image-quality flags;
+- meal name and visible ingredient presence;
+- ingredient synonyms mapped to a stable food taxonomy;
+- cooking method and coarse food state;
+- plate, bowl, cup, package, or takeaway-container type;
+- coarse boxes or segmentation prompts;
+- ambiguity flags such as hidden sauce, mixed dish, or unknown ingredient;
+- teacher embeddings or class probabilities for a separate visual student.
+
+These targets improve the representation needed upstream of calorie
+estimation. They can also make SeeCal less dependent on cafeteria trays.
+
+Bad pseudo-label targets are:
+
+- exact calories, macros, or grams inferred from a single unmeasured photo;
+- a canonical recipe asserted as the actual recipe in the image;
+- per-ingredient quantity when the ingredient is hidden or mixed;
+- nutrition copied from a menu item without proving that the photographed
+  serving matches the listed serving.
+
+Teacher-generated calories would largely distil the large model's priors and
+confidence, not new evidence. The student can become better at producing a
+plausible number without becoming better at measuring the meal.
+
+#### Recommended source order without new collection
+
+1. **Nutrition5k side views and Cafe2:** already available, licensed, and tied
+   to measured labels. Use the teacher only to add segmentation, container,
+   visibility, and ambiguity labels; preserve the measured nutrition.
+2. **MyFoodRepo-273:** real crowdsourced phone meals with CC BY 4.0 images and
+   segmentation classes. Use for food recognition, phone-domain visual
+   adaptation, and segmentation—not calorie regression.
+3. **NutritionVerse-Synth:** use exact synthetic masks/depth/nutrition for
+   pretraining if its precise artifact and asset licenses pass review.
+4. **FoodSeg103 and FastFood:** potentially useful for ingredient and menu-food
+   representation, subject to a commercial-use provenance audit.
+5. **Open Food Facts:** useful for packaged foods and nutrition-label
+   normalization. It is a poor source for plated-meal portion learning and its
+   share-alike/database obligations need deliberate compliance.
+6. **Arbitrary web or recipe photos:** last, not first. Restrict to images with
+   traceable training rights and retain per-image provenance. A teacher's new
+   annotation does not remove the need for rights to use the input image.
+
+Recipe corpora are attractive because they are large, but the recipe often
+describes a whole batch while the photo shows an unknown fraction, a styled
+serving, or a related—not identical—dish. Use them for ingredient co-occurrence
+and retrieval only unless yield and photographed-serving mass are known.
+
+#### Teacher/student design
+
+Use the largest multimodal Qwen model that is operationally affordable as the
+offline teacher, not as the shipped model. Qwen's current open-weight family
+is Apache 2.0, but the exact checkpoint license should still be recorded with
+the experiment. A cost-aware cascade is better than running the largest model
+over everything:
+
+1. Run source-label validation and a medium teacher on every image.
+2. Send only disagreements, low-confidence examples, mixed dishes, and rare
+   classes to the larger teacher.
+3. Generate labels from multiple crops or views and require agreement.
+4. Reject rather than guess when image and source metadata conflict.
+5. Store the original source label, each teacher answer, confidence, model
+   version, prompt hash, and license/provenance beside every record.
+
+For the student, do not create a single JSON target with invented values.
+Maintain a loss mask per field:
+
+| Field | Measured source | Source/catalog label | Teacher-only label |
+|---|---:|---:|---:|
+| Calories/macros/grams | Full numeric weight | Only when serving correspondence is exact | **No training target** |
+| Food/ingredient class | Full weight | Full or high weight | Lower weight after agreement filtering |
+| Segmentation | Full weight | Full weight for supplied polygons | Lower weight for generated masks |
+| Container/cooking/quality | If available | Normal weight | Lower weight |
+
+Keep source-balanced batches so tens of thousands of recognition photos do not
+drown the few thousand measured dishes. The simplest implementation is
+alternating tasks: measured Nutrition5k batches optimize numeric and semantic
+losses; public-photo batches optimize only recognition/segmentation losses.
+
+There are two student routes:
+
+- **Recommended:** train a compact food visual encoder/specialist on the
+  distilled tasks, then fuse its features or predictions with Qwen. This
+  directly adapts visual representation and remains deployable.
+- **Lower-change experiment:** SFT the current Qwen adapter on structured
+  teacher outputs. This may improve vocabulary and response behavior, but its
+  vision stack and projector remain frozen, so it is a weaker way to learn new
+  visual distinctions.
+
+#### Small pilot before a large crawl
+
+A useful first experiment needs no new photography:
+
+1. Reserve NutritionVerse-Real as an untouched OOD test.
+2. Build a 5,000-image pilot, stratified across MyFoodRepo classes and difficult
+   Nutrition5k side views.
+3. Label with a medium teacher; escalate only disagreements to a larger one.
+4. Audit a small random and hard-case sample for ingredient hallucination and
+   source-label conflicts.
+5. Train three matched runs: current measured data, measured plus raw source
+   labels, and measured plus teacher-enriched labels.
+6. Compare paired calorie error, calorie-bin bias, ingredient F1,
+   segmentation quality, refusal behavior, and NutritionVerse-Real OOD
+   performance.
+
+Scale to all 24,119 MyFoodRepo images or larger sources only if teacher
+enrichment beats the raw-label control. This separates the value of the new
+photos from the value of the expensive teacher.
+
+#### Teacher price/quality selection
+
+API price is not the limiting resource at this scale. Under a normalized
+one-image request—about 1,500 billed input tokens including the prompt and 300
+output/thinking tokens—the estimated asynchronous Batch cost is:
+
+| Teacher | 5,000 images | 24,119 images | Selection rationale |
+|---|---:|---:|---|
+| Gemini 3.5 Flash | $12.38 | $59.70 | Strongest primary candidate; official MMMU-Pro result is 83.6 |
+| Gemini 3.5 Flash-Lite | $3.00 | $14.47 | Best default high-volume screen; minimal thinking and structured extraction |
+| GPT-5.4 mini | $6.19 | $29.85 | Strong structured-output contender with image input |
+| GPT-5.4 nano | $1.69 | $8.14 | Very cheap classifier; quality must clear the task-specific gate |
+| Mistral Small 4 | $1.01 | $4.88 | Extremely cheap multimodal structured-output candidate |
+| Mistral Medium 3.5 | $11.25 | $54.27 | Higher-quality Mistral comparison at roughly Flash cost |
+| Claude Haiku 4.5 | $7.50 | $36.18 | Fast general contender; no demonstrated food-specific advantage yet |
+| Claude Sonnet 5, introductory price | $15.00 | $72.36 | Premium comparison; unlikely to justify all-image use without a measured gain |
+| Qwen3.6-27B local | No API fee | No API fee | Strong open vision model, but wall-clock time dominates |
+
+These are planning estimates, not invoices: providers tokenize images
+differently, reasoning tokens vary, and retries add overhead. Measure each
+candidate's actual usage on the pilot. The calculation uses July 2026 list
+prices and the generally available 50% batch discount where documented.
+
+Generic multimodal benchmarks make Gemini 3.5 Flash and Qwen3.6-27B credible
+shortlist members: their official MMMU-Pro results are 83.6 and 75.8,
+respectively. This does not prove the same ordering for ingredient recall.
+A 2026 Nutrition5k VLM comparison found that model architecture dominated
+nutrition-estimation variance, so a food-specific bake-off is mandatory.
+
+Run a 325-image teacher evaluation before labeling the corpus:
+
+1. Use 200 stratified Nutrition5k test dishes and 125 MyFoodRepo examples.
+2. Send the same single-image prompt and schema to Gemini 3.5 Flash,
+   Flash-Lite, GPT-5.4 mini, Mistral Small 4, and local Qwen3.6-27B.
+3. Score normalized ingredient precision/recall/F1, source-class agreement,
+   hallucinated ingredients, abstention quality, JSON validity, latency, and
+   actual cost.
+4. Select the cheapest model within 1–2 F1 points of the best model, provided
+   its hallucination rate is also within the acceptance bound. Do not select
+   by raw “F1 per dollar,” which rewards nearly free but noisy labels.
+
+The API cost of that bake-off should be only a few dollars. It resolves a
+decision that generic benchmarks cannot.
+
+For a corpus up to roughly 25,000 images, the current default recommendation
+is **Gemini 3.5 Flash Batch on every image**, with local Qwen on a 10% hard or
+disagreement sample. Approximately $60 is small relative to the cost of
+training on polluted labels, and this avoids building a cascade prematurely.
+
+With a hard **$100 API budget**, use the budget for cross-provider redundancy:
+
+1. Run the 325-image bake-off inside the same budget.
+2. Label all 24,119 images with Gemini 3.5 Flash Batch, expected around $60.
+3. Label the same images with the best independent affordable runner-up. The
+   current prior is GPT-5.4 mini Batch, expected around $30, but substitute the
+   bake-off winner if another model performs better.
+4. Accept enrichment labels when the two teachers agree after taxonomy
+   normalization and do not conflict with source metadata.
+5. Run local Qwen3.6-27B only on disagreements and rare/hard cases.
+6. If all three disagree, retain the factual source label and omit the
+   disputed enrichment field rather than forcing a majority answer.
+
+Set provider spend caps around $65 for Google and $35 for the second API.
+Actual image tokenization may exceed the planning estimate; if a cap stops the
+last portion of a batch, finish those records with local Qwen instead of
+silently exceeding the budget.
+
+For 100,000+ images, use **Flash-Lite on all images, Flash on the 10–20% that
+conflict with source metadata or another model**, and optionally local Qwen on
+the most ambiguous 5%. Under the assumptions above, Flash-Lite plus Flash on
+15% costs about $97 per 100,000 images.
+
+Qwen3.6-27B is better used as a second-family auditor than as the only teacher.
+At 15, 30, or 60 seconds per image, processing all 24,119 MyFoodRepo images
+would take about 4.2, 8.4, or 16.7 days continuously. Disable its default
+thinking mode for this extraction task; otherwise both latency and output
+volume can grow substantially. The API-equivalent cost is zero and electricity
+is minor, but elapsed time and operational recovery from failed records are
+not.
+
+The likely result is better food/ingredient recall, segmentation, and
+handheld-photo robustness, with a possible indirect calorie improvement.
+Expect the biggest remaining calorie errors—portion size, hidden oil, density,
+and high-calorie underestimation—to persist until the model receives measured
+portion evidence. Distillation replaces data collection for representation
+learning; it does not fully replace it for numeric calibration.
 
 ## 4. Model and training options
 
@@ -461,10 +687,11 @@ facts.
 
 #### Distillation
 
-A larger model can provide ingredient pseudo-labels for unlabelled phone
-images or supervise a smaller student, but measured nutrition labels remain
-more valuable than teacher-generated numbers. Never treat a teacher's calorie
-estimate as ground truth.
+A larger VLM can enrich public and existing images or supervise a smaller
+visual student. The recommended source hierarchy, masked-loss design, and
+pilot are specified in Section 3.4. Measured nutrition labels remain more
+valuable than teacher-generated numbers; never treat the latter as ground
+truth.
 
 ## 5. Depth and portion-size options
 
@@ -700,18 +927,31 @@ Primary/public sources:
 - [NutritionVerse-Real: 889 phone images, 251 dishes, measured ingredients](https://arxiv.org/abs/2401.08598)
 - [NutritionVerse-Synth and real/synthetic transfer study](https://arxiv.org/abs/2309.07704)
 - [FoodSeg103 ingredient segmentation benchmark](https://arxiv.org/abs/2105.05409)
+- [MyFoodRepo-273 benchmark and dataset description](https://pmc.ncbi.nlm.nih.gov/articles/PMC9121091/)
+- [MyFoodRepo challenge dataset CC BY 4.0 terms](https://www.aicrowd.com/challenges/food-recognition-challenge/challenge_rules)
 - [FastFood and visual-ingredient fusion](https://arxiv.org/abs/2505.08747)
+- [Open Food Facts data and image licenses](https://openfoodfacts.github.io/documentation/docs/Product-Opener/api/tutorials/license-be-on-the-legal-side/)
 - [MetaFood3D official dataset page and license](https://lorenz.ecn.purdue.edu/~food3d/)
 - [SimpleFood45 official dataset page](https://lorenz.ecn.purdue.edu/~gvinod/simplefood45/)
 - [DPF-Nutrition RGB/predicted-depth fusion](https://arxiv.org/abs/2310.11702)
 - [Monocular shape-reconstruction portion estimation](https://arxiv.org/abs/2308.01810)
 - [2026 VLM comparison on ingredient and nutrient estimation](https://www.sciencedirect.com/science/article/pii/S266592712600105X)
+- [Gemini 3.5 Flash pricing and Batch rates](https://ai.google.dev/gemini-api/docs/pricing)
+- [Gemini 3.5 Flash official multimodal evaluation](https://deepmind.google/models/model-cards/gemini-3-5-flash/)
+- [OpenAI GPT-5.4 mini model and pricing](https://developers.openai.com/api/docs/models/gpt-5.4-mini)
+- [OpenAI GPT-5.4 nano model and pricing](https://developers.openai.com/api/docs/models/gpt-5.4-nano)
+- [OpenAI Batch API discount](https://help.openai.com/en/articles/9197833-batch-api-faq)
+- [Mistral Small 4 model and pricing](https://docs.mistral.ai/models/model-cards/mistral-small-4-0-26-03)
+- [Mistral Batch API discount](https://docs.mistral.ai/studio-api/batch-processing)
+- [Claude model and Batch pricing](https://platform.claude.com/docs/en/about-claude/pricing)
+- [Qwen3.6-27B official model card and vision evaluation](https://huggingface.co/Qwen/Qwen3.6-27B)
 - [Depth-smartphone volumetric study](https://pmc.ncbi.nlm.nih.gov/articles/PMC7142738/)
 - [Apple ARKit smoothed scene depth](https://developer.apple.com/documentation/arkit/arframe/smoothedscenedepth)
 - [Apple ARKit depth confidence](https://developer.apple.com/documentation/arkit/ardepthdata/confidencemap)
 - [Apple AVFoundation depth capture](https://developer.apple.com/documentation/avfoundation/avcapturedepthdataoutput)
 - [Apple depth camera calibration data](https://developer.apple.com/documentation/avfoundation/avdepthdata/cameracalibrationdata)
 - [Qwen3.5-4B official model card](https://huggingface.co/Qwen/Qwen3.5-4B)
+- [Qwen3.5 family official repository and license](https://github.com/QwenLM/Qwen3.5)
 - [Qwen3.5-9B MLX 4-bit size](https://huggingface.co/mlx-community/Qwen3.5-9B-MLX-4bit)
 - [Apple FastVLM official repository and iPhone path](https://github.com/apple/ml-fastvlm)
 - [USDA FoodData Central downloadable data](https://fdc.nal.usda.gov/download-datasets/)

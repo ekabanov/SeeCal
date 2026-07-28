@@ -31,9 +31,13 @@ ml/finetune_data_sample/
 # (regenerable via download_negatives.sh; never redistributed — like Nutrition5K).
 ml/coco/
 ml/negatives/
+# Visual-specialist public datasets, extracted images, and legal snapshots.
+# Committed source configs/manifests live under ml/teacher_labeling instead.
+ml/datasets/
 # v7 combined training data (food + negatives) — regenerable via make_v7_data.py,
 # references the gitignored negatives images.
 ml/finetune_data_v7*/
+ml/finetune_data_v8*/
 
 # Training outputs / model weights
 *.safetensors

@@ -30,6 +30,8 @@
 #   DATASET       Training dataset directory (default: finetune_data_v2).
 #   ADAPTER_PATH  Optional: resume from an existing adapter checkpoint (see
 #                 the resume example below). Unset by default (fresh run).
+#   MAX_SEQ_LENGTH Token ceiling (default: 2048).
+#   EPOCHS         Number of training epochs (default: 2).
 #
 # Resume-after-interruption example (reduce --epochs to just the remainder,
 # and point ADAPTER_PATH + OUTPUT_PATH at the same versioned run so
@@ -58,6 +60,9 @@ configure via environment variables:
   DATASET       Training JSONL directory. Default: finetune_data_v2.
   ADAPTER_PATH  Resume from this existing adapter checkpoint instead of a
                 fresh LoRA init. Unset by default.
+  MAX_SEQ_LENGTH
+                Token ceiling. Default: 2048.
+  EPOCHS        Number of epochs. Default: 2.
 
 Resume-after-interruption example:
   ADAPTER_PATH=adapters_v6 OUTPUT_PATH=adapters_v6 ./train.sh
@@ -93,6 +98,8 @@ MODEL_PATH="${MODEL_PATH:-$HOME/models/mlx-community/Qwen3.5-4B-MLX-4bit}"
 OUTPUT_PATH="${OUTPUT_PATH:-adapters_v5}"
 DATASET="${DATASET:-finetune_data_v2}"
 ADAPTER_PATH="${ADAPTER_PATH:-}"
+MAX_SEQ_LENGTH="${MAX_SEQ_LENGTH:-2048}"
+EPOCHS="${EPOCHS:-2}"
 
 if [ -f "$OUTPUT_PATH/adapters.safetensors" ] && [ -z "$ADAPTER_PATH" ]; then
   echo "WARNING: $OUTPUT_PATH/adapters.safetensors already exists and ADAPTER_PATH is unset —" >&2
@@ -108,9 +115,9 @@ train_args=(
   --lora-rank 16
   --lora-alpha 32
   --batch-size 1
-  --max-seq-length 2048
+  --max-seq-length "$MAX_SEQ_LENGTH"
   --learning-rate 1e-4
-  --epochs 2
+  --epochs "$EPOCHS"
   --steps-per-report 50
   --steps-per-save 500
   --output-path "$OUTPUT_PATH"

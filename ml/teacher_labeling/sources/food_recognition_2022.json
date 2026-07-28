@@ -1,0 +1,39 @@
+{
+  "schema_version": 1,
+  "source_id": "food-recognition-benchmark-2022-v2.1",
+  "expected_dataset": {
+    "release": "v2.1",
+    "training_images": 54392,
+    "training_annotations": 100256,
+    "classes": 323,
+    "annotation_format": "MS-COCO",
+    "training_archive": "public_training_set_release_2.1.tar.gz",
+    "validation_archive": "public_validation_set_2.1.tar.gz"
+  },
+  "snapshot_urls": [
+    {
+      "name": "challenge",
+      "url": "https://www.aicrowd.com/challenges/food-recognition-benchmark-2022"
+    },
+    {
+      "name": "challenge_rules",
+      "url": "https://www.aicrowd.com/challenges/food-recognition-benchmark-2022/challenge_rules"
+    },
+    {
+      "name": "dataset_files",
+      "url": "https://www.aicrowd.com/challenges/food-recognition-benchmark-2022/dataset_files"
+    },
+    {
+      "name": "terms",
+      "url": "https://www.aicrowd.com/terms"
+    },
+    {
+      "name": "participation_terms",
+      "url": "https://www.aicrowd.com/participation_terms"
+    },
+    {
+      "name": "cc_by_4_legalcode",
+      "url": "https://creativecommons.org/licenses/by/4.0/legalcode.en"
+    }
+  ]
+}

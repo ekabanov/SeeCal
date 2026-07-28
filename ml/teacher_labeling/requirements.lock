@@ -1,0 +1,4 @@
+# Teacher-labeling environment, separate from the known-good mlx-vlm venv.
+# Versions verified/pinned 2026-07-28.
+google-genai==2.13.0
+Pillow==12.3.0

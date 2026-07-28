@@ -26,6 +26,7 @@ Usage (run from ml/):
 import argparse
 import json
 import sys
+import time
 from pathlib import Path
 
 from mlx_vlm import load, generate
@@ -191,6 +192,7 @@ def evaluate_test_set(model, processor, test_jsonl: Path, limit: int, data_dir: 
         records = records[:limit]
 
     print(f"\nEvaluating on {len(records)} test samples...\n")
+    evaluation_started = time.perf_counter()
 
     errors_cal = []
     errors_protein = []
@@ -206,6 +208,7 @@ def evaluate_test_set(model, processor, test_jsonl: Path, limit: int, data_dir: 
     refusals_correct = 0
     refusals_missed = 0
     false_refusals = 0
+    paired_results = []
 
     for i, rec in enumerate(records):
         # Get ground truth from assistant message
@@ -226,15 +229,25 @@ def evaluate_test_set(model, processor, test_jsonl: Path, limit: int, data_dir: 
         prompt_text = next(item["text"] for item in user_content if item["type"] == "text")
 
         first = Path(image_paths[0])
+        record_id = first.parent.name
         print(f"[{i+1}/{len(records)}] {first.parent.name}/{first.name}"
               f"{' (+depth img)' if len(image_paths) > 1 else ''}", end="")
 
         pred = run_inference(model, processor, image_paths, max_tokens=max_tokens,
                              config=config, thinking_budget=thinking_budget,
                              prompt_text=prompt_text)
+        paired = {
+            "index": i,
+            "id": record_id,
+            "image": str(first),
+            "ground_truth": gt,
+            "prediction": pred,
+        }
 
         if pred.get("parse_error"):
             parse_failures += 1
+            paired["status"] = "parse_error"
+            paired_results.append(paired)
             print(f" — PARSE ERROR")
             continue
 
@@ -246,13 +259,17 @@ def evaluate_test_set(model, processor, test_jsonl: Path, limit: int, data_dir: 
         if gt_refusal or pred_refusal:
             if gt_refusal and pred_refusal:
                 refusals_correct += 1
+                paired["status"] = "refusal_correct"
                 print(" — REFUSED (correct)")
             elif gt_refusal and not pred_refusal:
                 refusals_missed += 1
+                paired["status"] = "refusal_missed"
                 print(" — MISSED refusal (predicted food)")
             else:  # pred_refusal and not gt_refusal
                 false_refusals += 1
+                paired["status"] = "false_refusal"
                 print(" — FALSE REFUSAL (ground truth is food)")
+            paired_results.append(paired)
             continue
 
         # Valid JSON but wrong/missing/non-numeric keys must not kill the run:
@@ -264,6 +281,9 @@ def evaluate_test_set(model, processor, test_jsonl: Path, limit: int, data_dir: 
             carb_err = abs(float(pred["carbs_g"]) - float(gt["carbs_g"]))
         except (KeyError, TypeError, ValueError) as e:
             schema_failures += 1
+            paired["status"] = "schema_error"
+            paired["schema_error"] = str(e)
+            paired_results.append(paired)
             print(f" — SCHEMA ERROR ({e})")
             continue
 
@@ -271,6 +291,14 @@ def evaluate_test_set(model, processor, test_jsonl: Path, limit: int, data_dir: 
         errors_protein.append(prot_err)
         errors_fat.append(fat_err)
         errors_carbs.append(carb_err)
+        paired["status"] = "ok"
+        paired["absolute_errors"] = {
+            "calories": cal_err,
+            "protein_g": prot_err,
+            "fat_g": fat_err,
+            "carbs_g": carb_err,
+        }
+        paired_results.append(paired)
 
         print(f" — cal err: {cal_err:.1f} kcal  |  pred: {float(pred['total_calories']):.0f}  gt: {float(gt['total_calories']):.0f}")
 
@@ -299,8 +327,13 @@ def evaluate_test_set(model, processor, test_jsonl: Path, limit: int, data_dir: 
         print(f"  {name}: MAE={mean:.1f}  median={median:.1f}  (n={len(errs)})")
         return {"mae": mean, "median": median, "n": len(errs)}
 
+    evaluation_seconds = time.perf_counter() - evaluation_started
     summary = {
         "samples": len(records),
+        "evaluation_seconds": evaluation_seconds,
+        "milliseconds_per_sample": (
+            1000.0 * evaluation_seconds / len(records) if records else None
+        ),
         "parse_failures": parse_failures,
         "schema_failures": schema_failures,
         "refusals_correct": refusals_correct,
@@ -314,6 +347,7 @@ def evaluate_test_set(model, processor, test_jsonl: Path, limit: int, data_dir: 
         "errors_protein": errors_protein,
         "errors_fat": errors_fat,
         "errors_carbs": errors_carbs,
+        "paired_results": paired_results,
     }
     if out_json:
         out_json.parent.mkdir(parents=True, exist_ok=True)

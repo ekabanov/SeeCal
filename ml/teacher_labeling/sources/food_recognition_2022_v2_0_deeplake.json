@@ -1,0 +1,33 @@
+{
+  "schema_version": 1,
+  "source_id": "food-recognition-benchmark-2022-v2.0-deeplake-mirror",
+  "status": "verified-local-fallback",
+  "original_source_url": "https://www.aicrowd.com/challenges/food-recognition-benchmark-2022",
+  "probable_mirror_url": "https://www.kaggle.com/datasets/sainikhileshreddy/food-recognition-2022",
+  "license_basis": "AIcrowd 2022 challenge rules identify the challenge dataset as CC BY 4.0; retain attribution. The probable Kaggle mirror labels its license as Other, so it is not used as an independent license grant.",
+  "archive": {
+    "original_local_name": "food-recognition-2022.zip",
+    "sha256": "00afdf97a392e6baaf6e1bd13c5487917227b8e4030847f804c79ab165aa7879",
+    "compressed_bytes": 5260384873,
+    "uncompressed_bytes": 5638761758,
+    "entries": 44414,
+    "unsafe_paths": 0,
+    "format": "Deep Lake 2.2.2"
+  },
+  "verified_splits": {
+    "train": {
+      "images": 39962,
+      "annotations": 76491,
+      "classes": 498
+    },
+    "validation": {
+      "images": 1000,
+      "classes": 498
+    },
+    "test": {
+      "images": 3000,
+      "labeled": false
+    }
+  },
+  "difference_from_planned_v2_1": "This is v2.0. It is not the 54,392-image, 100,256-annotation, 323-class v2.1 release. All derived manifests must retain release=v2.0."
+}
