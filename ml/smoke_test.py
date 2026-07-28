@@ -5,7 +5,7 @@ Fast pre-training validation: push real JSONL records through the installed
 mlx-vlm batch pipeline (processor + config only — NO model weights) and assert
 the training inputs are sane. Runs in ~1 minute and catches, at batch-construction
 time, every silent failure mode that previously cost multi-day training runs
-(CLAUDE.md issues 10, 14, 15, 17, 18).
+(AGENTS.md issues 10, 14, 15, 17, 18).
 
 Run from ml/ (image paths in the JSONL are pipeline-root-relative):
 

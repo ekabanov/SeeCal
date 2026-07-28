@@ -49,7 +49,7 @@ public enum ModelInfoResolver {
     /// Prefers an explicit version string recorded in `adapter_config.json`
     /// under `seecal_adapter_version` / `adapter_version` / `version` (forward
     /// compatible with a future `convert_adapter_for_swift.py` that stamps
-    /// one — see CLAUDE.md's toolchain notes; today's converter does not).
+    /// one — see AGENTS.md's toolchain notes; today's converter does not).
     /// Falls back to parsing a "_v<N>" suffix off the adapter directory's own
     /// name, matching this repo's `adapters_vN[_swift]` convention (e.g.
     /// `adapters_v5_swift` → "v5"). Returns `nil` — never a fabricated

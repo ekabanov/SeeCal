@@ -2,6 +2,61 @@
 
 Deferred work items. Not scheduled; picked up when prioritized. Dated when added.
 
+## Out-of-distribution test set (added 2026-07-28)
+
+**Goal:** measure accuracy on images that look like what users actually shoot.
+
+**Why:** all 325 held-out dishes are Google-cafeteria trays captured by one fixed
+RealSense rig — same lighting, same plates, same overhead distance — and the tidy
+CSVs are cafe1-only, so even the second cafeteria is excluded. Every number we
+quote (v5 59.0, v7b 63.4) is therefore an *in-distribution* number, and nothing
+offline tells us how far off real handheld phone photos are. This is the single
+biggest gap between our metrics and the product.
+
+**Note the common misconception:** Nutrition5K is NOT one-food-per-photo. 63.3%
+of its 4,768 dishes are multi-ingredient (mean 5.71, max 34). The weakness is
+scene diversity, not mixed food — so a replacement dataset only helps if it adds
+*visual* variety.
+
+**Best candidate: NutritionVerse-Real** (889 real-life images, 251 dishes, 45 food
+types; every ingredient weighed and nutrition computed) — the only real-image
+option found with weighed ground truth in our exact shape. Small, so it is a test
+set first and a fine-tuning supplement second. Others surveyed:
+NutritionVerse-Synth (84,984 rendered images, 12 viewpoints, perfect labels — but
+synthetic domain gap), MetaFood3D (637 3D objects → render unlimited angles, but
+per-object so scenes must be composed), FoodSeg103/154 (9,490 real images, avg 6
+ingredients, pixel masks — but **no nutrition or weights**, so ingredient ID only).
+
+**First step:** convert NutritionVerse-Real to our JSONL schema and run
+`eval.sh adapters_v7b` against it. Expect the MAE to be worse than 63.4; the
+point is to learn *how much*, not to pass a gate.
+
+## Multi-view training (v8?) (added 2026-07-28)
+
+**Goal:** train on the side-angle cameras as well as overhead, for viewpoint
+robustness — real users will not shoot perfectly top-down.
+
+**What's available but unused:** `Nutrition5K/imagery/side_angles/` holds 4
+rotating cameras (A–D) × ~29 frames = ~115 frames per dish at 1920×1080 (19GB
+already downloaded). `select_images.py` extracts only frame005 from cameras A and
+C; B and D are never touched, and 114 of ~115 frames per dish are discarded.
+`prepare_finetune.py` already emits one record per *image*, and its docstring
+notes this trains viewpoint robustness — the machinery exists.
+
+**The blocker:** a 1920×1080 side frame costs ~2,040 image tokens, against
+`train.sh`'s `--max-seq-length 2048`. Such a record would consume the entire
+sequence before the prompt or the target JSON, so it would train on nothing.
+`--only-overhead` exists precisely for this.
+
+**Approach:** downscale side frames to ~640×480 (≈300 tokens, matching overhead)
+in `select_images.py`, then drop `--only-overhead`. Would take training data from
+2,594 to ~9,400 records. Raising `--max-seq-length` instead is the expensive path
+— runs already peak near 58GB Metal.
+
+**Why it's interesting now:** it is an accuracy/robustness lever pointing the
+opposite way to the v7 negatives, which *cost* a little food precision. More food
+signal could offset that.
+
 ## Fully editable food data — ingredients, amounts, nutrition (added 2026-07-27)
 
 **Goal:** every aspect of a scan result should be user-editable — ingredient

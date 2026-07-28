@@ -211,7 +211,7 @@ the full 2-epoch run came back a statistical tie with v5 (50 dishes paired:
 `adapters_v5` remains the shipping adapter**, and `adapters_v6` is kept only
 for reference. See `runs/eval_v5/`, `runs/eval_v6/`, and
 `runs/eval_v4_baseline/` for the raw per-sample data behind this table, and
-CLAUDE.md for the complete run-by-run history (including the four broken
+AGENTS.md for the complete run-by-run history (including the four broken
 training runs that preceded v5).
 
 ## Hardware requirements

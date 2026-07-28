@@ -216,8 +216,124 @@ hosting. LoRA adapters fuse into the quantized weights at load time, so model-qu
 updates are ~35MB app updates. On-device inference: 15–30s per photo on an
 iPhone 15 Pro-class device (the wait became a designed, staged progress screen).
 
+## The depth track, settled properly (full 325-dish eval)
+The 50-dish tie was upgraded to the full held-out set: v5 MAE 59.0 / median 31.4
+(3 parse failures of 325), v6 62.5 / 35.0 (0 failures). Paired on the 322 dishes both
+answered, mean(v6−v5) = +3.48 kcal, t = 0.89 — not significant. Depth closed for good.
+Two evals ≈ 5 hours of GPU time to convert "probably a tie" into "measurably a tie".
+
+## The model was eager to invent food
+The shipped v5 adapter had a failure mode nobody had tested for: it was trained on
+100% food, so it *always* produced a nutrition JSON. Pointed at a computer mouse it
+correctly said "Mouse" in the item name — and then confidently reported 19 kcal. The
+base Qwen3.5-VL knows perfectly well that a mouse isn't food; fine-tuning had
+*clobbered* that knowledge by only ever rewarding a nutrition answer.
+
+The fix had to satisfy the byte-parity invariant, which rules out the obvious move
+(adding "if this isn't food, say so" to the prompt — that would change the prompt and
+invalidate the adapter contract). Instead: keep the prompt **byte-identical** and teach
+refusal purely through the target completion on negative examples — `{"not_food": true}`.
+Parity then holds by construction, the existing food data is reused verbatim, and the
+iOS app needs no prompt change. Generalizable lesson: **teach new behaviour through the
+completion, not the prompt.**
+
+## Negative examples are a dosage problem
+Sourcing negatives from COCO val2017, excluding every image with a food-supercategory
+annotation, weighted 40% toward *hard* negatives (empty plates, set tables, cutlery —
+teaching "tableware present ≠ food present"). Then the dosage experiment:
+
+- **221 negatives (7.8% of training)**: perfect refusal — 100% recall on 29 held-out
+  non-food images, 0 false refusals on 324 real dishes — but a **real** food-accuracy
+  regression: paired +10.48 kcal, t = 2.49.
+- **100 negatives (3.7%)**: *identical* perfect refusal, and food accuracy a statistical
+  tie with v5 (paired +0.87 kcal, t = 0.23) with a better median (30.5 vs 35.2) and
+  fewer parse failures (1 vs 3).
+
+Refusal turned out to be trivially learned — 100 examples in 2,694 fully suffices, and
+the extra 121 bought nothing except degraded food precision. The interesting shape:
+adding a *capability* to a fine-tune costs accuracy on the original task, and the cost
+scales with dose, while the benefit saturates almost immediately.
+
+## COCO doesn't know what food is
+Filtering out COCO's `food` supercategory is not sufficient, because that supercategory
+is only ten items: apple, banana, broccoli, cake, carrot, donut, hot dog, orange, pizza,
+sandwich. A photo of a rice-and-egg breakfast on a dining table carries no food
+annotation at all and sails through the filter. Visual review of all 120 hard negatives
+found **23 leaks** — plated meals, market produce, bread on a stove, a person eating.
+Training a refusal on a photo that *does* contain food would manufacture exactly the
+over-refusal that must be avoided, so each was culled by hand and the list committed.
+Contact sheets made 120 images reviewable in four screenshots. The plain (non-tableware)
+negatives, by contrast, reviewed 100% clean — the leak risk was entirely concentrated in
+the dining-adjacent set, which is precisely the set worth having.
+
+## The unlike-set MAE trap
+The first read of the v7b results looked like a regression: v5 "MAE 59.0" versus v7b
+"63.4". It isn't — and the reason is a trap worth naming. Parse failures are excluded
+per-adapter, so v5's 59.0 is over n=322 while v7b's 63.4 is over n=324: **different dish
+sets**. Paired on the 324 dishes both answered, v5 is 62.5 and the difference collapses
+to +0.87 kcal (t = 0.23), with v7b's *median* actually better. The mean gap is entirely
+outlier-driven — five dishes account for +3.84 kcal of it, meaning v7b is better than v5
+across the rest of the distribution. This was reported to the user as a genuine
+regression before the pairing was run, and had to be corrected. Whenever an eval excludes
+failures per-arm, headline aggregates stop being comparable; only paired per-item
+differences are.
+
+## Gemma vs Qwen: the base model barely matters
+A benchmark to check the base-model choice: untuned Gemma 4 E4B scored MAE 159.4 on
+50 dishes, against untuned Qwen3.5-4B at 83.4 and *tuned* Qwen (v5) at 54.4. Gemma ~3×
+worse untuned, and its "E4B" naming is about *effective* parameters — the real download
+is 5.15GB plain / 7.48GB for the quantized OptiQ build, both too large to bundle beside
+a 4GB app cap (E2B at 3.55GB is roughly Qwen-sized and marginally shippable). The
+takeaway: fine-tuning, not base-model shopping, is what moved this metric, and quantized
+does not automatically mean smaller.
+
+## Shipping on-device: the memory story
+Getting it onto a phone surfaced failures the Mac never showed:
+- **Jetsam kills.** The app was repeatedly OOM-killed at 4.6–5.5GB. Root cause was not
+  the 2.3GB model but `MLX.Memory.cacheLimit`, which defaults to roughly the device
+  memory limit — so MLX cheerfully retained gigabytes of *freed* buffers. Capping it at
+  48MB plus explicit `clearCache()` calls took peak memory to 4.1GB and made the app
+  stable. (MLX's own docs warn about exactly this on iOS.)
+- **The simulator can't run it at all.** MLX cannot create a Metal device on the iOS
+  Simulator, and it fails as an uncatchable C++ `SIGABRT` — not a Swift error you can
+  trap. The fix is a compile-time `#if targetEnvironment(simulator)` fallback to a mock
+  engine.
+- **Xcode wouldn't build it.** Xcode 26's clang is stricter about `consteval` than the
+  `fmt` copy vendored inside mlx-swift. A command-line flag fixes CLI builds, but SwiftPM
+  packages don't inherit project-level C++ flags, so GUI builds required forking
+  mlx-swift to put the flag in its own manifest.
+- **App Store validation rejected the upload twice** — a missing `CFBundleIconName` and
+  no 120×120 icon variant, because the icon asset catalog was empty.
+- Silent camera failures: a device log full of `FigCaptureSourceRemote err=-17281` under
+  memory pressure revealed three latent defects — `startRunning()` doesn't throw (errors
+  arrive only via a notification nothing observed), the photo-capture continuation had no
+  timeout (a stuck delegate would hang the shutter forever with no error), and the
+  session's configure step marked itself done *before* configuring, so one transient
+  failure latched "camera unavailable" for the whole process lifetime. AVFoundation
+  happened to recover on its own that time, so nothing was ever user-visible.
+
+## What the dataset actually is (and isn't)
+A late correction worth recording, because the intuition is wrong in both directions.
+Nutrition5K is often assumed to be one-food-per-photo; it isn't — 63.3% of its 4,768
+dishes are multi-ingredient, averaging 5.71 ingredients and reaching 34 on one plate.
+The real weakness is **scene diversity**: every image is a Google cafeteria tray shot by
+the same fixed RealSense rig, same lighting, same plates — and the locally-derived "tidy"
+CSVs are cafe1-only, so even the second cafeteria was dropped. That means a held-out MAE
+computed on this data flatters the model relative to real handheld phone photos, and no
+offline number can tell you otherwise. Related: only the overhead view is used for
+training, because a 1920×1080 side frame costs ~2,040 image tokens against a 2,048-token
+sequence limit — the 4 side cameras × ~115 frames per dish sitting on disk are unusable
+without downscaling first.
+
 ## Numbers people ask about
-- Dataset: ~4,768 dishes with per-ingredient ground truth (Nutrition5K, CC BY 4.0).
-- Training: 2,594 examples, 2 epochs ≈ 5,188 iterations ≈ 3.5h on M3 Ultra.
-- Best adapter: calorie MAE 54.4 / median 36.2 kcal (50-dish eval; 325-dish pending).
-- Five training runs to get one good adapter; zero of the four failures visible in loss.
+- Dataset: ~4,768 dishes with per-ingredient ground truth (Nutrition5K, CC BY 4.0);
+  63.3% multi-ingredient, mean 5.71 ingredients/dish.
+- Training: 2,594 food examples (+100 negatives in the shipping adapter), 2 epochs
+  ≈ 5,400 iterations ≈ 3.5h on M3 Ultra, peaking ~58GB Metal memory.
+- Shipping adapter (v7b): calorie MAE 63.4 / **median 30.5** on the full 325-dish
+  held-out set; a statistical tie with the food-only v5 (paired +0.87 kcal, t = 0.23)
+  while adding 100% not-food refusal at 0 over-refusal.
+- Evaluation cost: ~1.5h GPU per adapter per full 325-dish set. Two adapters and a
+  dosage experiment ≈ a full working day of GPU time.
+- Seven adapters trained; four were silent failures, one (v6) a measured tie, one (v7)
+  a measured regression, one shipped. Zero of the four early failures visible in loss.

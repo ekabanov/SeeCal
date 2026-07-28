@@ -1,7 +1,7 @@
 #!/bin/bash
 # SeeCal full training run (LoRA fine-tune) — mlx-vlm 0.6.7 stack (ml/.venv, no patches).
 #
-# BEFORE running, the validation ladder must be green (see CLAUDE.md Toolchain v2
+# BEFORE running, the validation ladder must be green (see AGENTS.md Toolchain v2
 # and ./prep.sh --help):
 #   ./prep.sh                      # select_images -> prepare_finetune -> smoke_test
 #   (then the 32-dish overfit + probe gates if the stack or data changed)

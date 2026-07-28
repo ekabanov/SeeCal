@@ -6,7 +6,7 @@
 # existing venv. Delete ml/.venv yourself first if you want a clean rebuild.
 #
 # Pinned stack (verified against the venv actually used for the v5/v6 training
-# runs — see CLAUDE.md "Toolchain v2"):
+# runs — see AGENTS.md "Toolchain v2"):
 #   mlx-vlm 0.6.7, mlx 0.32.0, mlx-lm 0.31.3, transformers 5.14.1,
 #   datasets 5.0.0, torch 2.13.0, torchvision 0.28.0, pytest (any recent 3.x/9.x)
 #

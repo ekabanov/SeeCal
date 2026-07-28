@@ -1,0 +1,234 @@
+# SeeCal — agent guide
+
+Photo → calories/macros/ingredients, on-device, via a Qwen3.5-4B LoRA
+fine-tune. Full story: top-level `README.md`. Architecture + the ml/iOS
+contract: `docs/architecture.md`. Blog-ready narrative of every interesting
+failure and result: `docs/blog-inputs.md`. This file is the short, working-memory
+version for agents — see `docs/` for everything it points to instead of
+repeating.
+
+> Renamed from `CLAUDE.md` (2026-07-28) to the cross-agent `AGENTS.md`
+> convention. If your harness only auto-loads `CLAUDE.md`, read this file
+> explicitly at session start.
+
+## Repo map
+
+```
+ml/       training pipeline (Python + mlx-vlm). ALL commands run from ml/ —
+          see ml/README.md for setup -> prep -> train -> eval -> convert.
+ios/      SeeCal SwiftPM package (ios/SeeCal) + thin XcodeGen app wrapper
+          (ios/App). See ios/README.md and ios/SeeCal/README.md.
+scripts/  build.sh, test.sh, gen-xcode.sh, make-appicon.py,
+          release-{setup,testflight,appstore}.sh — the only supported way to
+          build/test/release the app.
+docs/     architecture.md, training-history.md, blog-inputs.md, third-party.md,
+          BACKLOG.md, specs/ (binding app spec), design/ (prototype = binding
+          visual spec), plans/ (dated planning docs, historical).
+attic/    retired one-off debugging/patch scripts, kept for reference only.
+```
+
+## ⚠️ Local-only artifacts (NOT in git — read before assuming a clean clone works)
+
+Model weights, datasets and adapters are gitignored by design. On this machine
+they exist; on a fresh clone they do not, and some cost hours to rebuild:
+
+| Path | Size | How to regenerate |
+|---|---|---|
+| `ml/adapters_v7b/` | 1.3 GB | **~3.5 h retrain** (see "Reproducing v7b") |
+| `ml/adapters_v7b_swift/` | 124 MB | `cd ml && ./convert.sh adapters_v7b --version v7b` |
+| `ml/adapters_v5/` | 1.3 GB | ~3.5 h retrain on `finetune_data_v2` |
+| `ml/Nutrition5K/` | 22 GB | `cd ml && ./download_dataset.sh` |
+| `ml/dataset_clean/` | 2.6 GB | `cd ml && ./prep.sh` |
+| `ml/negatives/`, `ml/coco/` | 48 + 19 MB | `cd ml && ./download_negatives.sh` then `make_negatives.py jsonl` |
+| `ml/finetune_data_v7b/` | 5.1 MB | `make_v7_data.py --neg-train-cap 100 --out-dir finetune_data_v7b` |
+
+**`adapters_v7b` is the shipping adapter and exists only on this machine.** Do
+not delete it casually. `ml/negatives_cull.txt` and `finetune_data_v2/*.jsonl`
+ARE committed, so the training *data* is fully reproducible — only the trained
+weights are not.
+
+## Conventions
+
+- **Run every `ml/` command from `ml/`.** JSONL image paths are relative to
+  that directory, not the repo root — running from elsewhere silently breaks
+  image loading (fails loud in `smoke_test.py`, not silently, if you do it
+  right).
+- **Spec wins over code for the app.** `docs/specs/2026-07-26-app-spec.md`
+  and `docs/design/prototype/seecal-prototype.html` are binding — the
+  prototype HTML is the visual spec (colors, spacing, motion), not a
+  reference sketch. If the code and the spec/prototype disagree, the
+  spec/prototype is right until a human says otherwise.
+- Never commit datasets, model weights, or adapters (`.gitignore` already
+  covers `ml/Nutrition5K/`, `ml/adapters*/`, `*.safetensors`, `ml/runs/`,
+  `ml/coco/`, `ml/negatives/`, `ml/finetune_data_v7*/`).
+  Never commit release credentials (`.secrets/`).
+- **Delegation policy (user's standing rule, 2026-07-27):** Opus for complex
+  tasks and planning; Sonnet for simple, well-specified tasks. **Do not use
+  Fable.** Never dispatch a cheaper model on open-ended design.
+
+## Build & test
+
+```bash
+cd ml && .venv/bin/python -m pytest tests/        # ml pipeline unit tests (41)
+cd ios/SeeCal && swift test -Xcxx -DFMT_CONSTEVAL= # Swift package tests (181)
+scripts/test.sh                                    # both of the above + iOS build check
+scripts/test.sh --skip-build                       # skip the slow xcodebuild step
+scripts/build.sh --device                          # signed device build (bundles weights)
+scripts/gen-xcode.sh                               # regenerate + open Xcode project
+```
+
+`-DFMT_CONSTEVAL=` works around Xcode 26's clang being stricter about
+`consteval` than the `fmt` vendored inside `mlx-swift`. If you open
+`ios/SeeCal` directly in Xcode instead of the CLI, the auto-generated scheme
+is named `SeeCal-Package` — add the same flag to its build settings or
+you'll hit the same error there. The app wrapper's own xcodebuild scheme
+(via `scripts/build.sh`, `ios/App/project.yml`) is `SeeCal`, already wired
+with the flag. `ios/SeeCal/Package.swift` pins a **fork**,
+`ekabanov/mlx-swift@seecal-fmt`, which carries the flag in Cmlx's own
+manifest — SwiftPM packages don't inherit project-level C++ flags, so the fork
+is the only way Xcode GUI builds work.
+
+Device builds need `.secrets/release.env` (written by
+`scripts/release-setup.sh`) for `BUNDLE_ID` / `DEVELOPMENT_TEAM` / `MODELS_DIR`.
+`project.yml` reads these via XcodeGen `${VAR}` substitution, which is why
+regenerating through `scripts/gen-xcode.sh` (not bare `xcodegen`) is required —
+otherwise the signing team is wiped to the placeholder on every regen.
+
+**macOS test runs never compile the `#if os(iOS)` camera code**
+(`AVFoundationCaptureService.swift`). Only an iOS build typechecks it — that's
+why `scripts/test.sh` includes a build check. Don't claim camera changes are
+verified off a green `swift test`.
+
+## Key gotchas
+
+- **Adapter↔prompt byte-parity is the single most load-bearing invariant in
+  this project.** Training and inference must build the *exact* same prompt
+  text (no system message, same vision-token placement) or the LoRA adapter
+  learns a mapping the app never actually sends it. Enforced by
+  `ml/check_prompt_parity.py` and `ml/smoke_test.py`. See
+  `docs/architecture.md` for the full contract and
+  `docs/training-history.md` for every way this broke before it was fixed.
+- **Teach new behaviour via the COMPLETION, never the prompt.** v7b adds
+  not-food refusal with a prompt byte-identical to v5's, so parity holds by
+  construction and the iOS app needed no prompt change. Reuse this pattern.
+- **Always pair by dish id when comparing adapters.** Raw MAE headlines are
+  computed over different n (parse failures are excluded per-adapter), so
+  v5's "59.0 (n=322)" vs v7b's "63.4 (n=324)" is an unlike-set comparison that
+  looks like a regression and isn't — on the 324 shared dishes v5 is 62.5.
+  `ml/runs/eval_full/eval.log` has per-dish errors for pairing. This mistake was
+  actually made mid-session and had to be corrected; don't repeat it.
+- **`eval.sh` requires `--limit`.** `infer.py`'s own `--limit` silently
+  defaults to 20 and once truncated a full overnight eval without warning.
+  `eval.sh` refuses to guess — pass it explicitly (325 for the full
+  committed test set).
+- **Metal memory doesn't swap.** Don't run `train.sh` alongside anything
+  else GPU-heavy (LM Studio, `eval.sh`, a second training run) — co-tenancy
+  silently OOM-kills training instead of failing cleanly. Evals are also
+  single-tenant: chain them, don't parallelise.
+- **`infer.py` output is block-buffered through a pipe.** Piping an eval into
+  `tee` means per-dish lines don't appear until the run ends, and the summary
+  JSON is only written at the very end. To judge liveness mid-run, check the
+  process's accumulating CPU time rather than assuming a hang.
+- **torchvision must be installed explicitly.** mlx-vlm's own `[train]`
+  extra doesn't pull it in, but the Qwen3VL processor imports it at init
+  time. `ml/setup.sh` installs torch/torchvision as a separate step for
+  exactly this reason.
+- **iOS memory: cap the MLX cache.** `MLX.Memory.cacheLimit` defaults to
+  roughly the device memory limit, so MLX retains GBs of freed buffers and the
+  app gets jetsam-killed (peaks were 4.6–5.5 GB). Fixed in
+  `MLXQwen35RunnerBuilder` with `cacheLimit = 48MB` plus `clearCache()` after
+  fuse/warmup/each inference, and a memory-warning handler in
+  `ProductionRootView`. Verified on device: a real memory warning fired and the
+  app survived. The Xcode debugger itself inflates memory — test non-attached
+  before believing a regression.
+- **MLX cannot create a Metal device on the iOS Simulator** — an uncatchable
+  C++ `SIGABRT`, not a Swift error. `ProductionRootView` uses
+  `#if targetEnvironment(simulator)` to fall back to the mock engine. Never try
+  to "fix" simulator crashes with try/catch.
+- **App icons must be full-bleed, opaque, square-cornered 1024².** iOS applies
+  its own squircle mask. `scripts/make-appicon.py` converts mockups (rounded
+  corners + drop shadow + white page) into valid assets; a missing 120×120
+  variant previously failed App Store Connect validation (error 90022), which
+  is why `project.yml` sets `CFBundleIconName`.
+
+## Current state (2026-07-28)
+
+- **Shipping adapter: `adapters_v7b`** — v5's food data + 100 not-food
+  negatives. Emits `{"not_food": true}` on non-food photos. **All five gates
+  green:** 100% refusal recall (29/29 held-out negatives), 0 over-refusal on
+  324 real-food dishes, food accuracy a statistical tie with v5 (paired
+  v7b−v5 = +0.87 kcal, t=0.23) with a BETTER median (30.5 vs 35.2) and fewer
+  parse failures (1 vs 3), parity PASSED, and a user-verified device spot check.
+  Track complete: `docs/plans/2026-07-27-v7-notfood-plan.md`.
+- `adapters_v7` (221 negatives) is dead: identical perfect refusal but a REAL
+  food regression (paired +10.48 kcal, t=2.49). **100 negatives is the right
+  dose** — refusal is trivially learned, so if over-refusal ever appears on
+  device, cut negatives further rather than abandoning the approach.
+- `adapters_v6` (depth-augmented) is a statistical tie trending slightly worse
+  (paired v6−v5 = +3.5 kcal, t=0.89 on 322 shared dishes) and is not shipped.
+  Full 325-dish v5-vs-v6 eval DONE (2026-07-27); **depth track closed**. Raw
+  results in `ml/runs/eval_full/`. `adapters_v1`–`v4` are all confirmed dead —
+  see `docs/training-history.md`.
+- **Base-model choice settled.** Untuned Gemma 4 E4B scored MAE 159.4 vs
+  untuned Qwen 83.4 and tuned Qwen v5 54.4 (same 50 dishes) — ~3× worse — and
+  E4B is 5.15 GB plain / 7.48 GB OptiQ, too big to bundle. Qwen3.5-4B stays.
+  Fine-tuning, not base-model choice, does the heavy lifting.
+- **iOS app**: full product build-out complete against the prototype spec.
+  181 Swift + 41 ml tests green; `scripts/build.sh` / `scripts/test.sh` green;
+  device build bundles v7b and verifies `seecal_adapter_version: v7b`.
+- Camera capture hardened (2026-07-28): watchdog timeout on `capturePhoto()`,
+  `AVCaptureSession.runtimeErrorNotification` observed, and no permanent failure
+  latch in `configureIfNeeded()`. Exactly-once completion lives in
+  `PendingCaptureRegistry`, kept platform-agnostic so it is unit-testable on the
+  macOS host.
+
+## Reproducing v7b from scratch
+
+```bash
+cd ml
+./download_dataset.sh                     # Nutrition5K (22GB)
+./prep.sh                                 # dataset_clean + finetune_data_v2
+./download_negatives.sh                   # COCO annotations + 300 sampled negatives
+.venv/bin/python make_negatives.py jsonl  # applies negatives_cull.txt (23 food leaks)
+.venv/bin/python make_v7_data.py --neg-train-cap 100 --out-dir finetune_data_v7b
+.venv/bin/python check_prompt_parity.py   # MUST print PASSED before training
+.venv/bin/python smoke_test.py --data finetune_data_v7b/train.jsonl --records 8 --batch-size 4
+DATASET=finetune_data_v7b OUTPUT_PATH=adapters_v7b ./train.sh   # ~3.5h, ~58GB Metal
+./eval.sh adapters_v7b --limit 325 --out-json runs/eval_v7b_food325.json
+./eval.sh adapters_v7b --limit 29 --test-set negatives/test.jsonl --out-json runs/eval_v7b_neg.json
+./convert.sh adapters_v7b --version v7b   # -> adapters_v7b_swift for iOS
+```
+
+Negatives come from COCO val2017 with **every food-supercategory image
+excluded**. COCO annotates only 10 food types, so dining scenes with
+un-annotated food (rice, plated meals, produce) still slip through — 23 such
+leaks were found by visual review and are listed in `ml/negatives_cull.txt`
+(regenerate the review sheets with `make_contact_sheet.py`). Training refusal on
+a photo that contains food is exactly the over-refusal failure to avoid.
+
+## Open work
+
+See `docs/BACKLOG.md` for detail. Highest-value items:
+
+1. **Fully editable food data.** Only grams are editable today; ingredient
+   names, add/remove, and direct nutrition entry are missing. Carries a real
+   design decision (derived-vs-overridden nutrition, since nutrition is
+   currently a pure function of grams) that must be settled in the app spec
+   first — the spec is binding.
+2. **An honest out-of-distribution test set.** All 325 test dishes are
+   cafeteria trays on one RealSense rig, so our MAE almost certainly flatters
+   real phone photos. NutritionVerse-Real (889 real images, weighed ground
+   truth) is the best candidate. Note Nutrition5K is *not* single-food —
+   63.3% of dishes are multi-ingredient (mean 5.71, max 34); the weakness is
+   scene diversity, not mixed food.
+3. **On-device depth (v6)** — blocked on calibrating iPhone LiDAR to the
+   Nutrition5K rig scale; that calibration is the entire difficulty.
+4. **Multi-view training (v8?)** — `side_angles` (cameras A–D, ~115
+   frames/dish) are downloaded but unused: a 1920×1080 side frame is ~2040
+   image tokens against `--max-seq-length 2048`, so those records would
+   truncate. Needs downscaling first. Would take training data from 2,594 to
+   ~9,400 records.
+5. **HF publish of the fused model: DEFERRED** by the user ("wait with
+   publishing"). Ready via
+   `ml/fuse.sh adapters_v7b --out-path fused_v7b --upload-repo <id>`.
+   Any publish is a separate user-confirmed step.

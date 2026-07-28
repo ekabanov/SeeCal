@@ -3,7 +3,7 @@
 # smoke test. Wraps select_images.py, prepare_finetune.py, and
 # smoke_test.py into a single idempotent command.
 #
-# THE VALIDATION LADDER (CLAUDE.md "Toolchain v2"): never start a
+# THE VALIDATION LADDER (AGENTS.md "Toolchain v2"): never start a
 # multi-hour training run without climbing this ladder in order:
 #   1. THIS SCRIPT — select_images.py + prepare_finetune.py, then
 #      smoke_test.py (~1 minute, no model weights loaded beyond the
@@ -20,7 +20,7 @@
 #      the un-adapted base model as a baseline.
 # Only after all three are green should ./train.sh run unattended for
 # hours. Skipping straight to a long run is exactly how the v4 adapter
-# died mid-run and went unnoticed for most of a day (see CLAUDE.md, Run 4).
+# died mid-run and went unnoticed for most of a day (see AGENTS.md, Run 4).
 #
 # Steps this script runs:
 #   1. select_images.py --max-images 1 [--with-depth] [--src DIR] [--dst DIR]
@@ -223,4 +223,4 @@ echo "=== Step 3/3: smoke_test.py ==="
 echo
 echo "Rung 1 of the validation ladder is green: $EFFECTIVE_OUT_DIR/ is ready for training."
 echo "Next: a 32-dish overfit run, then a ~500-iteration probe evaluated against the base"
-echo "model with infer.py, before starting a full ./train.sh run (see CLAUDE.md)."
+echo "model with infer.py, before starting a full ./train.sh run (see AGENTS.md)."

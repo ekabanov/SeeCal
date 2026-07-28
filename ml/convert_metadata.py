@@ -21,7 +21,7 @@ zero-padded) inside this file — no lookup needed to build dish_ingredients.csv
 
 IMPORTANT — historical cleaning rule this converter reproduces (verified
 2026-07-26 against the live Nutrition5k GCS bucket; see
-tests/test_convert_metadata.py's real-file integration test and CLAUDE.md):
+tests/test_convert_metadata.py's real-file integration test and AGENTS.md):
 the dish_nutrition_values.csv / dish_ingredients.csv already checked into
 this machine's Nutrition5K/ directory were derived from
 dish_metadata_cafe1.csv ONLY.
