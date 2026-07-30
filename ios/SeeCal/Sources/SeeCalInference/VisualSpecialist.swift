@@ -198,6 +198,30 @@ public actor CoreMLVisualSpecialist: VisualSpecialistPredicting {
     }
 }
 
+/// Defers Core ML model construction until the first photo analysis. The
+/// compiled specialist is small, but keeping every model allocation out of app
+/// launch makes opening straight into the camera consistently cheap.
+public actor LazyCoreMLVisualSpecialist: VisualSpecialistPredicting {
+    private let modelPath: String
+    private var specialist: CoreMLVisualSpecialist?
+
+    public init(modelPath: String) {
+        self.modelPath = modelPath
+    }
+
+    public func predict(imagePath: String) async throws -> VisualSpecialistPrediction {
+        let specialist: CoreMLVisualSpecialist
+        if let loaded = self.specialist {
+            specialist = loaded
+        } else {
+            let loaded = try CoreMLVisualSpecialist(modelPath: modelPath)
+            self.specialist = loaded
+            specialist = loaded
+        }
+        return try await specialist.predict(imagePath: imagePath)
+    }
+}
+
 public enum VisualSpecialistPromptRenderer {
     public static let prefix =
         "Auxiliary visual measurement (fallible; use as evidence, not ground truth):"

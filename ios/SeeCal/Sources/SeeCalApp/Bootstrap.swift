@@ -67,11 +67,17 @@ public enum SeeCalBootstrap {
     public static func makeProductionViewModelUsingMLX(
         config: QwenRuntimeConfig,
         mnnRunner: MNNQwenVisionEngine.Runner? = nil
-    ) async throws -> AppViewModel {
-        let engine = try await SeeCalMLXEngine.make(config: config)
+    ) throws -> AppViewModel {
+        let modelPreparationState = ModelPreparationState(phase: .notStarted)
+        let engine = SeeCalMLXEngine(
+            config: config,
+            loadStateObserver: { state in
+                await modelPreparationState.update(from: state)
+            }
+        )
         let visualSpecialist: (any VisualSpecialistPredicting)?
         if let modelPath = config.visualSpecialistModelPath {
-            visualSpecialist = try CoreMLVisualSpecialist(modelPath: modelPath)
+            visualSpecialist = LazyCoreMLVisualSpecialist(modelPath: modelPath)
         } else {
             visualSpecialist = nil
         }
@@ -81,7 +87,8 @@ public enum SeeCalBootstrap {
                 try await engine.generate(imagePath: imagePath, prompt: prompt)
             },
             mnnRunner: mnnRunner,
-            visualSpecialist: visualSpecialist
+            visualSpecialist: visualSpecialist,
+            modelPreparationState: modelPreparationState
         )
     }
 

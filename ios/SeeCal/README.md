@@ -125,12 +125,15 @@ let viewModel = await SeeCalBootstrap.makeProductionViewModel(
 Direct MLX path (no manual runner closure):
 
 ```swift
-let viewModel = try await SeeCalBootstrap.makeProductionViewModelUsingMLX(
+let viewModel = try SeeCalBootstrap.makeProductionViewModelUsingMLX(
     config: config
 )
 ```
 
-Or use a ready-to-mount root view that loads the model:
+This wires a lazy runtime: model load, LoRA fusion, and vision warmup start on
+the first inference request, not during app launch.
+
+Or use a ready-to-mount root view with the same lazy runtime:
 
 ```swift
 import SwiftUI
@@ -212,7 +215,7 @@ Notes:
 
 ## LoRA adapter
 
-The LoRA adapter is loaded at startup via `LoRAContainer` when an adapter directory is found.
+The LoRA adapter is loaded on the first inference via `LoRAContainer` when an adapter directory is found.
 Resolution order (`ModelAssetResolver.resolveAdapterPath`):
 1. Bundled `Models/adapters` inside the app bundle.
 2. `Documents/App Support` (on-device, user- or app-installed adapter).

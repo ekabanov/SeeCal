@@ -2,9 +2,8 @@ import SwiftUI
 
 /// Branded handoff between iOS's launch screen and the app becoming usable.
 ///
-/// Loading the bundled 4B model can take long enough to feel like a real app
-/// state, so this uses the app-icon artwork and the product design tokens
-/// instead of exposing an implementation detail ("Loading MLX model").
+/// Brief branded handoff while the app's lightweight runtime graph is wired.
+/// Model loading happens only after the first photo is captured.
 struct StartupLoadingView: View {
     var body: some View {
         ZStack {
@@ -33,7 +32,7 @@ struct StartupLoadingView: View {
                     .foregroundStyle(Theme.appInk)
                     .padding(.top, 24)
 
-                Text("Preparing your on-device model…")
+                Text("Opening your food log…")
                     .font(.system(size: 15, weight: .semibold))
                     .foregroundStyle(Theme.appInk2)
                     .multilineTextAlignment(.center)
@@ -43,7 +42,7 @@ struct StartupLoadingView: View {
                     .controlSize(.regular)
                     .tint(Theme.basil)
                     .padding(.top, 22)
-                    .accessibilityLabel("Preparing your on-device model")
+                    .accessibilityLabel("Opening SeeCal")
 
                 Text("This can take a moment.")
                     .font(.system(size: 12.5, weight: .medium))

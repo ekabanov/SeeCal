@@ -23,7 +23,8 @@ public enum SeeCalProductionFactory {
         visualSpecialist: (any VisualSpecialistPredicting)? = nil,
         store: MealLogStore = FileBackedMealLogStore(),
         preferencesStore: UserPreferencesStore = FileBackedUserPreferencesStore(),
-        weightStore: WeightLogStore = FileBackedWeightLogStore()
+        weightStore: WeightLogStore = FileBackedWeightLogStore(),
+        modelPreparationState: ModelPreparationState = ModelPreparationState()
     ) throws -> AppViewModel {
         let validatedConfig = try config.validated()
         let conditioned = validatedConfig.visualSpecialistModelPath != nil
@@ -61,7 +62,8 @@ public enum SeeCalProductionFactory {
             preferencesStore: preferencesStore,
             weightStore: weightStore,
             modelPath: validatedConfig.modelPath,
-            adapterPath: validatedConfig.adapterPath
+            adapterPath: validatedConfig.adapterPath,
+            modelPreparationState: modelPreparationState
         )
     }
 }

@@ -149,7 +149,10 @@ public struct RootView: View {
             } else {
                 // .analyzing, .error, and the completed states while the sheet
                 // (or banner) sits above the analyzing screen.
-                AnalyzingScreen(controller: scanController)
+                AnalyzingScreen(
+                    controller: scanController,
+                    modelPreparationState: viewModel.modelPreparationState
+                )
             }
         } else {
             switch selectedTab {

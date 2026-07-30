@@ -13,6 +13,7 @@ import SeeCalDomain
 /// in the same layout with the runtime's surfaced message + Retry (same photo).
 struct AnalyzingScreen: View {
     @ObservedObject var controller: ScanFlowController
+    @ObservedObject var modelPreparationState: ModelPreparationState
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -23,6 +24,9 @@ struct AnalyzingScreen: View {
     /// "Estimating nutrition" for the (longer) token-generation tail. Without this
     /// the second stage was coded to only ever be pending/done and never lit up.
     @State private var analyzeStart: Date?
+    /// Retains the first-use preparation row after it completes so the list
+    /// does not jump while the first analysis is in progress.
+    @State private var showsPreparationStage = false
 
     /// Rough vision-prefill → token-generation handoff. Prefill is a few seconds;
     /// generation dominates the ~15–20 s wait, so the pivot is early.
@@ -61,10 +65,26 @@ struct AnalyzingScreen: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .background(Theme.appBg.ignoresSafeArea())
         .onAppear {
-            if isRunning, analyzeStart == nil { analyzeStart = Date() }
+            if isRunning {
+                if modelPreparationState.phase != .ready {
+                    showsPreparationStage = true
+                } else if analyzeStart == nil {
+                    analyzeStart = Date()
+                }
+            }
         }
         .onChange(of: isRunning) { _, running in
-            analyzeStart = running ? Date() : nil
+            analyzeStart = running && modelPreparationState.phase == .ready ? Date() : nil
+            if running, modelPreparationState.phase != .ready {
+                showsPreparationStage = true
+            } else if !running {
+                showsPreparationStage = false
+            }
+        }
+        .onChange(of: modelPreparationState.phase) { oldPhase, newPhase in
+            if isRunning, oldPhase != .ready, newPhase == .ready {
+                analyzeStart = Date()
+            }
         }
     }
 
@@ -136,6 +156,13 @@ struct AnalyzingScreen: View {
         TimelineView(.periodic(from: .now, by: 0.25)) { context in
             let elapsed = analyzeStart.map { max(0, context.date.timeIntervalSince($0)) } ?? 0
             VStack(alignment: .leading, spacing: 16) {
+                if showsPreparationStage {
+                    stageRow(
+                        title: "Preparing on-device model",
+                        subtitle: preparationSubtitle,
+                        state: preparationState
+                    )
+                }
                 stageRow(
                     title: "Identifying foods",
                     subtitle: identifyingSubtitle,
@@ -151,9 +178,20 @@ struct AnalyzingScreen: View {
         }
     }
 
+    private var preparationState: StageState {
+        modelPreparationState.phase == .ready ? .done : .running
+    }
+
+    private var preparationSubtitle: String {
+        modelPreparationState.phase == .ready
+            ? "Loaded and warmed up"
+            : "First scan only — loading and warming up"
+    }
+
     private func identifyingState(elapsed: TimeInterval) -> StageState {
         if completedDraft != nil { return .done }
         guard isRunning else { return .pending }
+        guard modelPreparationState.phase == .ready else { return .pending }
         // Runs during the prefill window, then checks off as generation begins.
         return elapsed < stagePivot ? .running : .done
     }
@@ -161,6 +199,7 @@ struct AnalyzingScreen: View {
     private func estimatingState(elapsed: TimeInterval) -> StageState {
         if completedDraft != nil { return .done }
         guard isRunning else { return .pending }
+        guard modelPreparationState.phase == .ready else { return .pending }
         // Lights up once the handoff point passes and stays running until done.
         return elapsed < stagePivot ? .pending : .running
     }
@@ -168,6 +207,9 @@ struct AnalyzingScreen: View {
     private var identifyingSubtitle: String {
         if let draft = completedDraft {
             return ScanFlowController.foodsFoundSubtitle(items: draft.items)
+        }
+        if modelPreparationState.phase != .ready {
+            return "Starts after one-time model setup"
         }
         return "Vision model reading the photo"
     }

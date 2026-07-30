@@ -82,15 +82,15 @@ public struct ProductionRootView: View {
             SeeCalDiagnostics.record(
                 .notice,
                 category: "model_load",
-                name: "production_model_load_started",
+                name: "production_runtime_configuration_started",
                 fields: ["adapter_configured": String(config.adapterPath != nil)]
             )
-            let vm = try await SeeCalBootstrap.makeProductionViewModelUsingMLX(config: config)
+            let vm = try SeeCalBootstrap.makeProductionViewModelUsingMLX(config: config)
             loadState = .loaded(vm)
             SeeCalDiagnostics.record(
                 .notice,
                 category: "model_load",
-                name: "production_model_load_succeeded",
+                name: "production_runtime_configuration_succeeded",
                 fields: [
                     "duration_ms": String((DispatchTime.now().uptimeNanoseconds - startedAt) / 1_000_000)
                 ]
@@ -100,7 +100,7 @@ public struct ProductionRootView: View {
             SeeCalDiagnostics.record(
                 .fault,
                 category: "model_load",
-                name: "production_model_load_failed",
+                name: "production_runtime_configuration_failed",
                 fields: SeeCalDiagnostics.errorFields(error)
             )
             loadState = .failed(message)

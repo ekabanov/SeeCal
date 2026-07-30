@@ -28,6 +28,10 @@ public final class AppViewModel: ObservableObject {
     /// for the process lifetime — the bundled model/adapter can't change
     /// without a relaunch.
     public let modelInfo: ModelInfo
+    /// Tracks the one-time lazy model preparation so the analyzing screen can
+    /// explain why the first scan takes longer. Injected/mock runtimes are
+    /// considered ready by default.
+    public let modelPreparationState: ModelPreparationState
 
     private let orchestrator: RuntimeOrchestrator
     private let store: MealLogStore
@@ -119,6 +123,7 @@ public final class AppViewModel: ObservableObject {
         dailyTarget: DailyNutritionTarget = .defaultTarget,
         modelPath: String? = nil,
         adapterPath: String? = nil,
+        modelPreparationState: ModelPreparationState = ModelPreparationState(),
         now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.orchestrator = orchestrator
@@ -127,6 +132,7 @@ public final class AppViewModel: ObservableObject {
         self.weightStore = weightStore
         self.dailyTarget = dailyTarget
         self.modelInfo = ModelInfoResolver.resolve(modelPath: modelPath, adapterPath: adapterPath)
+        self.modelPreparationState = modelPreparationState
         self.now = now
         SeeCalDiagnostics.record(
             .info,

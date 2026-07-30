@@ -186,6 +186,14 @@ local development path, used only if it happens to exist on the machine
 running the simulator. See
 `ios/README.md`'s "Weights bundling" section for the exact directory layout.
 
+The production root only validates configuration and wires the runtime graph
+at launch. `SeeCalMLXEngine` loads the 4B container, fuses the LoRA, and runs
+the vision warmup as a single-flight task on the first generation request;
+`LazyCoreMLVisualSpecialist` likewise opens the specialist on its first
+prediction. The analyzing screen observes this lifecycle and shows the
+one-time preparation stage. The warmed runners remain resident and are reused
+for every later scan.
+
 ## Data flow: one inference request
 
 ```mermaid
