@@ -1,0 +1,229 @@
+name	fdc_id	fdc_name	category	gram_weight	occurrences	score	lexical_score	nutrition_score	review_note
+bread	325871	Bread, white, commercially prepared	Baked Products	58821.0	1406	1.0	0.776316	0.905144	manual_source_profile_override
+steak	172164	"Beef, rib eye steak, boneless, lip off, separable lean and fat, trimmed to 0"" fat, all grades, cooked, grilled"	Beef Products	43645.4	1126	0.798179	0.720545	0.997754	lexical+measured_profile
+broccoli	321900	Broccoli, raw	Vegetables and Vegetable Products	41400.7	1366	0.904448	0.88	0.988621	lexical+measured_profile
+pork	167905	Pork, fresh, loin, tenderloin, separable lean and fat, cooked, roasted	Pork Products	38380.7	821	1.0	0.731765	0.805259	manual_source_profile_override
+egg whites	172183	Egg, white, raw, fresh	Dairy and Egg Products	36827.0	150	0.888883	0.868966	0.985713	lexical+measured_profile
+carrot	170393	Carrots, raw	Vegetables and Vegetable Products	36799.3	1657	0.900888	0.870588	0.992662	lexical+measured_profile
+chicken	171477	Chicken, broilers or fryers, breast, meat only, cooked, roasted	Poultry Products	34464.9	284	1.0	0.743761	0.989546	manual_source_profile_override
+fish	173700	Fish, spot, raw	Finfish and Shellfish Products	28423.9	511	0.819873	0.813725	0.889142	lexical+measured_profile
+potato	170440	Potatoes, boiled, cooked without skin, flesh, without salt	Vegetables and Vegetable Products	28410.0	1091	1.0	0.02	0.0	manual_source_profile_override
+cake	172710	Cake, yellow, prepared from recipe without frosting	Baked Products	27370.0	459	1.0	0.743666	0.0	manual_source_profile_override
+pie	175012	Pie, apple, prepared from recipe	Baked Products	26355.0	558	1.0	0.758182	0.0	manual_source_profile_override
+ice cream	167575	Ice creams, vanilla	Sweets	23700.0	913	1.0	0.9	0.0	manual_source_profile_override
+cauliflower	2685573	Cauliflower, raw	Vegetables and Vegetable Products	23398.1	440	0.908655	0.884615	0.992791	lexical+measured_profile
+scrambled eggs	172187	Egg, whole, cooked, scrambled	Dairy and Egg Products	22307.1	171	0.880002	0.845	0.996463	lexical+measured_profile
+rice	168878	Rice, white, long-grain, regular, enriched, cooked	Cereal Grains and Pasta	18310.0	670	1.0	0.744898	0.993901	manual_source_profile_override
+tomato	1750354	Tomato, roma	Vegetables and Vegetable Products	17525.0	1139	0.833529	0.870588	0.0	lexical
+cheese pizza	173291	"PIZZA HUT 14"" Cheese Pizza, Pan Crust"	Fast Foods	16103.0	233	0.844416	0.81773	0.961661	lexical+measured_profile
+berries	171711	Blueberries, raw	Fruits and Fruit Juices	15500.0	164	1.0	0.063636	0.988014	manual_source_profile_override
+strawberry	167762	Strawberries, raw	Fruits and Fruit Juices	15170.0	560	0.832308	0.869231	0.0	lexical
+caesar salad	169877	Salad dressing, caesar, low calorie	Fats and Oils	15047.0	169	0.779028	0.82	0.788819	lexical+measured_profile
+pineapple	2346398	Pineapple, raw	Fruits and Fruit Juices	15011.4	294	0.901745	0.881818	0.979363	lexical+measured_profile
+lettuce	2346388	Lettuce, iceberg, raw	Vegetables and Vegetable Products	14800.6	712	0.862424	0.820513	0.986188	lexical+measured_profile
+apple	168204	Apples, raw, gala, with skin (Includes foods for USDA's Food Distribution Program)	Fruits and Fruit Juices	14789.8	304	1.0	0.728862	0.990947	manual_source_profile_override
+biscuit	170339	KFC, biscuit	Fast Foods	14540.0	295	0.84	0.877778	0.0	lexical
+sweet potato	169305	Sweet potato, canned, mashed	Vegetables and Vegetable Products	14341.8	178	0.860852	0.863158	0.923621	lexical+measured_profile
+cherry tomatoes	170457	Tomatoes, red, ripe, raw, year round average	Vegetables and Vegetable Products	13175.6	430	1.0	0.404091	0.996454	manual_source_profile_override
+sausage	174579	Sausage, pork and beef, fresh, cooked	Sausages and Luncheon Meats	12719.0	332	1.0	0.76748	0.806233	manual_source_profile_override
+salmon	173688	Fish, salmon, chinook, raw	Finfish and Shellfish Products	12624.2	109	0.819703	0.791379	0.929861	lexical+measured_profile
+cilantro mint	169997	Coriander (cilantro) leaves, raw	Vegetables and Vegetable Products	12615.0	900	0.422905	0.432857	0.0	lexical
+corn	168538	Corn, sweet, white, raw	Vegetables and Vegetable Products	12455.3	523	0.834074	0.783333	0.976853	lexical+measured_profile
+beef	170602	Beef, cured, corned beef, canned	Sausages and Luncheon Meats	11973.4	158	0.830255	0.774242	0.979803	lexical+measured_profile
+cucumber	169225	Cucumber, peeled, raw	Vegetables and Vegetable Products	10840.0	533	0.776667	0.825926	0.0	lexical
+pizza	173291	"PIZZA HUT 14"" Cheese Pizza, Pan Crust"	Fast Foods	10565.0	148	0.813517	0.758333	0.970251	lexical+measured_profile
+watermelon	167765	Watermelon, raw	Fruits and Fruit Juices	10481.0	134	0.908633	0.883333	0.994499	lexical+measured_profile
+green beans	169961	Beans, snap, green, raw	Vegetables and Vegetable Products	9759.6	352	0.878001	0.845161	0.991239	lexical+measured_profile
+noodles	169732	Noodles, egg, enriched, cooked	Cereal Grains and Pasta	9740.0	262	0.84664	0.791176	0.997483	lexical+measured_profile
+squash	169289	Squash, summer, scallop, raw	Vegetables and Vegetable Products	9708.7	182	0.842719	0.78871	0.991071	lexical+measured_profile
+roasted potatoes	170031	Potatoes, roasted, salt added in processing, frozen, unprepared	Vegetables and Vegetable Products	9704.0	142	0.790522	0.782	0.883199	lexical+measured_profile
+mixed greens	169085	Vegetables, mixed (corn, lima beans, peas, green beans, carrots) canned, no salt added	Vegetables and Vegetable Products	9662.0	285	0.808945	0.76	0.965999	lexical+measured_profile
+cantaloupe	327198	Melons, cantaloupe, raw	Fruits and Fruit Juices	9310.0	119	0.871591	0.831183	0.994433	lexical+measured_profile
+white rice	168882	Rice, white, short-grain, enriched, cooked	Cereal Grains and Pasta	8909.1	232	0.848877	0.808333	0.985735	lexical+measured_profile
+asparagus	168389	Asparagus, raw	Vegetables and Vegetable Products	8826.0	295	0.907594	0.881818	0.993985	lexical+measured_profile
+french fries	170726	WENDY'S, french fries	Fast Foods	8760.0	244	0.884283	0.875	0.965915	lexical+measured_profile
+corn on the cob	169365	Corn, sweet, white, frozen, kernels on cob, unprepared	Vegetables and Vegetable Products	8756.0	112	0.739177	0.626042	0.962135	lexical+measured_profile
+olives	169094	Olives, ripe, canned (small-extra large)	Fruits and Fruit Juices	8744.3	238	0.820864	0.761905	0.983709	lexical+measured_profile
+egg	172673	Bread, egg	Baked Products	8500.0	292	0.815	0.85	0.0	lexical
+arugula	169387	Arugula, raw	Vegetables and Vegetable Products	8322.7	447	0.904733	0.877778	0.992388	lexical+measured_profile
+French beans	169961	Beans, snap, green, raw	Vegetables and Vegetable Products	8070.0	374	0.793978	0.845161	0.0	query_rewrite:green beans
+grapes	173040	Grapes, muscadine, raw	Fruits and Fruit Juices	8018.0	110	0.848175	0.812821	0.961143	lexical+measured_profile
+tofu	167722	Tofu yogurt	Legumes and Legume Products	7911.0	130	0.82102	0.853333	0.816717	lexical+measured_profile
+pepper	169395	Peppers, serrano, raw	Vegetables and Vegetable Products	7840.2	911	0.854323	0.814667	0.973974	lexical+measured_profile
+brussels sprouts	170383	Brussels sprouts, raw	Vegetables and Vegetable Products	7786.6	122	1.0	0.922222	0.989243	manual_source_profile_override
+chicken thighs	2646171	Chicken, thigh, boneless, skinless, raw	Poultry Products	7315.2	87	0.836721	0.837143	0.909482	lexical+measured_profile
+pasta	169728	Pasta, fresh-refrigerated, plain, cooked	Cereal Grains and Pasta	7301.3	187	0.828479	0.76381	0.995958	lexical+measured_profile
+orange	746771	Oranges, raw, navels	Fruits and Fruit Juices	7157.4	270	0.862665	0.816667	0.99208	lexical+measured_profile
+onion	170000	Onions, raw	Vegetables and Vegetable Products	7085.0	532	0.83	0.866667	0.0	lexical
+pears	169118	Pears, raw	Fruits and Fruit Juices	7076.2	63	0.900962	0.871429	0.991692	lexical+measured_profile
+almonds	170567	Nuts, almonds	Nut and Seed Products	6707.9	151	0.877173	0.873684	0.929117	lexical+measured_profile
+olive oil	171413	Oil, olive, salad or cooking	Fats and Oils	6423.7	1392	0.859436	0.825714	0.981982	lexical+measured_profile
+quinoa	168917	Quinoa, cooked	Cereal Grains and Pasta	6291.7	118	0.898761	0.863158	0.997561	lexical+measured_profile
+honeydew melons	169911	Melons, honeydew, raw	Fruits and Fruit Juices	5993.0	64	0.910149	0.886275	0.994245	lexical+measured_profile
+milkshake	170884	Milk shakes, thick vanilla	Dairy and Egg Products	5890.0	107	0.804762	0.857143	0.0	query_rewrite:milk shake
+wheat berry	168889	Wheat, hard red spring	Cereal Grains and Pasta	5835.7	269	1.0	0.44	0.460053	manual_source_profile_override
+shrimp	175180	Crustaceans, shrimp, cooked	Finfish and Shellfish Products	5820.0	144	0.859348	0.805376	0.999311	lexical+measured_profile
+bok choy	2685572	Cabbage, bok choy, raw	Vegetables and Vegetable Products	5725.1	205	0.879018	0.857143	0.977307	lexical+measured_profile
+cucumbers	169379	Pickles, cucumber, sour	Vegetables and Vegetable Products	5372.7	288	0.866019	0.826667	0.986715	lexical+measured_profile
+eggplant	169228	Eggplant, raw	Vegetables and Vegetable Products	5344.5	110	0.906846	0.88	0.994614	lexical+measured_profile
+lamb	172544	Lamb, ground, cooked, broiled	Lamb, Veal, and Game Products	4980.0	99	0.825382	0.776667	0.96429	lexical+measured_profile
+yam	170071	Yam, raw	Vegetables and Vegetable Products	4739.0	80	0.89106	0.86	0.982651	lexical+measured_profile
+onions	170000	Onions, raw	Vegetables and Vegetable Products	4680.3	610	0.904075	0.875	0.994564	lexical+measured_profile
+brown rice	169865	Babyfood, peas and brown rice	Baby Foods	4483.1	196	0.815401	0.832632	0.862384	lexical+measured_profile
+bacon	167914	Pork, cured, bacon, cooked, baked	Pork Products	4459.0	172	0.821157	0.769412	0.969952	lexical+measured_profile
+avocado	171706	Avocados, raw, California	Fruits and Fruit Juices	4345.0	125	0.851703	0.813333	0.969258	lexical+measured_profile
+milk	167730	Milk, imitation, non-soy	Dairy and Egg Products	4296.2	95	0.830446	0.780769	0.971307	lexical+measured_profile
+coffee	174134	Beverages, coffee, instant, chicory	Beverages	4090.0	184	0.838344	0.781579	0.989938	lexical+measured_profile
+banana	173944	Bananas, raw	Fruits and Fruit Juices	4070.0	156	0.898827	0.870588	0.987508	lexical+measured_profile
+celery stick	169988	Celery, raw	Vegetables and Vegetable Products	3955.0	229	0.532273	0.480303	0.0	lexical
+cherry	167807	Cherry juice, tart	Fruits and Fruit Juices	3945.0	212	0.77029	0.818841	0.0	lexical
+cabbage	170392	Cabbage, kimchi	Vegetables and Vegetable Products	3929.5	195	0.897434	0.866667	0.989418	lexical+measured_profile
+chicken breast	171477	Chicken, broilers or fryers, breast, meat only, cooked, roasted	Poultry Products	3842.1	47	0.832564	0.783333	0.988703	lexical+measured_profile
+bell peppers	2258590	Peppers, bell, red, raw	Vegetables and Vegetable Products	3764.4	195	0.865468	0.84375	0.961848	lexical+measured_profile
+strawberries	2263887	Strawberries, raw	Fruits and Fruit Juices	3742.1	58	0.909921	0.885714	0.994446	lexical+measured_profile
+pepperoni pizza	172053	"PIZZA HUT 14"" Pepperoni Pizza, Pan Crust"	Fast Foods	3717.0	51	0.851747	0.82327	0.97237	lexical+measured_profile
+mushroom	2003601	Mushroom, crimini	Vegetables and Vegetable Products	3607.4	149	0.895488	0.866667	0.984553	lexical+measured_profile
+grilled chicken	171534	Chicken, broiler or fryers, breast, skinless, boneless, meat only, cooked, grilled	Poultry Products	3531.0	25	1.0	0.751919	0.747204	manual_source_profile_override
+potatoes	170032	Potatoes, raw, skin	Vegetables and Vegetable Products	3436.0	44	0.851462	0.830667	0.944822	lexical+measured_profile
+grape	168575	Grape leaves, raw	Vegetables and Vegetable Products	3325.0	158	0.76619	0.814286	0.0	lexical
+blueberry	171711	Blueberries, raw	Fruits and Fruit Juices	3275.0	210	0.83	0.866667	0.0	lexical
+peach	169928	Peaches, yellow, raw	Fruits and Fruit Juices	3210.0	91	0.859505	0.810145	0.993147	lexical+measured_profile
+pumpkin	168448	Pumpkin, raw	Vegetables and Vegetable Products	3050.0	88	0.84	0.877778	0.0	lexical
+chicken apple sausage	174605	Sausage, chicken, beef, pork, skinless, smoked	Sausages and Luncheon Meats	2881.0	38	0.670249	0.568971	0.862039	lexical+measured_profile
+shiitake	1750346	Mushrooms, shiitake	Vegetables and Vegetable Products	2880.0	136	0.825385	0.861538	0.0	lexical
+zucchini	168565	Squash, zucchini, baby, raw	Vegetables and Vegetable Products	2758.0	114	0.839438	0.8	0.967346	lexical+measured_profile
+kale	168421	Kale, raw	Vegetables and Vegetable Products	2693.8	178	0.881405	0.866667	0.949347	lexical+measured_profile
+eggs	171287	Egg, whole, raw, fresh	Dairy and Egg Products	2505.7	39	0.830973	0.784783	0.967108	lexical+measured_profile
+tuna	172006	Fish, tuna, yellowfin, fresh, cooked, dry heat	Finfish and Shellfish Products	2444.0	15	0.813314	0.746349	0.989199	lexical+measured_profile
+shellfish	175180	Crustaceans, shrimp, cooked	Finfish and Shellfish Products	2440.0	43	1.0	0.017647	0.0	manual_source_profile_override
+wine	172240	Vinegar, red wine	Spices and Herbs	2431.8	171	0.81779	0.806667	0.893642	lexical+measured_profile
+chard	169991	Chard, swiss, raw	Vegetables and Vegetable Products	2326.0	211	0.863472	0.816667	0.994095	lexical+measured_profile
+tomatoes	321360	Tomatoes, grape, raw	Vegetables and Vegetable Products	2253.2	129	0.866353	0.828205	0.985434	lexical+measured_profile
+oatmeal	172980	Cereals, QUAKER, QUAKER MultiGrain Oatmeal, prepared with water, salt	Breakfast Cereals	1995.0	11	0.805641	0.744444	0.974867	lexical+measured_profile
+garlic	169230	Garlic, raw	Vegetables and Vegetable Products	1959.7	903	0.899971	0.875	0.984302	lexical+measured_profile
+hash browns	170304	CHICK-FIL-A, hash browns	Fast Foods	1936.0	26	0.846261	0.844706	0.922932	lexical+measured_profile
+fried rice	167668	Restaurant, Chinese, fried rice, without meat	Restaurant Foods	1932.0	24	0.831849	0.805128	0.947571	lexical+measured_profile
+snow peas	170419	Peas, green, raw	Vegetables and Vegetable Products	1912.5	94	0.660169	0.434783	0.990096	lexical+measured_profile
+millet	168871	Millet, cooked	Cereal Grains and Pasta	1884.6	163	0.899028	0.863158	0.998229	lexical+measured_profile
+spring onion	170005	Onions, spring or scallions (includes tops and bulb), raw	Vegetables and Vegetable Products	1875.0	190	0.712962	0.778291	0.0	lexical
+rape	172336	Oil, canola	Fats and Oils	1815.0	75	1.0	0.014286	0.0	manual_source_profile_override
+chocolate	167571	Candies, white chocolate	Sweets	1755.0	67	0.856945	0.822917	0.969185	lexical+measured_profile
+almond	171031	Oil, almond	Fats and Oils	1735.0	94	0.8375	0.875	0.0	lexical
+pear	169118	Pears, raw	Fruits and Fruit Juices	1660.0	44	0.825385	0.861538	0.0	lexical
+bagels	167533	Bagels, wheat	Baked Products	1649.8	25	0.900753	0.866667	0.997715	lexical+measured_profile
+mustard greens	169256	Mustard greens, raw	Vegetables and Vegetable Products	1638.6	94	1.0	0.920833	0.991357	manual_source_profile_override
+salsa	174524	Sauce, salsa, ready-to-serve	Soups, Sauces, and Gravies	1600.0	15	0.832078	0.772258	0.993341	lexical+measured_profile
+couscous	169700	Couscous, cooked	Cereal Grains and Pasta	1534.0	21	0.901283	0.869565	0.995056	lexical+measured_profile
+vinegar	173469	Vinegar, cider	Spices and Herbs	1485.5	614	0.899175	0.87	0.989189	lexical+measured_profile
+mango	169910	Mangos, raw	Fruits and Fruit Juices	1480.0	55	0.83	0.866667	0.0	lexical
+wild rice	168897	Wild rice, cooked	Cereal Grains and Pasta	1426.0	13	1.0	0.905333	0.947525	manual_source_profile_override
+mandarin oranges	169105	Tangerines, (mandarin oranges), raw	Fruits and Fruit Juices	1424.0	26	0.890174	0.868085	0.990151	lexical+measured_profile
+hanamaki baozi	172793	Rolls, dinner, plain, commercially prepared (includes brown-and-serve)	Baked Products	1355.0	28	1.0	0.007595	0.0	manual_source_profile_override
+wonton dumplings	171821	Soup, wonton, Chinese restaurant	Soups, Sauces, and Gravies	1250.0	19	0.420333	0.43	0.0	query_rewrite:wonton dumpling
+greek yogurt	330137	Yogurt, Greek, plain, nonfat	Dairy and Egg Products	1159.3	22	0.878923	0.843243	0.996182	lexical+measured_profile
+raspberry	167755	Raspberries, raw	Fruits and Fruit Juices	1140.0	69	0.83	0.866667	0.0	lexical
+soy	174275	Soy flour, defatted	Legumes and Legume Products	1125.0	46	0.749048	0.795238	0.0	lexical
+kiwi	2710831	Kiwifruit (kiwi), green, peeled, raw	Fruits and Fruit Juices	1105.0	51	0.823428	0.762857	0.984642	lexical+measured_profile
+country rice	167665	Restaurant, Mexican, spanish rice	Restaurant Foods	1095.6	45	0.627289	0.427209	0.939142	lexical+measured_profile
+chickpeas	173799	Chickpeas (garbanzo beans, bengal gram), mature seeds, cooked, boiled, with salt	Legumes and Legume Products	1085.8	36	0.807798	0.740133	0.990449	lexical+measured_profile
+white radish	170081	Radishes, white icicle, raw	Vegetables and Vegetable Products	1070.0	52	0.792252	0.843243	0.0	lexical
+tortilla	175036	Tortillas, ready-to-bake or -fry, corn	Baked Products	1053.1	22	0.821794	0.765781	0.983679	lexical+measured_profile
+walnut	171030	Oil, walnut	Fats and Oils	1050.0	63	0.8375	0.875	0.0	lexical
+turnips	170465	Turnips, raw	Vegetables and Vegetable Products	1024.8	16	0.899362	0.877778	0.978959	lexical+measured_profile
+crab	174204	Crustaceans, crab, blue, raw	Finfish and Shellfish Products	1015.0	20	0.837832	0.777586	0.994148	lexical+measured_profile
+red beans	173744	Beans, kidney, red, mature seeds, raw	Legumes and Legume Products	1015.0	34	0.731429	0.790476	0.0	lexical
+chayote squash	170402	Chayote, fruit, raw	Vegetables and Vegetable Products	987.5	15	0.675683	0.464516	0.987997	lexical+measured_profile
+fig	173021	Figs, raw	Fruits and Fruit Juices	980.0	26	0.819091	0.854545	0.0	lexical
+raspberries	167755	Raspberries, raw	Fruits and Fruit Juices	976.9	63	0.90871	0.884615	0.992928	lexical+measured_profile
+radishes	169276	Radishes, raw	Vegetables and Vegetable Products	945.7	104	0.908363	0.88	0.998407	lexical+measured_profile
+ground turkey	171506	Turkey, Ground, cooked	Poultry Products	920.4	16	0.85561	0.887879	0.85569	lexical+measured_profile
+tuna salad	175160	Fish, tuna salad	Finfish and Shellfish Products	912.0	4	0.924978	0.913333	0.994112	lexical+measured_profile
+bean sprouts	169957	Mung beans, mature seeds, sprouted, raw	Vegetables and Vegetable Products	910.0	37	1.0	0.424405	0.990566	manual_source_profile_override
+apricot	171697	Apricots, raw	Fruits and Fruit Juices	905.0	30	0.836316	0.873684	0.0	lexical
+shallots	170499	Shallots, raw	Vegetables and Vegetable Products	892.2	331	0.845149	0.88	0.840373	lexical+measured_profile
+cheese	173416	Cheese, colby	Dairy and Egg Products	875.5	43	0.885983	0.866667	0.960792	lexical+measured_profile
+parmesan cheese	173431	Cheese, parmesan, shredded	Dairy and Egg Products	862.2	92	0.898959	0.894872	0.95445	lexical+measured_profile
+turkey bacon	171639	Bacon, turkey, microwaved	Sausages and Luncheon Meats	831.0	22	0.889321	0.879048	0.952112	lexical+measured_profile
+blueberries	2263889	Blueberries, raw	Fruits and Fruit Juices	823.8	156	0.907999	0.884615	0.99115	lexical+measured_profile
+okra	169260	Okra, raw	Vegetables and Vegetable Products	815.0	17	0.897881	0.866667	0.990536	lexical+measured_profile
+popcorn	167550	Snacks, popcorn, cakes	Snacks	815.0	14	0.83465	0.818519	0.919494	lexical+measured_profile
+tatsoi	169256	Mustard greens, raw	Vegetables and Vegetable Products	807.8	20	0.920745	0.920833	0.973217	query_rewrite:mustard greens
+tea	174120	Beverages, tea, Oolong, brewed	Beverages	805.0	30	0.83539	0.77	0.998475	lexical+measured_profile
+brownies	174949	Cookies, brownies, prepared from recipe	Baked Products	767.0	14	0.824617	0.775556	0.970154	lexical+measured_profile
+waffles	175039	Waffles, plain, prepared from recipe	Baked Products	766.9	10	0.834288	0.774146	0.996268	lexical+measured_profile
+lentils	168427	Lentils, sprouted, raw	Vegetables and Vegetable Products	730.4	19	0.853207	0.818519	0.965887	lexical+measured_profile
+candy	167990	Candies, hard	Sweets	730.0	32	0.812353	0.847059	0.0	lexical
+grapefruit juice	167774	Grapefruit juice, pink, raw	Fruits and Fruit Juices	717.0	3	0.898945	0.878049	0.998378	lexical+measured_profile
+caesar dressing	169877	Salad dressing, caesar, low calorie	Fats and Oils	657.3	38	0.782272	0.825833	0.788908	lexical+measured_profile
+ginger	169231	Ginger root, raw	Vegetables and Vegetable Products	631.9	89	0.866504	0.82381	0.991855	lexical+measured_profile
+rice noodles	168914	Rice noodles, cooked	Cereal Grains and Pasta	605.0	16	1.0	0.910753	0.979329	manual_source_profile_override
+blackberries	173946	Blackberries, raw	Fruits and Fruit Juices	589.7	50	0.908446	0.885714	0.990758	lexical+measured_profile
+yogurt	330137	Yogurt, Greek, plain, nonfat	Dairy and Egg Products	577.0	5	0.844718	0.78871	0.996069	lexical+measured_profile
+artichokes	169205	Artichokes, (globe or french), raw	Vegetables and Vegetable Products	542.9	32	0.838507	0.79	0.985019	lexical+measured_profile
+chilaquiles	170292	Fast foods, nachos, with cheese, beans, ground beef, and tomatoes	Fast Foods	526.0	4	1.0	0.014085	0.876698	manual_source_profile_override
+kimchi	170392	Cabbage, kimchi	Vegetables and Vegetable Products	522.0	8	0.880011	0.86	0.955028	lexical+measured_profile
+melon	169093	Melons, casaba, raw	Fruits and Fruit Juices	515.0	24	0.764242	0.812121	0.0	lexical
+dried cranberries	171723	Cranberries, dried, sweetened (Includes foods for USDA's Food Distribution Program)	Fruits and Fruit Juices	490.0	30	0.697736	0.762917	0.0	lexical
+vinaigrette	171417	Salad dressing, home recipe, vinegar and oil	Fats and Oils	479.4	74	0.707465	0.557843	0.976628	query_rewrite:vinaigrette salad dressing
+bulgur	170688	Bulgur, dry	Cereal Grains and Pasta	452.7	28	0.894446	0.875	0.970489	lexical+measured_profile
+white beans	175249	Beans, white, mature seeds, cooked, boiled, with salt	Legumes and Legume Products	416.2	17	0.834506	0.780508	0.995209	lexical+measured_profile
+seaweed	168457	Seaweed, kelp, raw	Vegetables and Vegetable Products	400.0	12	0.859118	0.827536	0.968267	lexical+measured_profile
+parsley	170416	Parsley, fresh	Vegetables and Vegetable Products	381.4	405	0.899707	0.87	0.990519	lexical+measured_profile
+pilaf	168952	Rice and vermicelli mix, rice pilaf flavor, prepared with 80% margarine	Meals, Entrees, and Side Dishes	376.0	6	0.796477	0.733699	0.969858	lexical+measured_profile
+sugar	168833	Sugars, brown	Sweets	365.9	45	0.889278	0.858824	0.979814	lexical+measured_profile
+parsnips	170417	Parsnips, raw	Vegetables and Vegetable Products	354.0	6	0.906949	0.88	0.994874	lexical+measured_profile
+black beans	175237	Beans, black, mature seeds, cooked, boiled, with salt	Legumes and Legume Products	348.1	12	0.834637	0.780508	0.995537	lexical+measured_profile
+granola	167542	Snacks, granola bars, hard, plain	Snacks	337.6	41	0.83096	0.777838	0.982873	lexical+measured_profile
+spinach (cooked)	169400	Malabar spinach, cooked	Vegetables and Vegetable Products	316.6	135	0.916137	0.911111	0.975064	lexical+measured_profile
+fruit salad	174671	Fruit salad, (peach and pear and apricot and pineapple and cherry), canned, light syrup, solids and liquids	Fruits and Fruit Juices	310.0	2	0.812034	0.750412	0.987853	lexical+measured_profile
+celery	169988	Celery, raw	Vegetables and Vegetable Products	303.7	25	0.90478	0.875	0.996325	lexical+measured_profile
+hamburg	170717	McDONALD'S, Hamburger	Fast Foods	295.0	6	0.779195	0.828736	0.0	query_rewrite:hamburger
+figs	326905	Figs, dried, uncooked	Fruits and Fruit Juices	291.1	34	0.846366	0.801449	0.972255	lexical+measured_profile
+chicken salad	172072	McDONALD'S Bacon Ranch Salad with Crispy Chicken	Fast Foods	288.0	4	0.71847	0.772951	0.71551	lexical+measured_profile
+sandwiches	174583	Sandwich spread, pork, beef	Sausages and Luncheon Meats	286.0	5	0.806516	0.801429	0.883076	lexical+measured_profile
+cashew	170162	Nuts, cashew nuts, raw	Nut and Seed Products	275.0	23	0.764872	0.812821	0.0	lexical
+walnuts	170187	Nuts, walnuts, english	Nut and Seed Products	260.8	79	0.840066	0.818519	0.933036	lexical+measured_profile
+frozen yogurt	168104	Frozen yogurts, chocolate	Sweets	260.0	3	0.886437	0.903604	0.911136	lexical+measured_profile
+cream	2346386	Cream, heavy	Dairy and Egg Products	256.7	78	0.885695	0.8625	0.9658	lexical+measured_profile
+mayonnaise	171009	Salad dressing, mayonnaise, regular	Fats and Oils	235.0	50	0.849601	0.796512	0.997548	lexical+measured_profile
+egg tart	172783	Pie, egg custard, commercially prepared	Baked Products	235.0	4	1.0	0.414444	0.0	manual_source_profile_override
+jalapenos	168576	Peppers, jalapeno, raw	Vegetables and Vegetable Products	213.8	173	0.866712	0.821839	0.995084	lexical+measured_profile
+cookies	174952	Cookies, chocolate chip, dry mix	Baked Products	198.0	6	0.823996	0.777838	0.965462	lexical+measured_profile
+pudding	168783	Puddings, rice, dry mix	Sweets	195.0	5	0.745	0.8	0.0	lexical
+sour cream	171257	Cream, sour, cultured	Dairy and Egg Products	171.0	45	0.909971	0.888506	0.990732	lexical+measured_profile
+kelp	168457	Seaweed, kelp, raw	Vegetables and Vegetable Products	170.0	3	0.759333	0.806667	0.0	lexical
+cilantro	169997	Coriander (cilantro) leaves, raw	Vegetables and Vegetable Products	162.5	147	0.846024	0.793243	0.993099	lexical+measured_profile
+mustard	172234	Mustard, prepared, yellow	Spices and Herbs	162.3	309	0.860001	0.813333	0.990003	lexical+measured_profile
+peanut	2515376	Peanuts, raw	Legumes and Legume Products	160.0	9	0.833529	0.870588	0.0	lexical
+goat cheese	173435	Cheese, goat, soft type	Dairy and Egg Products	156.9	21	0.874875	0.8375	0.993958	lexical+measured_profile
+bamboo shoots	169210	Bamboo shoots, raw	Vegetables and Vegetable Products	135.0	6	1.0	0.92	0.0	manual_source_profile_override
+date	168191	Dates, medjool	Fruits and Fruit Juices	135.0	9	0.812353	0.847059	0.0	lexical
+banana with peel	173944	Bananas, raw	Fruits and Fruit Juices	124.0	1	1.0	0.342593	0.891662	manual_source_profile_override
+cranberries	171722	Cranberries, raw	Fruits and Fruit Juices	120.2	47	0.908947	0.884615	0.993521	lexical+measured_profile
+flour	2003586	Flour, 00	Cereal Grains and Pasta	98.0	8	0.892774	0.876923	0.963667	lexical+measured_profile
+jicama	170073	Yambean (jicama), raw	Vegetables and Vegetable Products	91.7	23	0.864755	0.816667	0.997303	lexical+measured_profile
+green onions	170006	Onions, young green, tops only	Vegetables and Vegetable Products	84.0	101	0.854986	0.82	0.978715	lexical+measured_profile
+succotash	169300	Succotash, (corn and limas), raw	Vegetables and Vegetable Products	84.0	1	0.838476	0.788649	0.986798	lexical+measured_profile
+toast	174981	Crackers, rusk toast	Baked Products	84.0	1	0.768348	0.808333	0.767744	lexical+measured_profile
+hominy	169701	Hominy, canned, white	Cereal Grains and Pasta	80.5	11	0.863899	0.814667	0.997913	lexical+measured_profile
+nopales	168571	Nopales, raw	Vegetables and Vegetable Products	68.9	23	0.905772	0.877778	0.994986	lexical+measured_profile
+pumpkin seeds	170188	Seeds, pumpkin and squash seeds, whole, roasted, without salt	Nut and Seed Products	67.4	28	0.827913	0.787143	0.969604	lexical+measured_profile
+pecans	170182	Nuts, pecans	Nut and Seed Products	59.0	33	0.880631	0.870588	0.942018	lexical+measured_profile
+pesto	171185	Sauce, pesto, MEZZETTA, NAPA VALLEY BISTRO, basil pesto, ready-to-serve	Soups, Sauces, and Gravies	58.6	8	0.73492	0.734085	0.815433	lexical+measured_profile
+butter	173410	Butter, salted	Dairy and Egg Products	44.4	42	0.891483	0.863158	0.979366	lexical+measured_profile
+chive	169994	Chives, raw	Vegetables and Vegetable Products	43.6	107	0.898085	0.866667	0.991047	lexical+measured_profile
+syrup	169661	Syrups, maple	Sweets	38.1	1	0.892903	0.858824	0.988875	lexical+measured_profile
+baby carrots	2258587	Carrots, baby, raw	Vegetables and Vegetable Products	38.0	2	0.907456	0.883333	0.991556	lexical+measured_profile
+beets	169145	Beets, raw	Vegetables and Vegetable Products	32.9	13	0.901534	0.871429	0.99312	lexical+measured_profile
+celery root	2346405	Celery, raw	Vegetables and Vegetable Products	30.6	15	0.689319	0.492857	0.92062	lexical+measured_profile
+croutons	172751	Croutons, plain	Baked Products	26.5	28	0.89758	0.872727	0.981451	lexical+measured_profile
+mozzarella cheese	167735	Cheese, mozzarella, low sodium	Dairy and Egg Products	26.0	1	0.883051	0.853333	0.992627	lexical+measured_profile
+raisins	168166	Raisins, seeded	Fruits and Fruit Juices	23.5	6	0.884398	0.866667	0.956829	lexical+measured_profile
+orange juice	171354	Babyfood, juice, orange	Baby Foods	17.9	28	0.899318	0.869697	0.989961	lexical+measured_profile
+cereal	171665	Cereals, WHEATENA, dry	Breakfast Cereals	15.0	3	0.834748	0.812821	0.927575	lexical+measured_profile
+tortilla chips	168137	Snacks, tortilla chips, light (baked with less oil)	Snacks	10.0	5	0.842749	0.795902	0.994652	lexical+measured_profile
+oregano	171328	Spices, oregano, dried	Spices and Herbs	9.2	24	0.830738	0.818519	0.909715	lexical+measured_profile
+pickles	169379	Pickles, cucumber, sour	Vegetables and Vegetable Products	8.6	9	0.865068	0.816667	0.998085	lexical+measured_profile
+ice cream cones	175000	Ice cream cones, cake or wafer-type	Baked Products	6.0	1	0.870369	0.846939	0.986381	lexical+measured_profile
+sunflower seeds	2515381	Seeds, sunflower seed, kernel, raw	Nut and Seed Products	5.1	2	0.831842	0.86087	0.854242	lexical+measured_profile
+white wine	174837	Alcoholic beverage, wine, table, white	Beverages	4.2	13	0.829801	0.815556	0.921864	lexical+measured_profile

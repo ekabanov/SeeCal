@@ -229,8 +229,10 @@ def evaluate_test_set(model, processor, test_jsonl: Path, limit: int, data_dir: 
         prompt_text = next(item["text"] for item in user_content if item["type"] == "text")
 
         first = Path(image_paths[0])
-        record_id = first.parent.name
-        print(f"[{i+1}/{len(records)}] {first.parent.name}/{first.name}"
+        record_id = rec.get("id") or (
+            first.parent.name if first.parent.name.startswith("dish_") else first.stem
+        )
+        print(f"[{i+1}/{len(records)}] {record_id}/{first.name}"
               f"{' (+depth img)' if len(image_paths) > 1 else ''}", end="")
 
         pred = run_inference(model, processor, image_paths, max_tokens=max_tokens,

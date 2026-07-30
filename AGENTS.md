@@ -37,6 +37,12 @@ they exist; on a fresh clone they do not, and some cost hours to rebuild:
 | `ml/adapters_v8_numeric_4b/` | 1.3 GB | retrain from `finetune_data_v8_numeric` (see visual-specialist plan) |
 | `ml/adapters_v8_numeric_4b_swift/` | 128 MB | `cd ml && ./convert.sh adapters_v8_numeric_4b --version v8-conditioned` |
 | `ml/runs/visual-specialist/deployment/SeeCalVisualSpecialist.mlmodelc/` | 9.5 MB | export S1 best checkpoint, then `xcrun coremlcompiler compile` |
+| `ml/runs/factored/scale-v1/` | 33 MB | `make_scale_data.py`, then `python -m visual_specialist.scale train/evaluate/export` |
+| `ml/runs/factored/scale-v2-probe-b-nv-1024/` | ~17 MB | regenerate `datasets/scale_v2_nc_1024`, then use the run config preserved beside the checkpoint |
+| `ml/datasets/fdc/seecal-nutrition.sqlite` | 7.2 MB | `cd ml && ./download_fdc.sh`, then apply the reviewed base and NutritionVerse official-Train alias files with `make_alias_table.py` |
+| `ml/datasets/foodseg103/` | 2.3 GB incl. download cache | `cd ml && .venv/bin/python download_foodseg103.py` |
+| `ml/datasets/nutritionverse-real/` | 2.1 GB incl. archive | `cd ml && ./download_nutritionverse_real.sh`, then `make_nutritionverse_eval.py` |
+| `ml/finetune_data_id_v2_frb_resolved/` | ~15 MB + image cache | regenerate the database/aliases first, then run the fully-resolved, 1024-edge command in `ml/README.md` |
 | `ml/adapters_v7b/` | 1.3 GB | **~3.5 h retrain** (see "Reproducing v7b") |
 | `ml/adapters_v7b_swift/` | 124 MB | `cd ml && ./convert.sh adapters_v7b --version v7b` |
 | `ml/adapters_v5/` | 1.3 GB | ~3.5 h retrain on `finetune_data_v2` |
@@ -153,7 +159,68 @@ verified off a green `swift test`.
   variant previously failed App Store Connect validation (error 90022), which
   is why `project.yml` sets `CFBundleIconName`.
 
-## Current state (2026-07-28)
+## Current state (2026-07-30)
+
+- **Factored pipeline migration (2026-07-29): Stage 0–1 implemented in
+  shadow, not shipping.** Frozen IDENTIFY schema/parity/smoke gates, USDA
+  SQLite RESOLVE ladder, paired E0/E1/E2 harness, deterministic Swift
+  ASSEMBLE, confirmation/disagreement gates, concurrent pipeline shape, and
+  mass-only Core ML runtime are present. Baseline v8 hard-mistake audit:
+  HMR 12.9%, DVR 40.5%, AIR 31.6%. The original percentage IDENTIFY contract
+  failed closure at full scale and is superseded by v2 `portion_units`;
+  deterministic Python/Swift code normalizes units to 100. The finished
+  percentage adapter remains a normalized compatibility baseline (fast
+  Nutrition5K HMR 12.0%, NutritionVerse HMR 33.6%). SCALE-v2 trained on
+  N5K + NutritionVerse official Train reaches 36.9 g N5K overhead MAE,
+  41.3 g N5K side equal-group MAE, and 96.2 g NutritionVerse official-Val
+  equal-scene MAE, with calibrated coverage 80.3% / 82.4% / 81.3% (Wilson
+  95% intervals 75.6–84.3 / 77.7–86.2 / 70.4–88.9). The oracle audit passes
+  hidden-label median bias (+1.29%) but shows SCALE is now the blocker:
+  true-mass oracle assembly is 10.3 kcal MAE on the shared clean set, current
+  SCALE-P50 oracle is 56.9, and v8 is 29.5. A validation-selected SCALE point
+  correction was rejected after worsening frozen NV MAE (96.2 → 98.8 g).
+  The sensitivity sweep says SCALE must cut its current mass error by about
+  52% (roughly 36.9 → 18 g MAE) before the oracle candidate crosses v8.
+  A fixed FNDDS importer now retains 5,430 composite rows; the database has
+  13,589 profiles/196 category medians, and train-only NV aliases make its
+  official Val fully assemblable. The leakage-safe FRB ablation is 1,905/212
+  records with 4,122/4,122 item occurrences resolving at rungs 1–2.
+  Probe B also fails FPB zero-shot: 165.7 g equal-group MAE / 55.3% MAPE /
+  20.9% interval coverage on 2,123 clean-weight test images (164 groups).
+  Occupancy diagnostics show a compressed FPB mapping rather than missing
+  numerical target support; NV predictions are over-coupled to framing.
+  Simple USDA portion-prior fallbacks/fusions regress N5K and NV and are
+  rejected. FPB clean training/validation is now 8,929/2,170 records with
+  source-capture grouping, unknown weights excluded, and two frozen-test
+  capture overlaps removed. Probe C1 (+FPB center crop) and C2 (matched
+  letterbox) completed with worst-source equal-group-MAPE selection and a 10%
+  Pareto guard. C1 wins: N5K overhead/side 40.1/42.0 g, NV 99.0 g, and FPB
+  73.3 g / 35.7% MAPE; C2 is 37.5/41.0 g, 100.3 g, and 80.0 g / 38.6%.
+  C1 repairs FPB size ordering from 23/40 to 37/40 triads, so ordinal Probe D
+  is parked. Width-normalized phone-union calibration exposes nonexchangeable
+  domains: pooled undercovers NV (70.1%); max-source reaches NV 84.0% but FPB
+  97.3%, reinforcing the wide-interval confirm path. Oracle assembly with C1
+  mass improves the 72-dish shared-clean N5K candidate from 56.9 to 38.5 kcal
+  MAE but still trails v8 at 29.5; all-N5K barely moves (64.2 → 63.4) and the
+  NV quality slice regresses (187.5 → 191.2). On a deterministic
+  one-view-per-scene NV screen, C1 mass beats v8-implied mass 88.4 vs 156.8 g
+  MAE on 66 shared valid scenes and wins 66.7% of scenes; one v8 generation
+  fails parsing. The teacher-required regret decomposition changes the
+  binding-constraint decision: the true-mass floor is 53.5% of total C1
+  calorie MAE on all complete N5K groups and 59.7% on raw NV Val, versus
+  26.7% on clean-72 and 41.0% on the NV quality slice. Per the pre-agreed
+  half-total rule, IDENTIFY-v2 LoRA resumes with a fresh current-contract
+  memorization gate, FoodSeg primary arm, then matched +BF2 ablation. The
+  FoodSeg manifests now cap images at 1,024 px after the first tiny run caught
+  a 2,048-token truncation mismatch before any weight update. The corrected
+  20-epoch probe reached loss 0.000125 and reproduced 32/32 names, containers,
+  and portion units exactly with no parse/schema failure or repair; the
+  two-epoch 7,677-record FoodSeg primary run is active at
+  `runs/factored/e3-v2-foodseg-1024/adapter`. USDA serving
+  evidence remains gate-only; Swift now sums one selected item portion and
+  never averages across serving kinds. Stage-3
+  device/product gates still block shipping; v8 remains the shipping/rollback
+  system.
 
 - **Shipping system: conditioned 4B + S1 specialist.** The 4B adapter is
   `adapters_v8_numeric_4b`, stamped `v8-conditioned`; the compiled specialist

@@ -28,15 +28,13 @@
 #                 deliberately re-running/resuming v5. This script warns (but
 #                 does not refuse) if OUTPUT_PATH already has checkpoints in it.
 #   DATASET       Training dataset directory (default: finetune_data_v2).
-#   ADAPTER_PATH  Optional: resume from an existing adapter checkpoint (see
-#                 the resume example below). Unset by default (fresh run).
+#   ADAPTER_PATH  Unsupported. Resume is disabled because mlx-vlm 0.6.7 can
+#                 silently expose the wrong trainable parameter set.
+#   EXPECTED_TRAINABLE_MILLIONS
+#                 Fail-fast LoRA guard. Default: 32.464896.
 #   MAX_SEQ_LENGTH Token ceiling (default: 2048).
 #   EPOCHS         Number of training epochs (default: 2).
 #
-# Resume-after-interruption example (reduce --epochs to just the remainder,
-# and point ADAPTER_PATH + OUTPUT_PATH at the same versioned run so
-# checkpoints keep accumulating in one place instead of forking a new dir):
-#   ADAPTER_PATH=adapters_v6 OUTPUT_PATH=adapters_v6 ./train.sh
 set -euo pipefail
 cd "$(dirname "$0")"
 
@@ -58,14 +56,13 @@ configure via environment variables:
                 already has a checkpoint in it, but does not block you from
                 overwriting one.
   DATASET       Training JSONL directory. Default: finetune_data_v2.
-  ADAPTER_PATH  Resume from this existing adapter checkpoint instead of a
-                fresh LoRA init. Unset by default.
+  ADAPTER_PATH  Unsupported: adapter resume is disabled until mlx-vlm resume
+                semantics are characterized.
+  EXPECTED_TRAINABLE_MILLIONS
+                Expected LoRA trainable count. Default: 32.464896.
   MAX_SEQ_LENGTH
                 Token ceiling. Default: 2048.
   EPOCHS        Number of epochs. Default: 2.
-
-Resume-after-interruption example:
-  ADAPTER_PATH=adapters_v6 OUTPUT_PATH=adapters_v6 ./train.sh
 
 Training log is tee'd to <OUTPUT_PATH>_train.log in this directory.
 
@@ -100,12 +97,22 @@ DATASET="${DATASET:-finetune_data_v2}"
 ADAPTER_PATH="${ADAPTER_PATH:-}"
 MAX_SEQ_LENGTH="${MAX_SEQ_LENGTH:-2048}"
 EPOCHS="${EPOCHS:-2}"
+EXPECTED_TRAINABLE_MILLIONS="${EXPECTED_TRAINABLE_MILLIONS:-32.464896}"
 
-if [ -f "$OUTPUT_PATH/adapters.safetensors" ] && [ -z "$ADAPTER_PATH" ]; then
+if [ -n "$ADAPTER_PATH" ]; then
+  echo "train.sh: ADAPTER_PATH resume is disabled: mlx-vlm 0.6.7 exposed 366.9M" >&2
+  echo "trainable parameters in a factored-track resume instead of the expected 32.5M." >&2
+  echo "Start a fresh run with an unused OUTPUT_PATH." >&2
+  exit 2
+fi
+
+if [ -f "$OUTPUT_PATH/adapters.safetensors" ]; then
   echo "WARNING: $OUTPUT_PATH/adapters.safetensors already exists and ADAPTER_PATH is unset —" >&2
   echo "this run will overwrite it. If this isn't a deliberate resume/re-run, set an explicit," >&2
   echo "unused OUTPUT_PATH (e.g. OUTPUT_PATH=adapters_v7 ./train.sh)." >&2
 fi
+
+mkdir -p "$(dirname "$OUTPUT_PATH")"
 
 train_args=(
   --model-path "$MODEL_PATH"
@@ -122,8 +129,8 @@ train_args=(
   --steps-per-save 500
   --output-path "$OUTPUT_PATH"
 )
-if [ -n "$ADAPTER_PATH" ]; then
-  train_args+=(--adapter-path "$ADAPTER_PATH")
-fi
-
-.venv/bin/python -m mlx_vlm.lora "${train_args[@]}" 2>&1 | tee "${OUTPUT_PATH}_train.log"
+.venv/bin/python verified_lora_train.py \
+  --expected-millions "${EXPECTED_TRAINABLE_MILLIONS:-32.464896}" \
+  --log-file "${OUTPUT_PATH}_train.log" \
+  -- \
+  .venv/bin/python -m mlx_vlm.lora "${train_args[@]}"

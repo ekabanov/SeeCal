@@ -155,7 +155,7 @@ def main():
 
     for i, clen in enumerate(completion_lens):
         frac = clen / int(seq_lens[i])
-        is_refusal = "not_food" in completion_texts[i]
+        is_refusal = '"not_food":true' in completion_texts[i].replace(" ", "").lower()
         label = " [not-food refusal]" if is_refusal else ""
         print(f"row {i}: seq={int(seq_lens[i])} completion={clen} "
               f"({frac:.0%} of seq carries loss){label}")

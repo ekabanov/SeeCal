@@ -123,7 +123,13 @@ not merely adaptation to one model’s synthetic prose.
 teacher pipeline; do not start with UI work or a full paid labeling run. This is
 an ML behavior experiment with a small UI tail, not just a text-field feature.
 
-## Add a meal manually, with no photo (added 2026-07-28)
+## Completed: Add a meal manually, with no photo
+(added 2026-07-28; completed 2026-07-28)
+
+**Status:** shipped. Manual opens a photo-less editable draft through the
+shared result/edit flow. Persistence, totals, editing, deletion, and photo
+cleanup all handle the missing image path. The material below is retained as
+the implementation rationale, not remaining work.
 
 **Goal:** allow logging when the user has no photo, already knows the nutrition,
 or wants to enter a snack quickly. No inference and no network are involved.
@@ -162,7 +168,15 @@ runtime, and do not attempt photo deletion. Old meal JSON remains compatible.
 **Effort/value:** small-to-medium and high-confidence. This should land before
 barcode entry because barcode results need the same photo-less meal path.
 
-## Add packaged food by barcode (added 2026-07-28)
+## Completed: Add packaged food by barcode
+(added 2026-07-28; completed 2026-07-28)
+
+**Status:** shipped. EAN/UPC/Code 128 detection shares the camera capture
+session, normalizes GTINs, resolves through a cached Open Food Facts v3 lookup,
+and keeps label nutrition source-backed and resettable. Missing fields fall
+back to manual entry without invented zero values. A local launch-market
+coverage study and any richer liquid-unit model remain possible follow-ups;
+the core barcode feature is no longer backlog.
 
 **Goal:** scan a UPC/EAN/GTIN on packaged food, retrieve its label nutrition,
 enter the amount actually consumed, and add it as a source-backed meal item.
@@ -278,6 +292,47 @@ meals remain unchanged.
 
 ## Out-of-distribution test set (added 2026-07-28)
 
+**Status (2026-07-30): dataset, SCALE evaluation, oracle assembly audit, FPB
+zero-shot evaluation, and FPB-trained SCALE C1/C2 ablation complete; trained
+IDENTIFY/full candidate evaluation pending.**
+NutritionVerse-Real v2 is pinned, downloaded, checksummed, and converted into
+IDENTIFY, monolith, and SCALE manifests: 889 images across 225 represented dish
+groups. The owner authorized non-commercial training: official Train enters
+only a separately marked non-commercial SCALE corpus, while official Val
+remains frozen. SCALE-v2 reduced official-Val equal-scene mass MAE from about
+300 g to 96.2 g with 81.3% calibrated coverage. A corrected FNDDS importer and
+official-Train-only reviewed aliases now make all official-Val scenes
+assemblable; the first database had silently dropped all 5,430 FNDDS rows
+because that release uses legacy nutrient IDs. The full raw oracle also exposed
+a corrupt `near-whole-chicken` nutrition template, retained in the primary
+score and isolated in a separately labelled Train-derived quality slice. A
+validation-selected point correction failed the frozen test and was rejected.
+Probe B also failed the frozen FPB test zero-shot: 165.7 g equal-group MAE,
+55.3% MAPE, and 20.9% interval coverage on 2,123 clean-weight images / 164
+groups. The model predicts small < average < big correctly for only 23/40
+complete food triads, and a post-hoc global multiplier cannot rescue it. The
+selected FPB-trained C1 checkpoint cuts FPB equal-group MAE to 73.3 g and
+repairs ordering to 37/40 triads while keeping frozen N5K/NV regressions below
+10%. The subsequent calorie-regret decomposition shows a split constraint:
+true-mass non-mass floors are 53.5% of total error on all-complete N5K and
+59.7% on raw NutritionVerse, but only 26.7% on clean-72 and 41.0% on the
+NutritionVerse quality slice. The pre-agreed rule therefore resumes
+IDENTIFY-v2 now, without claiming SCALE is solved.
+
+Teacher follow-up diagnostics are complete. FPB is inside the numerical
+training target support, but Probe B compresses its visual mass mapping.
+NutritionVerse predictions are more coupled to annotated occupancy than truth
+is, supporting a framing shortcut. EXIF/intrinsics were stripped from every
+NutritionVerse and FPB image. Raw USDA serving priors and all simple fusions
+regress Nutrition5K/NutritionVerse and are not an accepted fallback. Probe C
+completed as two matched arms with minimax per-source MAPE selection and a 10%
+Pareto guard. Center-crop C1 wins: N5K overhead/side 40.1/42.0 g, NV 99.0 g,
+FPB 73.3 g. Letterbox C2 scores 37.5/41.0 g, 100.3 g, and 80.0 g respectively,
+so its small N5K gain does not offset worse worst-domain MAPE. Naive pooled
+phone-union width calibration undercovers NV (70.1%); a max-source
+width-normalized union restores NV to 84.0% but is conservative on FPB (97.3%),
+confirming the need for the wide-interval confirm path.
+
 **Goal:** measure accuracy on images that look like what users actually shoot.
 
 **Why:** all 325 held-out dishes are Google-cafeteria trays captured by one fixed
@@ -301,9 +356,11 @@ synthetic domain gap), MetaFood3D (637 3D objects → render unlimited angles, b
 per-object so scenes must be composed), FoodSeg103/154 (9,490 real images, avg 6
 ingredients, pixel masks — but **no nutrition or weights**, so ingredient ID only).
 
-**First step:** convert NutritionVerse-Real to our JSONL schema and run
-`eval.sh adapters_v7b` against it. Expect the MAE to be worse than 63.4; the
-point is to learn *how much*, not to pass a gate.
+**Next step:** complete the fresh current-contract IDENTIFY-v2 memorization
+gate, train the 1,024-pixel-capped FoodSeg primary arm, then run the matched
+fully-resolved BF2 ablation. In parallel, Probe E adds NutritionVerse-Synth at
+only 10–15% effective SCALE exposure with frozen real-domain tests and the
+existing minimax/Pareto rejection rules.
 
 ## Further multi-view Qwen training (v9?) (added 2026-07-28)
 

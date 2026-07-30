@@ -1,0 +1,45 @@
+name	fdc_id	category	family	review_note
+asian pear	167776	Fruits and Fruit Juices	fruit	canonical raw pear
+captain crunch granola bar	167542	Snacks	grain_starch	branded granola bar to plain hard granola bar
+carrot	170393	Vegetables and Vegetable Products	vegetable	exact source profile
+chicken breast	171477	Poultry Products	poultry	canonical cooked chicken breast
+chicken leg	173617	Poultry Products	poultry	canonical roasted leg meat and skin
+chicken sandwich	170790	Fast Foods	poultry	canonical prepared chicken sandwich
+chicken wing	173630	Poultry Products	poultry	canonical roasted wing meat and skin
+chocolate granola bar	167545	Snacks	dessert	chocolate-coated granola bar
+corn	168538	Vegetables and Vegetable Products	vegetable	exact source profile
+costco california sushi roll 1		Meals, Entrees, and Side Dishes	grain_starch	brand and count removed; composite roll
+costco cucumber sushi roll 1		Meals, Entrees, and Side Dishes	vegetable	brand and count removed; cucumber roll
+costco egg	173424	Dairy and Egg Products	egg	brand removed; cooked whole egg
+costco salad sushi roll 1		Meals, Entrees, and Side Dishes	vegetable	brand and count removed; vegetable roll
+costco shrimp sushi roll 1		Meals, Entrees, and Side Dishes	shellfish	brand and count removed; shrimp roll
+costco tuna rice ball		Meals, Entrees, and Side Dishes	fish	brand removed; tuna rice composite
+crispy pork rib		Pork Products	pork	prepared pork rib; no safe exact FDC row
+cucumber piece	168409	Vegetables and Vegetable Products	vegetable	count descriptor removed
+french fry	169836	Restaurant Foods	grain_starch	canonical restaurant french fries
+half bread loaf	174924	Baked Products	grain_starch	count descriptor removed
+half minced shrimp	175180	Finfish and Shellfish Products	shellfish	count and preparation descriptor removed
+half shrimp salad roll		Meals, Entrees, and Side Dishes	shellfish	count descriptor removed; composite roll
+hamburger	170328	Fast Foods	red_meat	canonical prepared hamburger
+lamb shank		Lamb, Veal, and Game Products	red_meat	no safe exact FDC row
+lasagna	169850	Restaurant Foods	grain_starch	canonical prepared meat lasagna
+lobster	2747657	Finfish and Shellfish Products	shellfish	exact source profile
+meatball	171638	Sausages and Luncheon Meats	red_meat	canonical prepared meatball
+meatloaf		Meals, Entrees, and Side Dishes	red_meat	corrects vegetarian-legume lexical mismatch
+nature valley granola bar	167542	Snacks	grain_starch	brand removed; plain hard granola bar
+near whole chicken	171450	Poultry Products	poultry	count descriptor removed; roasted meat and skin
+plain toast	174925	Baked Products	grain_starch	canonical toasted white bread
+pork feet		Pork Products	pork	no safe exact FDC row
+red apple	168204	Fruits and Fruit Juices	fruit	color descriptor removed
+red yellow apple	168204	Fruits and Fruit Juices	fruit	color descriptors removed
+rib		Lamb, Veal, and Game Products	red_meat	ambiguous species; family only
+salad beef strip	172164	Beef Products	red_meat	salad context removed; cooked beef strip
+salad chicken strip	171477	Poultry Products	poultry	salad context removed; cooked chicken strip
+shrimp salad roll		Meals, Entrees, and Side Dishes	shellfish	composite roll; family only
+stack of tofu 4pc	172448	Legumes and Legume Products	legume	count descriptor removed; firm tofu
+steak	172164	Beef Products	red_meat	exact source profile
+steak piece	172164	Beef Products	red_meat	count descriptor removed
+toast with strawberry jam		Baked Products	grain_starch	composite toast; no single safe exact row
+veal kebab piece		Lamb, Veal, and Game Products	red_meat	count descriptor removed; family only
+chocolate ice cream	168809	Sweets	dessert	corrects dairy-family rule precedence
+vanilla ice cream	167575	Sweets	dessert	corrects dairy-family rule precedence

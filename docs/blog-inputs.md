@@ -363,3 +363,159 @@ specialist sequentially before MLX Qwen to avoid overlapping their peak
 memory. The trained checkpoint exported to Core ML and ran a real macOS image
 through the Swift integration in 0.67 seconds; iPhone thermals and memory remain
 a physical-device gate, not something inferred from the Mac.
+
+## Why the next pipeline removed nutrition from the language model
+
+The next redesign started from an error taxonomy rather than another MAE
+ablation. Confusing raspberries with tomatoes is a perception failure; putting
+fat in strawberries or assigning cucumber the density of cake is a knowledge
+failure. A single photo-to-JSON decoder can make all three, and a total-calorie
+headline can hide them when errors cancel.
+
+The Stage-0 audit made that distinction concrete on the existing 325 paired v8
+outputs: 12.9% gram-weighted hard-misidentification, 40.5% per-item density
+violations, and 31.6% Atwater inconsistencies. Only 39 dishes were clean on all
+three checks. Those are intentionally harsher metrics than the shipping 56.8
+kcal MAE; they answer whether an output is trustworthy, not merely whether its
+total happened to land nearby.
+
+The replacement decoder initially emitted names and coarse 5% shares, but the
+full run exposed a small-model trap: 18.8% of outputs failed the schema and
+25.2% needed repair because the model also had to do exact sum-to-100
+arithmetic. The v2 contract emits names and positive relative portion units;
+deterministic code now owns normalization. Absolute mass comes from a tiny
+quantile regressor; nutrition comes from a pruned USDA
+Foundation/SR Legacy/FNDDS SQLite database; Swift performs the multiplication.
+That makes nutrient-distribution and calorie-density hallucinations impossible
+at the architecture boundary. An unresolved name stays unresolved—never an
+all-zero ingredient—and category defaults are visibly marked estimated.
+
+The mass bake-off also produced a useful non-obvious result. The existing S1
+head beat Qwen's implied mass by 7.8 g MAE paired (35.9 vs 43.7 g), so it earned
+the authoritative role, but its 74.2% P10–P90 coverage narrowly failed the
+75–85% honesty band. Retargeting S1 to mass only and calibrating the interval
+improved untouched-test MAE to 34.3 g with 77.2% coverage. The model did not need
+to become dramatically more accurate to become more useful; its uncertainty
+needed to become measurable and honest.
+
+The final audit rebuilt the alias table from approved training vocabulary only,
+with no OOD ground-truth or v8 evaluation-output leakage. Just
+17.6% of v8-emitted items hit exact/fuzzy rungs, 82.1% needed a category
+median, and 0.3% stayed unresolved. That turns the alias table and one-tap
+resolution UI from cleanup
+work into core product behavior. The code can now run the whole deterministic
+spine in shadow mode against v8 names, but the shipping selection remains v8
+until a newly trained identification adapter wins both the OOD gate and the
+physical-device session.
+
+The first SCALE result was also a warning against trusting one camera rig.
+SCALE-v1 looked strong on Nutrition5K—34.3 g MAE—but scored about 300 g MAE
+with only 6% interval coverage on NutritionVerse phone photos. Adding more
+angles from the same cafeteria rig made it worse. A source-balanced run using
+NutritionVerse official Train reduced its untouched official-Val equal-scene
+MAE to 96.2 g while retaining 36.9 g on Nutrition5K overheads. This was not an
+architecture breakthrough; it was evidence that measured domain diversity
+matters more than multiplying near-duplicate viewpoints.
+
+Calibration then revealed the same correlation trap in a different form.
+Treating four views of one dish as four independent examples understated
+uncertainty, while applying the largest domain margin everywhere made the rig
+benchmark absurdly conservative. The corrected method gives each dish total
+weight one and uses dish count for the finite-sample conformal rank. Held-out
+coverage landed at 80.3% for Nutrition5K overhead, 82.4% for its side views,
+and 81.3% for NutritionVerse. The product defaults to the consumer-phone
+margin; source-specific reporting keeps that choice from flattering a
+controlled-rig benchmark.
+
+The deterministic resolver then produced a particularly useful plumbing
+failure. The SQLite build claimed Foundation, SR Legacy, and FNDDS, but its
+contents had only Foundation and SR rows. FNDDS's CSV stores legacy nutrient
+numbers such as 203/204/205 in a column named `nutrient_id`; the importer
+accepted only the modern 1003/1004/1005 IDs, so all 5,430 composite profiles
+were silently discarded. Supporting both identifiers and the FNDDS category
+code expanded the database from 8,159 foods/25 categories to 13,589/196.
+Train-only reviewed aliases then made every NutritionVerse official-Val scene
+assemblable and improved the shared-clean Nutrition5K oracle from 12.4 to
+10.3 kcal MAE with true mass.
+
+Completeness exposed a benchmark defect that the incomplete resolver had
+hidden: NutritionVerse's `near-whole-chicken` template says 480 kcal and
+64.39 g carbohydrate per 100 g. It appears 40 times in official Train and
+seven official-Val scenes, and dominates the raw oracle error. The raw
+official-Val score remains primary; a separately labelled quality slice is
+derived from Train only. This is a good example of why increasing coverage can
+make a headline metric worse while making the evaluation much more honest.
+
+A cheap SCALE point-calibration attempt was also rejected cleanly. Five-fold
+group CV selected a phone-domain log-affine correction, but frozen
+NutritionVerse MAE worsened from 96.2 to 98.8 g and interval coverage fell from
+81.3% to 75.4%. The unchanged Probe B remains authoritative.
+
+The next external benchmark made the overfit impossible to rationalize away.
+Before using Food Portion Benchmark for training, the existing SCALE model was
+run zero-shot on its clean-weight official test subset: 2,123 images across 164
+food/portion groups. Equal-group MAE was 165.7 g, MAPE 55.3%, and interval
+coverage only 20.9%. The model's median prediction was 89 g for a dataset whose
+median truth was 206 g, and it correctly ranked small, average, and big portions
+for only 22 of 40 complete food triads. A post-hoc multiplier still left about
+106 g MAE. This is the useful kind of bad result: it says more calibration
+cannot save a representation that barely reacts to portion size, and it
+preserves a clean benchmark for the FPB-trained probe.
+
+Once FPB finished downloading, its raw split needed two leakage fixes before
+training. The old grouping key collapsed independent captures into just
+food-size buckets, and two transformed train images came from captures also
+present in official test. Source-capture grouping restored 8,404 independent
+train groups, the two overlaps were excluded, and official validation remained
+validation rather than being accidentally folded into training.
+
+The resulting matched experiment made the value of domain data unusually
+clear. Center-crop Probe C1 cut frozen FPB equal-group MAE from 165.7 to
+73.3 g and repaired small/average/big ordering from 23/40 to 37/40 families,
+while Nutrition5K overhead moved from 36.9 to 40.1 g and NutritionVerse from
+96.2 to 99.0 g. Letterbox Probe C2 did slightly better on Nutrition5K
+(37.5 g) but worse on FPB (80.0 g) and NutritionVerse (100.3 g), so preserving
+the full frame was not worth the cross-domain trade. FPB supervision, not the
+geometry change, supplied most of the improvement.
+
+Calibration revealed the remaining product problem. A pooled
+width-normalized phone-domain conformal rule was dominated by FPB's 2,170
+validation groups and covered only 70.1% of frozen NutritionVerse. A
+max-source-safe rule restored NutritionVerse to 84.0% but covered 97.3% of FPB,
+making many intervals deliberately wide. That is not a reason to tune on the
+test set; it is evidence that the confirm/adjust state must exist when the
+model admits uncertainty.
+
+A deterministic one-view-per-scene screen also closed the missing
+NutritionVerse v8 mass comparison without paying for four long-form Qwen
+generations per scene. On 66 shared valid scenes, v8's summed ingredient grams
+missed by 156.8 g on average while C1 missed by 88.4 g; C1 won two-thirds of
+the paired scenes. That result clarifies the bottleneck: the specialist is now
+better than the monolith at mass itself, but resolver/density/assembly errors
+still prevent the full factored candidate from beating v8 calories.
+
+The next review forced that last sentence into arithmetic rather than a
+single-bottleneck slogan. With C1 mass, the true-mass calorie floor was 53.5%
+of total error on all complete Nutrition5K groups and 59.7% on raw
+NutritionVerse, but only 26.7% on the clean shared-72 slice and 41.0% on the
+NutritionVerse quality slice. Mass remains the larger error on clean data;
+identification and resolution dominate enough broad, messy data that the
+pre-registered rule resumed IDENTIFY-v2 in parallel.
+
+That restart immediately paid for the tiny-overfit discipline. The old perfect
+32-image memorization result belonged to the retired percentage-output
+contract. A new `portion_units` run failed before its first update because
+uncapped FoodSeg images produced more vision features than survived the
+2,048-token sequence truncation. Rebuilding the probe and primary corpus with
+a 1,024-pixel edge cap made all 32 smoke cases consistent. A short probe caught
+the mismatch before it could waste a full multi-hour LoRA run.
+
+The serving-prior gate also became less nonsensical without becoming a model.
+USDA sometimes lists both a 112 g pizza slice and an 897 g whole pizza; taking
+their median had invented a 504.5 g serving that nobody observed. The importer
+now selects one observed serving kind using supporting observation count, and
+Swift sums one selected serving per resolved item rather than dividing each
+serving by a predicted share and averaging. On C1, eligible-record gate fires
+fell from 36.7% to 29.2% on Nutrition5K and from 16.6% to 4.2% on
+NutritionVerse (11.6% to 11.2% on FPB). The prior still loses badly as a mass
+estimate, so it remains confirmation-only evidence.

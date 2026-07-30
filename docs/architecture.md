@@ -1,5 +1,11 @@
 # Architecture
 
+> **Migration note (2026-07-29):** the approved factored-pipeline contract is
+> specified in `docs/specs/2026-07-29-factored-pipeline-design.md`. Its
+> deterministic spine exists in shadow mode, but this document continues to
+> describe the shipping v8 system until the factored pipeline passes every
+> Stage-3 model and device gate.
+
 SeeCal is two independent halves that only agree to meet at one narrow
 contract: **model artifacts and an exact prompt string**. Everything
 upstream of that (dataset, training) and downstream of it (UI, persistence)

@@ -1,0 +1,39 @@
+name	fdc_id	review_note
+asian pear	167776	official-Train label; canonical raw pear
+captain crunch granola bar	167542	official-Train label; branded granola bar to plain hard granola bar
+carrot	170393	official-Train label; exact source profile
+chicken breast	171477	official-Train label; canonical cooked chicken breast
+chicken leg	173617	official-Train label; canonical roasted leg meat and skin
+chicken sandwich	170790	official-Train label; canonical prepared chicken sandwich
+chicken wing	173630	official-Train label; canonical roasted wing meat and skin
+chocolate granola bar	167545	official-Train label; chocolate-coated granola bar
+corn	168538	official-Train label; exact source profile
+costco california sushi roll 1	2708961	official-Train label; brand and count removed; FNDDS California sushi roll
+costco cucumber sushi roll 1	2708966	official-Train label; brand and count removed; FNDDS vegetable sushi roll
+costco egg	173424	official-Train label; brand removed; cooked whole egg
+costco salad sushi roll 1	2708966	official-Train label; brand and count removed; FNDDS vegetable sushi roll
+costco shrimp sushi roll 1	2708964	official-Train label; brand and count removed; FNDDS shrimp sushi roll
+costco tuna rice ball	2708965	official-Train label; brand removed; FNDDS tuna-and-rice sushi profile
+crispy pork rib	167893	official-Train label; exact 27.68/11.80/0.00 macro-signature match to cooked pan-fried pork rib chop
+cucumber piece	168409	official-Train label; count descriptor removed
+french fry	169836	official-Train label; canonical restaurant french fries
+half bread loaf	174924	official-Train label; count descriptor removed
+half minced shrimp	175180	official-Train label; count and preparation descriptor removed
+hamburger	170328	official-Train label; canonical prepared hamburger
+lasagna	169850	official-Train label; canonical prepared meat lasagna
+lobster	2747657	official-Train label; exact source profile
+meatball	171638	official-Train label; canonical prepared meatball
+meatloaf	2706582	official-Train label; FNDDS meat loaf with beef, veal, and pork
+nature valley granola bar	167542	official-Train label; brand removed; plain hard granola bar
+near whole chicken	171450	official-Train label; count descriptor removed; roasted meat and skin
+plain toast	174925	official-Train label; canonical toasted white bread
+pork feet	2705898	official-Train label; FNDDS pig's feet
+red apple	168204	official-Train label; color descriptor removed
+red yellow apple	168204	official-Train label; color descriptors removed
+salad beef strip	172164	official-Train label; salad context removed; cooked beef strip
+salad chicken strip	171477	official-Train label; salad context removed; cooked chicken strip
+stack of tofu 4pc	172448	official-Train label; count descriptor removed; firm tofu
+steak	172164	official-Train label; exact source profile
+steak piece	172164	official-Train label; count descriptor removed
+toast with strawberry jam	2709138	official-Train label; FNDDS jelly sandwich on white bread
+veal kebab piece	173816	official-Train label; exact 30.10/11.39/0.00 macro-signature match to cooked composite veal

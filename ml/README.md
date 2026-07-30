@@ -88,6 +88,155 @@ export MODEL_PATH=~/models/mlx-community/Qwen3.5-4B-MLX-4bit   # printed by down
 ./convert.sh adapters_v5                     # 7. convert for iOS
 ```
 
+## Factored-pipeline track (not shipping yet)
+
+The approved migration in
+`../docs/specs/2026-07-29-factored-pipeline-design.md` separates IDENTIFY,
+SCALE, RESOLVE, and ASSEMBLE. Its Stage-0/1 commands are:
+
+```bash
+./download_fdc.sh
+.venv/bin/python download_foodseg103.py
+./download_nutritionverse_real.sh
+.venv/bin/python make_nutritionverse_eval.py
+.venv/bin/python make_alias_table.py \
+  --database datasets/fdc/seecal-nutrition.sqlite \
+  --reviewed-aliases factored_pipeline/training_aliases_v1.tsv \
+  --misses datasets/fdc/training-alias-misses-v1.tsv
+.venv/bin/python make_alias_table.py \
+  --database datasets/fdc/seecal-nutrition.sqlite \
+  --reviewed-aliases factored_pipeline/nutritionverse_train_aliases_v1.tsv \
+  --reviewed-source reviewed_nutritionverse_official_train_v1 \
+  --misses datasets/fdc/nutritionverse-train-alias-misses-v1.tsv
+.venv/bin/python make_identify_data.py \
+  --foodseg-root datasets/foodseg103 \
+  --frb-teacher-manifest \
+    datasets/food_recognition_2022/derived/pilot-5000/pilot-5000-enriched.jsonl \
+  --frb-require-fully-resolved \
+  --resolver-database datasets/fdc/seecal-nutrition.sqlite \
+  --max-image-edge 1024 \
+  --output-dir finetune_data_id_v2_frb_resolved
+.venv/bin/python check_prompt_parity.py \
+  --data finetune_data_id_v2_frb_resolved/train.jsonl --records 8
+.venv/bin/python smoke_test.py \
+  --data finetune_data_id_v2_frb_resolved/train.jsonl --records 8 --batch-size 4
+.venv/bin/python make_scale_v2_data.py --output-dir datasets/scale_v2
+.venv/bin/python -m visual_specialist.scale train \
+  --manifest-dir datasets/scale_v2 \
+  --output-dir runs/factored/scale-v2-probe \
+  --sampling source-group-balanced --ordered-quantiles
+```
+
+`score_harness.py {audit,resolve,mass}` runs the paired E0/E1/E2 contract.
+`identify_infer.py` is the new-schema evaluation path once an IDENTIFY
+adapter exists. Generated data, USDA sources/database, adapters, and run
+artifacts are intentionally gitignored. The current v8 adapter and specialist
+remain the build/release selection until every gate in the design passes.
+`download_foodseg103.py` pins the Apache-2.0 Hugging Face mirror at revision
+`34e1208e14bc3595d544fc8c3f3c6673253fd9ef`, records the four source-object
+SHA-256 values, and materializes the 4,983/2,135 image-mask splits locally.
+The upstream project archive returned HTTP 502 during execution; the pinned
+mirror contains the same 7,118-record dataset and exact 104-label mask schema.
+The FNDDS release uses legacy nutrient numbers (203/204/205) in its
+`nutrient_id` column. `make_fdc_db.py` intentionally accepts both those and
+the modern 1003/1004/1005 IDs; the regression test prevents silently dropping
+all FNDDS composites again. The resulting database has 13,589 profiles and
+196 category medians before reviewed aliases.
+`download_nutritionverse_real.sh` pins the public Kaggle dataset to v2 and
+`make_nutritionverse_eval.py` derives IDENTIFY, monolith-baseline, and SCALE
+manifests for all 889 OOD images while keeping the 225 dish IDs explicit for
+paired aggregation.
+
+SCALE-v2 keeps licensing boundaries explicit. The default manifest uses only
+permissive Nutrition5K data. For the free, non-commercial SeeCal track,
+official NutritionVerse Train and Food Portion Benchmark can be included while
+their held-out data stays untouched:
+
+```bash
+.venv/bin/hf download issai/Food_Portion_Benchmark \
+  --repo-type dataset \
+  --revision 53fcacf4b9dbe24c1c6ffa5a2cdb9d8c502e482f \
+  --include 'FPB_Dataset/RGB/train/**' \
+  --include 'FPB_Dataset/RGB/val/**' \
+  --local-dir datasets/food-portion-benchmark
+.venv/bin/python make_fpb_scale_data.py \
+  --dataset-root <pinned-snapshot-or-local-dir> \
+  --skip-incomplete-weights \
+  --exclude-test-capture-overlap
+.venv/bin/python make_scale_v2_data.py \
+  --nutritionverse-manifest datasets/nutritionverse-real/scale-eval-v2-1024.jsonl \
+  --include-noncommercial-training \
+  --fpb-manifest-dir datasets/food-portion-benchmark/scale \
+  --output-dir datasets/scale_v2_nc_fpb_1024
+```
+
+Before training on FPB, keep its official test split frozen and score the
+current checkpoint zero-shot. The converter reports and excludes records with
+explicit unknown (`-1`) object weights instead of summing partial targets:
+
+```bash
+.venv/bin/python make_fpb_scale_data.py \
+  --dataset-root <pinned-snapshot-or-local-dir> \
+  --output-dir datasets/food-portion-benchmark/scale-zero-shot \
+  --splits test --skip-incomplete-weights --grouping food-size
+.venv/bin/python -m visual_specialist.scale evaluate \
+  --checkpoint runs/factored/scale-v2-probe-b-nv-1024/best.pt \
+  --manifest datasets/food-portion-benchmark/scale-zero-shot/test.jsonl \
+  --output runs/factored/scale-v2-probe-b-nv-1024/eval-fpb-test-zero-shot.json \
+  --include-all-views
+```
+
+The frozen result is 2,123 usable images / 164 groups, 165.7 g equal-group
+MAE, 55.3% MAPE, and 20.9% interval coverage. FPB train/validation therefore
+belongs in the next representation-training probe; simple point calibration
+is not sufficient.
+
+Training manifests use original-capture groups rather than the legacy
+food-size benchmark groups. They contain 8,929 clean train records / 8,404
+groups and 2,170 clean validation records / 2,170 groups. Two transformed train
+images derived from captures also present in official test are excluded. FPB
+official validation stays in SCALE validation; it is never folded into
+training.
+
+The zero-training follow-up audits are reproducible:
+
+```bash
+.venv/bin/python scale_occupancy_audit.py
+.venv/bin/python portion_prior_audit.py
+```
+
+The occupancy audit uses depth food footprint for Nutrition5K, COCO masks for
+NutritionVerse, and YOLO box union for FPB. It reports raw, current-center-crop,
+and simulated-letterbox correlations plus group-level mass support. The portion
+audit uses oracle names/shares and verifies that raw USDA typical servings are
+not safe as a production fallback.
+
+Probe C uses two matched arms after FPB train/validation are available. Both
+use `--checkpoint-selection minimax-source-mape --pareto-tolerance 0.10`;
+C1 uses `--geometry center-crop`, and C2 changes only that flag to
+`--geometry letterbox`. Checkpoints record their input geometry, and evaluation
+uses it automatically unless explicitly overridden.
+
+Probe C is complete. C1 is selected: it reaches 40.1 g Nutrition5K overhead
+MAE, 42.0 g Nutrition5K side equal-group MAE, 99.0 g NutritionVerse
+official-Val equal-scene MAE, and 73.3 g FPB equal-group MAE. C2 improves the
+two Nutrition5K values to 37.5/41.0 g but is worse on NutritionVerse (100.3 g)
+and FPB (80.0 g), so it is rejected by worst-source MAPE. C1 repairs FPB
+ordering from 23/40 to 37/40 complete size triads; reproduce with:
+
+```bash
+.venv/bin/python scale_ordering_audit.py \
+  runs/factored/scale-v2-probe-b-nv-1024/eval-fpb-test-zero-shot.json \
+  runs/factored/scale-v2-probe-c1-fpb-center/eval-fpb-test-calibrated.json \
+  runs/factored/scale-v2-probe-c2-fpb-letterbox/eval-fpb-test-calibrated.json
+```
+
+NutritionVerse official Val is always a frozen test split. Related views are
+grouped before splitting, and source/group-balanced sampling prevents the
+39k-view Nutrition5K rig from drowning out the smaller phone-photo sources.
+These datasets and their derived manifests are gitignored and are never
+bundled with the app.
+
 ### 4. `./prep.sh` — select images, build fine-tune JSONL, smoke test
 
 ```bash

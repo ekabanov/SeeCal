@@ -38,6 +38,7 @@ ml/datasets/
 # references the gitignored negatives images.
 ml/finetune_data_v7*/
 ml/finetune_data_v8*/
+ml/finetune_data_id*/
 
 # Training outputs / model weights
 *.safetensors
