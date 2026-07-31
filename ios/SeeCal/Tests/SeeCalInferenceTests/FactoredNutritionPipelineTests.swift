@@ -34,6 +34,17 @@ private struct StubScalePredictor: ScalePredicting {
     }
 }
 
+private actor PromptCapturingFactoredEngine: NativeQwenVisionEngine {
+    private(set) var prompts: [String] = []
+
+    func run(imagePath: String, prompt: String) async throws -> String {
+        prompts.append(prompt)
+        return #"{"not_food":false,"container":"plate","items":[{"name":"pastry","portion_units":20}]}"#
+    }
+
+    func lastPrompt() -> String? { prompts.last }
+}
+
 final class FactoredNutritionPipelineTests: XCTestCase {
     func testPromptMatchesFrozenPythonContract() {
         XCTAssertEqual(
@@ -46,6 +57,33 @@ final class FactoredNutritionPipelineTests: XCTestCase {
                 "portion_units must be an integer from 1 to 20 expressing relative visible " +
                 "portion size; the values do not need to sum to any particular number. " +
                 "For a non-food image return not_food true, container other, and an empty items list."
+        )
+        XCTAssertEqual(
+            FactoredIdentificationPrompt.text(userHint: nil),
+            FactoredIdentificationPrompt.text
+        )
+    }
+
+    func testHumanHintIsBoundedAndOnlyAppendedOnRecoveryRequest() async throws {
+        let engine = PromptCapturingFactoredEngine()
+        let identifier = QwenFoodIdentifier(engine: engine)
+        let hint = "  looks like a filled pastry\u{0000}\npossibly custard   " + String(repeating: "x", count: 300)
+        _ = try await identifier.identify(
+            request: FoodScanRequest(
+                imagePath: "/tmp/unused.jpg",
+                mealType: .snack,
+                userHint: hint
+            )
+        )
+        let capturedPrompt = await engine.lastPrompt()
+        let prompt = try XCTUnwrap(capturedPrompt)
+        XCTAssertTrue(prompt.hasPrefix(FactoredIdentificationPrompt.text))
+        XCTAssertTrue(prompt.contains("looks like a filled pastry possibly custard"))
+        XCTAssertFalse(prompt.contains("\npossibly"))
+        XCTAssertFalse(prompt.contains("\u{0000}"))
+        XCTAssertLessThanOrEqual(
+            prompt.count - FactoredIdentificationPrompt.text.count,
+            450
         )
     }
 
@@ -240,6 +278,56 @@ final class FactoredNutritionPipelineTests: XCTestCase {
         XCTAssertNil(meal.items[0].nutrition)
         XCTAssertNil(meal.foodScanResult)
         XCTAssertTrue(meal.confirmationReasons.contains(.unresolvedItem))
+    }
+
+    func testUnresolvedRuntimeRequestsHumanInputInsteadOfGenericFailure() async throws {
+        let identification = try FoodIdentification(
+            notFood: false,
+            container: .plate,
+            items: [
+                IdentifiedFoodItem(name: "known food", sharePercent: 60),
+                IdentifiedFoodItem(name: "unmatched preparation", sharePercent: 40),
+            ]
+        )
+        let profile = try ResolvedNutritionProfile(
+            fdcID: 1,
+            name: "Known food",
+            category: "Fixture",
+            kcalPer100g: 100,
+            proteinPer100g: 10,
+            fatPer100g: 2,
+            carbsPer100g: 13,
+            dataType: "fixture"
+        )
+        let runtime = FactoredNutritionRuntime(
+            pipeline: FactoredNutritionInferencePipeline(
+                identifier: StubFoodIdentifier(identification: identification),
+                scalePredictor: StubScalePredictor(
+                    prediction: try FactoredScalePrediction(
+                        massGrams: .init(estimate: 200, low: 100, high: 300)
+                    )
+                ),
+                resolver: StubNutritionResolver(resolutions: [
+                    "known food": .init(
+                        query: "known food",
+                        rung: .exactAlias,
+                        score: 1,
+                        profile: profile,
+                        estimated: false
+                    )
+                ])
+            )
+        )
+
+        do {
+            _ = try await runtime.infer(
+                request: FoodScanRequest(imagePath: "/tmp/unused.jpg", mealType: .snack)
+            )
+            XCTFail("Expected a recoverable human-input request")
+        } catch let InferenceError.humanInputRequired(recognized, unresolved) {
+            XCTAssertEqual(recognized, ["known food", "unmatched preparation"])
+            XCTAssertEqual(unresolved, ["unmatched preparation"])
+        }
     }
 
     func testScaleDisagreementSumsSelectedPortionsWithoutShareDivision() throws {

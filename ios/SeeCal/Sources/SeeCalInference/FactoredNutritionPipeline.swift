@@ -305,6 +305,32 @@ public enum FactoredIdentificationPrompt {
         "portion size; the values do not need to sum to any particular number. " +
         "For a non-food image return not_food true, container other, and an empty items list."
 
+    /// The trained, byte-identical prompt remains untouched for normal scans.
+    /// A hint is appended only after deterministic resolution explicitly asks
+    /// the person for help. Whitespace is flattened and length is bounded so a
+    /// broad description cannot accidentally consume the generation budget.
+    public static func text(userHint: String?) -> String {
+        guard let bounded = normalizedUserHint(userHint) else { return text }
+        return text +
+            "\n\nHuman-provided context (may be broad or imperfect): \(bounded). " +
+            "Use it as supporting evidence while inspecting the image. Return the exact same JSON schema."
+    }
+
+    /// One normalization contract for recovery and proactive estimate fixes.
+    /// Control characters become spaces before whitespace is collapsed; the
+    /// resulting inference-only context is capped independently of UI widgets.
+    public static func normalizedUserHint(_ userHint: String?) -> String? {
+        guard let userHint else { return nil }
+        let withoutControls = userHint.unicodeScalars
+            .map { CharacterSet.controlCharacters.contains($0) ? " " : String($0) }
+            .joined()
+        let normalized = withoutControls
+            .split(whereSeparator: \Character.isWhitespace)
+            .joined(separator: " ")
+        guard !normalized.isEmpty else { return nil }
+        return String(normalized.prefix(240))
+    }
+
     /// Byte-identical historical prompt for the already-trained percentage adapter.
     public static let legacyPercentageText =
         "Identify the visible food without estimating grams, calories, or nutrients. " +

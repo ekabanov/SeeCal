@@ -27,6 +27,9 @@ struct AnalyzingScreen: View {
     /// Retains the first-use preparation row after it completes so the list
     /// does not jump while the first analysis is in progress.
     @State private var showsPreparationStage = false
+    /// Optional context supplied only when deterministic nutrition resolution
+    /// cannot match an otherwise useful IDENTIFY result.
+    @State private var humanHint = ""
 
     /// Rough vision-prefill → token-generation handoff. Prefill is a few seconds;
     /// generation dominates the ~15–20 s wait, so the pivot is early.
@@ -44,7 +47,14 @@ struct AnalyzingScreen: View {
                 .padding(.top, 22)
                 .padding(.horizontal, 34)
 
-            if isNotFood {
+            if let help = humanHelpState {
+                humanHelpBlock(
+                    recognizedItems: help.recognized,
+                    unresolvedItems: help.unresolved
+                )
+                    .padding(.top, 26)
+                    .padding(.horizontal, 34)
+            } else if isNotFood {
                 notFoodBlock
                     .padding(.top, 26)
                     .padding(.horizontal, 34)
@@ -92,7 +102,8 @@ struct AnalyzingScreen: View {
 
     private var photoPath: String? {
         switch controller.phase {
-        case let .analyzing(photoPath), let .error(_, photoPath), let .notFood(photoPath):
+        case let .analyzing(photoPath), let .error(_, photoPath), let .notFood(photoPath),
+             let .needsHumanInput(_, _, photoPath):
             return photoPath
         case let .presentingResult(draft), let .ready(draft):
             return draft.imagePath
@@ -104,6 +115,13 @@ struct AnalyzingScreen: View {
     private var isNotFood: Bool {
         if case .notFood = controller.phase { return true }
         return false
+    }
+
+    private var humanHelpState: (recognized: [String], unresolved: [String])? {
+        guard case let .needsHumanInput(recognized, unresolved, _) = controller.phase else {
+            return nil
+        }
+        return (recognized, unresolved)
     }
 
     private var isRunning: Bool {
@@ -341,6 +359,99 @@ struct AnalyzingScreen: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .accessibilityElement(children: .contain)
+    }
+
+    // MARK: - Human-assisted recovery
+
+    private func humanHelpBlock(
+        recognizedItems: [String],
+        unresolvedItems: [String]
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text("Help me understand this meal")
+                    .font(.system(size: 17, weight: .bold))
+                    .foregroundStyle(Theme.appInk)
+                Text(humanHelpMessage(
+                    recognizedItems: recognizedItems,
+                    unresolvedItems: unresolvedItems
+                ))
+                    .font(.system(size: 13))
+                    .foregroundStyle(Theme.appInk2)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            TextField(
+                "For example: glazed pastry, chicken curry, oat yogurt…",
+                text: $humanHint,
+                axis: .vertical
+            )
+            .lineLimit(2 ... 4)
+            .font(.system(size: 15))
+            .padding(.horizontal, 14)
+            .padding(.vertical, 12)
+            .background(Theme.appCard)
+            .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            .overlay {
+                RoundedRectangle(cornerRadius: 14, style: .continuous)
+                    .stroke(Theme.appLine, lineWidth: 1)
+            }
+#if os(iOS)
+            .textInputAutocapitalization(.sentences)
+            .submitLabel(.go)
+#endif
+            .onSubmit(submitHumanHint)
+            .accessibilityLabel("Meal hint")
+            .accessibilityHint("Describe the food in broad terms to help analyze the same photo")
+
+            Button(action: submitHumanHint) {
+                Text("Analyze with hint")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(.white)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(Theme.basil)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .disabled(trimmedHumanHint.isEmpty)
+            .opacity(trimmedHumanHint.isEmpty ? 0.45 : 1)
+            .accessibilityHint("Uses your description to analyze the same photo again")
+
+            Button {
+                controller.newScanAfterError()
+            } label: {
+                Text("New scan")
+                    .font(.system(size: 16, weight: .bold))
+                    .foregroundStyle(Theme.appInk)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 14)
+                    .background(Theme.appCard)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint("Discards this photo and opens the camera")
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var trimmedHumanHint: String {
+        humanHint.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func submitHumanHint() {
+        guard !trimmedHumanHint.isEmpty else { return }
+        controller.submitHumanHint(trimmedHumanHint)
+    }
+
+    private func humanHelpMessage(
+        recognizedItems: [String],
+        unresolvedItems: [String]
+    ) -> String {
+        let recognized = recognizedItems.joined(separator: ", ")
+        let unresolved = unresolvedItems.joined(separator: ", ")
+        return "I recognized \(recognized), but couldn’t match \(unresolved) to local nutrition data. " +
+            "Add a broad description or preparation detail; you don’t need to enter exact amounts."
     }
 
     // MARK: - Error + Retry (spec §5: same staged UI, runtime's message)

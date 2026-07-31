@@ -95,6 +95,14 @@ public final class ScanFlowController: ObservableObject {
         /// Inference failed; the analyzing screen shows the runtime's message
         /// with a Retry affordance bound to the same photo.
         case error(message: String, photoPath: String)
+        /// IDENTIFY produced useful food names, but one or more could not be
+        /// matched to local nutrition data. Keep the photo and ask the person
+        /// for broad context instead of presenting a terminal red error.
+        case needsHumanInput(
+            recognizedItems: [String],
+            unresolvedItems: [String],
+            photoPath: String
+        )
         /// The model refused: the photo isn't food (v7 `{"not_food": true}`).
         /// A correct terminal answer — the analyzing screen shows a friendly
         /// "No food detected" state (New scan / Try again on the same photo),
@@ -149,6 +157,7 @@ public final class ScanFlowController: ObservableObject {
     private var barcodeLookupTask: Task<Void, Never>?
     private var currentBarcode: String?
     private var pendingBarcode: String?
+    private var isEstimateImprovementInFlight = false
 
     public init(
         viewModel: AppViewModel,
@@ -217,7 +226,7 @@ public final class ScanFlowController: ObservableObject {
             isScanSurfaceVisible = true
         case .capturing, .analyzing:
             isScanSurfaceVisible = true
-        case .error, .notFood:
+        case .error, .needsHumanInput, .notFood:
             // A failed inference (or a not-food refusal) must not dead-end the
             // flow: the FAB starts over instead of re-showing the same screen.
             newScanAfterError()
@@ -234,13 +243,15 @@ public final class ScanFlowController: ObservableObject {
         }
     }
 
-    /// "New scan" from a terminal analyzing state (`.error` or `.notFood`), and
+    /// "New scan" from a terminal analyzing state (`.error`, human help, or
+    /// `.notFood`), and
     /// the FAB while in one: abandon that photo — deleting its file — and return
     /// to the camera for a fresh capture.
     public func newScanAfterError() {
         let photoPath: String
         switch phase {
-        case let .error(_, path), let .notFood(path):
+        case let .error(_, path), let .notFood(path),
+             let .needsHumanInput(_, _, path):
             photoPath = path
         default:
             return
@@ -366,14 +377,112 @@ public final class ScanFlowController: ObservableObject {
         startAnalysis(photoPath: photoPath)
     }
 
-    private func startAnalysis(photoPath: String) {
+    /// Retry the same photo with optional human context. The hint is held only
+    /// in memory for this request, never persisted or written to diagnostics.
+    public func submitHumanHint(_ hint: String) {
+        guard case let .needsHumanInput(_, _, photoPath) = phase else { return }
+        guard let normalized = FactoredIdentificationPrompt.normalizedUserHint(hint) else { return }
+        SeeCalDiagnostics.record(
+            .notice,
+            category: "scan_flow",
+            name: "human_hint_submitted",
+            fields: diagnosticFields(["character_count": String(normalized.count)])
+        )
+        startAnalysis(photoPath: photoPath, userHint: normalized)
+    }
+
+    /// Proactively improve an otherwise usable fresh photo result. Unlike the
+    /// resolver-triggered help flow, this keeps the current draft and sheet in
+    /// place while the same photo is analyzed. The caller replaces its local
+    /// draft only after this returns successfully, so a failed hint can never
+    /// destroy a usable estimate or the user's edits.
+    public func improveEstimate(with hint: String) async throws -> MealEditDraft {
+        guard !isEstimateImprovementInFlight,
+              inferenceTask == nil,
+              case let .presentingResult(currentDraft) = phase,
+              !currentDraft.isEditingExisting,
+              currentDraft.origin == .photo,
+              let photoPath = currentDraft.imagePath,
+              let mealType = currentDraft.mealType,
+              let normalized = FactoredIdentificationPrompt.normalizedUserHint(hint)
+        else {
+            throw InferenceError.runtimeFailed(
+                "A fresh photo estimate and a non-empty hint are required."
+            )
+        }
+
+        isEstimateImprovementInFlight = true
+        defer { isEstimateImprovementInFlight = false }
+        let startedAt = DispatchTime.now().uptimeNanoseconds
+        SeeCalDiagnostics.record(
+            .notice,
+            category: "scan_flow",
+            name: "estimate_improvement_started",
+            fields: diagnosticFields(["character_count": String(normalized.count)])
+        )
+
+        do {
+            let result = try await inference.infer(request: FoodScanRequest(
+                imagePath: photoPath,
+                mealType: mealType,
+                userHint: normalized
+            ))
+            let improvedDraft = MealEditDraft(
+                scanResult: result,
+                imagePath: photoPath,
+                mealType: mealType,
+                name: Self.mealName(from: result)
+            )
+            SeeCalDiagnostics.record(
+                .notice,
+                category: "scan_flow",
+                name: "estimate_improvement_succeeded",
+                fields: diagnosticFields([
+                    "duration_ms": Self.elapsedMilliseconds(since: startedAt)
+                ])
+            )
+            return improvedDraft
+        } catch let InferenceError.humanInputRequired(recognized, unresolved) {
+            SeeCalDiagnostics.record(
+                .notice,
+                category: "scan_flow",
+                name: "estimate_improvement_still_unresolved",
+                fields: diagnosticFields([
+                    "duration_ms": Self.elapsedMilliseconds(since: startedAt),
+                    "recognized_count": String(recognized.count),
+                    "unresolved_count": String(unresolved.count)
+                ])
+            )
+            throw InferenceError.humanInputRequired(
+                recognizedItems: recognized,
+                unresolvedItems: unresolved
+            )
+        } catch {
+            SeeCalDiagnostics.record(
+                .error,
+                category: "scan_flow",
+                name: "estimate_improvement_failed",
+                fields: diagnosticFields(
+                    ["duration_ms": Self.elapsedMilliseconds(since: startedAt)]
+                        .merging(SeeCalDiagnostics.errorFields(error)) { current, _ in current }
+                )
+            )
+            throw error
+        }
+    }
+
+    private func startAnalysis(photoPath: String, userHint: String? = nil) {
         guard inferenceTask == nil else { return } // one inference at a time
         if diagnosticScanID == nil {
             beginDiagnosticScan(entryPoint: "analysis_without_camera")
         }
         phase = .analyzing(photoPath: photoPath)
         let mealType = Self.mealType(for: now())
-        let request = FoodScanRequest(imagePath: photoPath, mealType: mealType, userHint: nil)
+        let request = FoodScanRequest(
+            imagePath: photoPath,
+            mealType: mealType,
+            userHint: userHint
+        )
         let startedAt = DispatchTime.now().uptimeNanoseconds
         SeeCalDiagnostics.record(
             .notice,
@@ -409,6 +518,24 @@ public final class ScanFlowController: ObservableObject {
                     name: "analysis_not_food",
                     fields: self.diagnosticFields([
                         "duration_ms": Self.elapsedMilliseconds(since: startedAt)
+                    ])
+                )
+            } catch let InferenceError.humanInputRequired(recognized, unresolved) {
+                self.inferenceTask = nil
+                self.phase = .needsHumanInput(
+                    recognizedItems: recognized,
+                    unresolvedItems: unresolved,
+                    photoPath: photoPath
+                )
+                SeeCalDiagnostics.record(
+                    .notice,
+                    category: "scan_flow",
+                    name: "human_input_requested",
+                    fields: self.diagnosticFields([
+                        "duration_ms": Self.elapsedMilliseconds(since: startedAt),
+                        "recognized_count": String(recognized.count),
+                        "unresolved_count": String(unresolved.count),
+                        "had_prior_hint": String(userHint != nil)
                     ])
                 )
             } catch {

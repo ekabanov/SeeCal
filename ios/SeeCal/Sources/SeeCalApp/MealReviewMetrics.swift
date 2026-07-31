@@ -5,6 +5,8 @@ public enum MealReviewAction: String, Equatable, Sendable {
     case draftShown = "draft_shown"
     case itemOpened = "item_opened"
     case replacementSelected = "replacement_selected"
+    case estimateHintOpened = "estimate_hint_opened"
+    case estimateHintSubmitted = "estimate_hint_submitted"
     case amountChanged = "amount_changed"
     case detailsOpened = "details_opened"
     case ingredientAdded = "ingredient_added"
@@ -94,10 +96,11 @@ public final class MealReviewSessionRecorder {
         switch action {
         case .draftShown, .saved, .discarded, .dismissed:
             break
-        case .replacementSelected, .amountChanged, .ingredientAdded, .ingredientDeleted:
+        case .replacementSelected, .estimateHintSubmitted, .amountChanged,
+             .ingredientAdded, .ingredientDeleted:
             actionCount += 1
             correctionActionCount += 1
-        case .itemOpened, .detailsOpened:
+        case .itemOpened, .detailsOpened, .estimateHintOpened:
             actionCount += 1
         case .keyboardUsed:
             guard !usedKeyboard else { return }

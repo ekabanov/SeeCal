@@ -7,6 +7,10 @@ public enum InferenceError: Error, Equatable, CustomStringConvertible, Localized
     case runtimeFailed(String)
     case parsingFailed(String)
     case allRuntimesFailed([RuntimeFailure])
+    /// IDENTIFY succeeded, but deterministic nutrition resolution needs a
+    /// person's context. This is a recoverable product state, not a runtime
+    /// failure: the scan UI keeps the photo and offers a text-hint retry.
+    case humanInputRequired(recognizedItems: [String], unresolvedItems: [String])
     /// The model returned the v7 not-food refusal (`{"not_food": true}`) — the
     /// photo isn't food. A *definitive* answer, not a failure: the orchestrator
     /// surfaces it immediately (no retry, no fallback runtime) and the scan flow
@@ -41,6 +45,10 @@ public enum InferenceError: Error, Equatable, CustomStringConvertible, Localized
                 .map { "\($0.runtimeName): \($0.errorDescription)" }
                 .joined(separator: "; ")
             return "All runtimes failed — \(details)"
+        case let .humanInputRequired(recognizedItems, unresolvedItems):
+            let recognized = recognizedItems.joined(separator: ", ")
+            let unresolved = unresolvedItems.joined(separator: ", ")
+            return "I recognized \(recognized), but need your help matching \(unresolved) to nutrition data."
         case .notFood:
             return "No food detected in the photo"
         }
@@ -139,6 +147,27 @@ public actor RuntimeOrchestrator {
                         ]
                     )
                     throw InferenceError.notFood
+                } catch let InferenceError.humanInputRequired(recognized, unresolved) {
+                    // A human can resolve this without recapturing the photo.
+                    // Preserve the structured state instead of flattening it
+                    // into allRuntimesFailed or falling through to another
+                    // runtime that would discard the useful identification.
+                    SeeCalDiagnostics.record(
+                        .notice,
+                        category: "inference",
+                        name: "runtime_requested_human_input",
+                        fields: [
+                            "runtime": runtime.name,
+                            "attempt": String(attempt + 1),
+                            "recognized_count": String(recognized.count),
+                            "unresolved_count": String(unresolved.count),
+                            "duration_ms": Self.elapsedMilliseconds(since: attemptStartedAt)
+                        ]
+                    )
+                    throw InferenceError.humanInputRequired(
+                        recognizedItems: recognized,
+                        unresolvedItems: unresolved
+                    )
                 } catch {
                     lastError = error
                     SeeCalDiagnostics.record(

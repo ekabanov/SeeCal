@@ -170,7 +170,7 @@ public struct QwenFoodIdentifier: FoodIdentifying {
     public func identify(request: FoodScanRequest) async throws -> FoodIdentification {
         let raw = try await engine.run(
             imagePath: request.imagePath,
-            prompt: FactoredIdentificationPrompt.text
+            prompt: FactoredIdentificationPrompt.text(userHint: request.userHint)
         )
         return try IdentificationJSONParser.parseStrict(raw)
     }
@@ -249,9 +249,9 @@ public struct FactoredNutritionRuntime: InferenceRuntime {
                 let unresolved = meal.items
                     .filter { $0.nutrition == nil }
                     .map(\.identification.name)
-                    .joined(separator: ", ")
-                throw InferenceError.runtimeFailed(
-                    "Nutrition lookup needs manual confirmation for: \(unresolved)"
+                throw InferenceError.humanInputRequired(
+                    recognizedItems: meal.items.map(\.identification.name),
+                    unresolvedItems: unresolved
                 )
             }
             SeeCalDiagnostics.record(

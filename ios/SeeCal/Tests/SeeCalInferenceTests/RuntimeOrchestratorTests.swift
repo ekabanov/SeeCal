@@ -35,6 +35,19 @@ private struct SlowRuntime: InferenceRuntime {
     }
 }
 
+private struct HumanHelpRuntime: InferenceRuntime {
+    let name = "human-help"
+    let modelFamily = "factored"
+
+    func isAvailable() async -> Bool { true }
+    func infer(request: FoodScanRequest) async throws -> FoodScanResult {
+        throw InferenceError.humanInputRequired(
+            recognizedItems: ["food", "unknown preparation"],
+            unresolvedItems: ["unknown preparation"]
+        )
+    }
+}
+
 final class RuntimeOrchestratorTests: XCTestCase {
     func testFallsBackToSecondRuntime() async throws {
         let validJSON = """
@@ -77,6 +90,24 @@ final class RuntimeOrchestratorTests: XCTestCase {
             XCTFail("Expected .notFood to be rethrown, not a fallback food result")
         } catch InferenceError.notFood {
             // expected
+        }
+    }
+
+    func testHumanInputRequestRemainsStructuredAndDoesNotFallThrough() async throws {
+        let fallback = MLXQwenRuntime(engine: StubEngine(output: "not valid JSON"))
+        let orchestrator = RuntimeOrchestrator(
+            runtimes: [HumanHelpRuntime(), fallback],
+            timeoutNanoseconds: 1_000_000_000
+        )
+
+        do {
+            _ = try await orchestrator.infer(
+                request: FoodScanRequest(imagePath: "/tmp/a.jpg", mealType: .lunch)
+            )
+            XCTFail("Expected structured human-input request")
+        } catch let InferenceError.humanInputRequired(recognized, unresolved) {
+            XCTAssertEqual(recognized, ["food", "unknown preparation"])
+            XCTAssertEqual(unresolved, ["unknown preparation"])
         }
     }
 

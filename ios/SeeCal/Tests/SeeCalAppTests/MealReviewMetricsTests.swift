@@ -20,6 +20,8 @@ final class MealReviewMetricsTests: XCTestCase {
         recorder.record(.itemOpened)
         clock.addTimeInterval(2)
         recorder.record(.replacementSelected)
+        recorder.record(.estimateHintOpened)
+        recorder.record(.estimateHintSubmitted)
         recorder.record(.keyboardUsed)
         recorder.record(.keyboardUsed)
         recorder.pause()
@@ -31,14 +33,16 @@ final class MealReviewMetricsTests: XCTestCase {
         let summary = try XCTUnwrap(recorder.finish(.saved))
         XCTAssertEqual(summary.sessionID, sessionID)
         XCTAssertEqual(summary.activeElapsedSeconds, 9, accuracy: 0.0001)
-        XCTAssertEqual(summary.actionCount, 3)
-        XCTAssertEqual(summary.correctionActionCount, 2)
+        XCTAssertEqual(summary.actionCount, 5)
+        XCTAssertEqual(summary.correctionActionCount, 3)
         XCTAssertTrue(summary.usedKeyboard)
         XCTAssertEqual(summaries, [summary])
         XCTAssertEqual(events.map(\.action), [
             .draftShown,
             .itemOpened,
             .replacementSelected,
+            .estimateHintOpened,
+            .estimateHintSubmitted,
             .keyboardUsed,
             .amountChanged,
             .saved,

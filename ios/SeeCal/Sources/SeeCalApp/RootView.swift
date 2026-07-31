@@ -133,6 +133,9 @@ public struct RootView: View {
                         // interactive dismissal parks the adjusted values
                         // (edit mode ignores this — Cancel drops edits).
                         scanController.presentedDraftChanged(editedDraft)
+                    },
+                    onImproveEstimate: { hint in
+                        try await scanController.improveEstimate(with: hint)
                     }
                 )
                 .resultSheetStyling()

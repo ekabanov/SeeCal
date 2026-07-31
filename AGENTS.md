@@ -186,6 +186,18 @@ verified off a green `swift test`.
   7.2 MB nutrition database is bundled at device build time. This alternative
   is not yet the binding visual spec; measure it against the form-first flow
   before expanding it.
+- **Unresolved nutrition is now recoverable (2026-07-31).** A resolver miss no
+  longer becomes the red runtime-error screen. The scan retains its photo and
+  recognized labels, asks for a short broad human hint, and retries factored
+  IDENTIFY on the same image. Normal inference retains the frozen prompt bytes;
+  only the explicit recovery retry appends bounded context. Repeated misses stay
+  in the help loop, and hint text is neither persisted nor logged.
+- **Successful photo estimates can also be fixed with a hint (2026-07-31).**
+  Fresh-result summaries and replacement trays expose a same-photo IDENTIFY
+  retry. The usable draft stays intact while it runs and on any failure; only a
+  successful retry replaces the complete estimate. Manual/barcode drafts and
+  logged-meal edits do not expose this action. Hint contents remain ephemeral
+  and absent from diagnostics.
 - **Factored pipeline migration (2026-07-29): Stage 0–1 implemented in
   shadow, not shipping.** Frozen IDENTIFY schema/parity/smoke gates, USDA
   SQLite RESOLVE ladder, paired E0/E1/E2 harness, deterministic Swift

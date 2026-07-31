@@ -16,12 +16,18 @@ struct MealResultSheet: View {
     @State private var undoTask: Task<Void, Never>?
     @State private var isCommitting = false
     @State private var confirmsMealDeletion = false
+    @State private var isShowingEstimateHint = false
+    @State private var estimateHint = ""
+    @State private var estimateHintError: String?
+    @State private var isImprovingEstimate = false
+    @State private var estimateImprovementTask: Task<Void, Never>?
     @Environment(\.scenePhase) private var scenePhase
 
     private let onPrimary: (MealEditDraft) -> Void
     private let onSecondary: () -> Void
     private let onDeleteMeal: (MealEditDraft) -> Void
     private let onDraftChanged: (MealEditDraft) -> Void
+    private let onImproveEstimate: ((String) async throws -> MealEditDraft)?
     private let candidateProvider: (any NutritionCandidateProviding)?
 
     init(
@@ -30,7 +36,8 @@ struct MealResultSheet: View {
         onPrimary: @escaping (MealEditDraft) -> Void,
         onSecondary: @escaping () -> Void,
         onDeleteMeal: @escaping (MealEditDraft) -> Void = { _ in },
-        onDraftChanged: @escaping (MealEditDraft) -> Void = { _ in }
+        onDraftChanged: @escaping (MealEditDraft) -> Void = { _ in },
+        onImproveEstimate: ((String) async throws -> MealEditDraft)? = nil
     ) {
         _draft = State(initialValue: draft)
         _editor = State(initialValue: draft.origin == .manual && draft.items.isEmpty ? IngredientEditorDraft() : nil)
@@ -38,6 +45,7 @@ struct MealResultSheet: View {
         self.onSecondary = onSecondary
         self.onDeleteMeal = onDeleteMeal
         self.onDraftChanged = onDraftChanged
+        self.onImproveEstimate = onImproveEstimate
         self.candidateProvider = candidateProvider
     }
 
@@ -45,7 +53,9 @@ struct MealResultSheet: View {
         VStack(spacing: 0) {
             grabHandle
 
-            if editor != nil {
+            if isShowingEstimateHint {
+                estimateHintPanel
+            } else if editor != nil {
                 ingredientEditor
             } else if replacementTarget != nil {
                 replacementTray
@@ -60,6 +70,7 @@ struct MealResultSheet: View {
         .onDisappear {
             undoTask?.cancel()
             candidateLoadTask?.cancel()
+            estimateImprovementTask?.cancel()
             reviewRecorder.finish(.dismissed)
         }
         .onAppear {
@@ -104,6 +115,9 @@ struct MealResultSheet: View {
                     itemsLabel
                     itemRows
                     addIngredientButton
+                    if canImproveEstimate {
+                        fixEstimateButton
+                    }
                     footnote
 
                     if draft.isEditingExisting {
@@ -439,6 +453,10 @@ struct MealResultSheet: View {
                         }
                     }
 
+                    if canImproveEstimate {
+                        fixEstimateButton
+                    }
+
                     Button {
                         openDetailedEditor()
                     } label: {
@@ -530,6 +548,184 @@ struct MealResultSheet: View {
         }
         .buttonStyle(.plain)
         .padding(.top, 8)
+    }
+
+    private var canImproveEstimate: Bool {
+        !draft.isEditingExisting && draft.origin == .photo && onImproveEstimate != nil
+    }
+
+    /// Available both from the summary and after the five local replacement
+    /// choices. It re-runs the whole photo estimate; it is not a sixth hard-
+    /// coded database match.
+    private var fixEstimateButton: some View {
+        Button {
+            candidateLoadTask?.cancel()
+            replacementTarget = nil
+            estimateHintError = nil
+            isShowingEstimateHint = true
+            reviewRecorder.record(.estimateHintOpened)
+        } label: {
+            Label("Fix estimate with a hint", systemImage: "wand.and.stars")
+                .font(.system(size: 14, weight: .bold))
+                .foregroundStyle(Theme.basil)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(Theme.basilSoft)
+                .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+        }
+        .buttonStyle(.plain)
+        .padding(.top, 8)
+        .accessibilityHint("Describe the meal and analyze the same photo again")
+    }
+
+    // MARK: - Same-photo hinted re-analysis
+
+    private var estimateHintPanel: some View {
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 16) {
+                    HStack(spacing: 10) {
+                        Button {
+                            guard !isImprovingEstimate else { return }
+                            isShowingEstimateHint = false
+                            estimateHintError = nil
+                        } label: {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(Theme.appInk)
+                                .frame(width: 34, height: 34)
+                                .background(Theme.appBg)
+                                .clipShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(isImprovingEstimate)
+                        .accessibilityLabel("Back to estimate")
+
+                        Text("Fix the estimate")
+                            .font(.system(size: 19, weight: .bold))
+                            .foregroundStyle(Theme.appInk)
+                        Spacer()
+                    }
+                    .padding(.top, 6)
+
+                    Text("Tell the model what it missed or confused—for example, “the white cubes are tofu” or “turkey, not chicken.” The same photo will be analyzed again.")
+                        .font(.system(size: 13))
+                        .foregroundStyle(Theme.appInk2)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    TextField(
+                        "Describe what should be corrected…",
+                        text: $estimateHint,
+                        axis: .vertical
+                    )
+                    .lineLimit(3 ... 6)
+                    .font(.system(size: 15))
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .background(Theme.appBg)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(Theme.appLine, lineWidth: 1)
+                    }
+#if os(iOS)
+                    .textInputAutocapitalization(.sentences)
+                    .submitLabel(.go)
+#endif
+                    .onSubmit(submitEstimateHint)
+                    .onChange(of: estimateHint) { _, newValue in
+                        if newValue.count > 240 {
+                            estimateHint = String(newValue.prefix(240))
+                        }
+                        if !newValue.isEmpty {
+                            reviewRecorder.record(.keyboardUsed)
+                        }
+                    }
+                    .disabled(isImprovingEstimate)
+                    .accessibilityLabel("Estimate correction hint")
+
+                    HStack {
+                        Text("Your current estimate stays unchanged if this retry fails.")
+                            .font(.system(size: 11.5))
+                            .foregroundStyle(Theme.appInk2)
+                        Spacer()
+                        Text("\(estimateHint.count)/240")
+                            .font(.system(size: 11.5))
+                            .monospacedDigit()
+                            .foregroundStyle(Theme.appInk2)
+                    }
+
+                    if let estimateHintError {
+                        Text(estimateHintError)
+                            .font(.system(size: 12.5, weight: .semibold))
+                            .foregroundStyle(Theme.danger)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 18)
+            }
+
+            HStack(spacing: 10) {
+                sheetButton(
+                    "Cancel",
+                    background: Theme.appBg,
+                    foreground: Theme.appInk,
+                    disabled: isImprovingEstimate
+                ) {
+                    isShowingEstimateHint = false
+                    estimateHintError = nil
+                }
+                sheetButton(
+                    isImprovingEstimate ? "Analyzing…" : "Analyze again",
+                    background: Theme.basil,
+                    foreground: .white,
+                    disabled: isImprovingEstimate || normalizedEstimateHint == nil,
+                    action: submitEstimateHint
+                )
+            }
+            .padding(.top, 14)
+            .padding(.horizontal, 20)
+            .padding(.bottom, 26)
+            .overlay(alignment: .top) {
+                Rectangle().fill(Theme.appLine).frame(height: 1)
+            }
+        }
+    }
+
+    private var normalizedEstimateHint: String? {
+        FactoredIdentificationPrompt.normalizedUserHint(estimateHint)
+    }
+
+    private func submitEstimateHint() {
+        guard !isImprovingEstimate,
+              let hint = normalizedEstimateHint,
+              let onImproveEstimate
+        else { return }
+
+        isImprovingEstimate = true
+        estimateHintError = nil
+        reviewRecorder.record(.estimateHintSubmitted)
+        estimateImprovementTask?.cancel()
+        estimateImprovementTask = Task { @MainActor in
+            do {
+                let improvedDraft = try await onImproveEstimate(hint)
+                guard !Task.isCancelled else { return }
+                draft = improvedDraft
+                estimateHint = ""
+                isShowingEstimateHint = false
+            } catch is CancellationError {
+                // Sheet dismissal deliberately preserves the original draft.
+            } catch InferenceError.humanInputRequired {
+                estimateHintError = "I still couldn’t match part of that description. Try a more specific food or preparation detail."
+            } catch InferenceError.notFood {
+                estimateHintError = "The retry could not confirm a meal in this photo. Your original estimate is unchanged."
+            } catch {
+                estimateHintError = "The retry didn’t complete. Your original estimate is unchanged."
+            }
+            isImprovingEstimate = false
+            estimateImprovementTask = nil
+        }
     }
 
     private var footnote: some View {

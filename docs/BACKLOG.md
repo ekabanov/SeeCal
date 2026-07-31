@@ -22,6 +22,17 @@ choose the next slice. Plan and provisional gates:
 
 ## Hint-assisted photo re-analysis (added 2026-07-28)
 
+**Recovery and proactive slices implemented 2026-07-31:** the factored pipeline now raises a
+structured human-input request when deterministic nutrition resolution misses.
+The app keeps the same photo and recognized labels, asks for broad context, and
+re-runs IDENTIFY with a whitespace-normalized, bounded hint. A repeated miss
+stays in the neutral help loop; hints and food names remain out of diagnostics
+and are not persisted. A fresh successful result also exposes **Fix estimate
+with a hint** in its summary and after the five local replacement choices. The
+original draft remains intact until the same-photo retry succeeds; failure
+returns to the hint panel. The byte-identical no-hint prompt is unchanged. The
+paired hint-quality evaluation below remains open.
+
 **Goal:** when the photo is usable but the model identifies a food incorrectly,
 let the user add a short fact such as “the white cubes are tofu” or “this is
 turkey, not chicken” and re-run nutrition estimation on the same photo.
@@ -32,27 +43,20 @@ nutrition density. That is correct for ordinary corrections, but not when the
 identity error also makes calories/macros wrong. A hinted re-run gives the model
 the opportunity to recompute the whole estimate using the corrected identity.
 
-**Dormant plumbing is not a feature:** `FoodScanRequest.userHint` already exists,
-`QwenPromptBuilder` appends `\nUser hint: …`, and `ScanFlowController` always
-passes `nil`. Do **not** expose that field as-is. `adapters_v7b` was trained only
-on the fixed no-hint prompt; an appended hint is a new prompt distribution and
-could hurt JSON reliability, food accuracy, or not-food refusal. Prompt parity
-still applies: every hint form used by the app must be represented exactly in
-training and in parity tests.
+**Prompt compatibility remains load-bearing:** the app does not append an
+unstructured `User hint` line. Both hint entry points use the same bounded,
+schema-reinforcing envelope, while ordinary scans retain the byte-identical
+trained prompt. The current adapter was not trained on appended hints, so the
+paired evaluation below is still required to measure JSON reliability, food
+accuracy, and not-food refusal. Every hint envelope must remain represented
+exactly in parity tests and any future hint-conditioned training.
 
-**Recommended product shape:**
-- Add “Improve result” to a fresh result sheet. It opens one short, optional
-  text field with examples, then re-analyzes the **same stored photo**.
-- Keep the current draft visible and unchanged until the hinted inference
-  succeeds. On failure, return to it with an error; never replace a usable result
-  with a failed re-run.
-- A successful re-run replaces the model estimate. Make the replacement explicit
-  if the user has already edited or added items; do not silently discard edits.
-- Normalize whitespace, reject control characters, and cap the hint (for example
-  160 characters). The model is on-device, so this is principally an output-
-  reliability guard rather than a remote security boundary.
-- Do not retain the hint after logging in v1. It is inference context, not an
-  ingredient or a verified fact.
+**Implemented product shape:** one short field with examples re-analyzes the
+same stored photo. The current draft—including user edits—remains unchanged
+until success, when the complete model estimate replaces it. The panel tells
+the user this explicitly. Failure preserves the current draft. Whitespace and
+control characters are normalized, input is capped at 240 characters, and the
+hint is not retained after logging.
 
 **Training/evaluation approach:**
 1. First run a paired zero-shot pilot on `adapters_v7b`: the same 50 diverse food

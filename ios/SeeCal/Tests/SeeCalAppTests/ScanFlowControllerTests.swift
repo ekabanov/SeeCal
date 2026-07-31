@@ -395,6 +395,139 @@ final class ScanFlowControllerTests: XCTestCase {
     }
 
     @MainActor
+    func testUnresolvedItemsAskForHintAndRetrySamePhotoWithContext() async throws {
+        makeSUT()
+        let photoPath = try await startAnalyzingScan()
+
+        await runner.fail(with: InferenceError.humanInputRequired(
+            recognizedItems: ["rice", "unknown sauce"],
+            unresolvedItems: ["unknown sauce"]
+        ))
+        await controller.inferenceTask?.value
+
+        guard case let .needsHumanInput(recognized, unresolved, helpPhotoPath) = controller.phase else {
+            return XCTFail("Expected human-help phase, got \(controller.phase)")
+        }
+        XCTAssertEqual(recognized, ["rice", "unknown sauce"])
+        XCTAssertEqual(unresolved, ["unknown sauce"])
+        XCTAssertEqual(helpPhotoPath, photoPath)
+
+        controller.submitHumanHint("  creamy tomato sauce\nwith cheese  ")
+        guard case let .analyzing(retryPhotoPath) = controller.phase else {
+            return XCTFail("Expected hinted re-analysis, got \(controller.phase)")
+        }
+        XCTAssertEqual(retryPhotoPath, photoPath)
+        let arrived = await waitUntil { [runner] in await runner!.requestCount == 2 }
+        XCTAssertTrue(arrived)
+        XCTAssertEqual(capture.captureCount, 1, "Human help must not recapture")
+        let request = await runner.lastRequest
+        XCTAssertEqual(request?.imagePath, photoPath)
+        XCTAssertEqual(request?.userHint, "creamy tomato sauce with cheese")
+
+        // If the hint is still insufficient, remain in the help loop rather
+        // than falling back to the red terminal error.
+        await runner.fail(with: InferenceError.humanInputRequired(
+            recognizedItems: ["rice", "sauce"],
+            unresolvedItems: ["sauce"]
+        ))
+        await controller.inferenceTask?.value
+        guard case .needsHumanInput = controller.phase else {
+            XCTFail("A second miss must remain recoverable, got \(controller.phase)")
+            return
+        }
+        XCTAssertTrue(FileManager.default.fileExists(atPath: photoPath))
+    }
+
+    @MainActor
+    func testFreshResultCanBeImprovedWithHintWithoutReplacingDraftUntilSuccess() async throws {
+        makeSUT()
+        let photoPath = try await startAnalyzingScan()
+        await finishInference()
+
+        guard case let .presentingResult(originalDraft) = controller.phase else {
+            return XCTFail("Expected an initial result")
+        }
+        var editedDraft = originalDraft
+        editedDraft.stepGrams(itemID: editedDraft.items[0].id, by: 15)
+        controller.presentedDraftChanged(editedDraft)
+
+        let improvement = Task {
+            try await controller.improveEstimate(
+                with: "  the white cubes\u{0000} are tofu\nnot chicken  "
+            )
+        }
+        let arrived = await waitUntil { [runner] in await runner!.requestCount == 2 }
+        XCTAssertTrue(arrived)
+        XCTAssertEqual(capture.captureCount, 1, "Improvement must reuse the stored photo")
+        let request = await runner.lastRequest
+        XCTAssertEqual(request?.imagePath, photoPath)
+        XCTAssertEqual(request?.userHint, "the white cubes are tofu not chicken")
+
+        guard case let .presentingResult(duringRetry) = controller.phase else {
+            return XCTFail("The usable result must remain presented during the retry")
+        }
+        XCTAssertEqual(duringRetry, editedDraft)
+
+        let improvedResult = FoodScanResult(
+            totalCalories: 220,
+            proteinGrams: 18,
+            fatGrams: 12,
+            carbsGrams: 8,
+            items: [
+                ScanItem(
+                    name: "tofu",
+                    estimatedGrams: 200,
+                    calories: 220,
+                    proteinGrams: 18,
+                    fatGrams: 12,
+                    carbsGrams: 8
+                )
+            ]
+        )
+        await runner.succeed(with: improvedResult)
+        let improvedDraft = try await improvement.value
+        XCTAssertEqual(improvedDraft.imagePath, photoPath)
+        XCTAssertEqual(improvedDraft.items.map(\.name), ["tofu"])
+
+        // Mirrors MealResultSheet applying the successful return value.
+        controller.presentedDraftChanged(improvedDraft)
+        guard case let .presentingResult(appliedDraft) = controller.phase else {
+            return XCTFail("Successful improvement should remain in result review")
+        }
+        XCTAssertEqual(appliedDraft, improvedDraft)
+    }
+
+    @MainActor
+    func testFailedEstimateImprovementPreservesUsableDraft() async throws {
+        makeSUT()
+        _ = try await startAnalyzingScan()
+        await finishInference()
+        guard case let .presentingResult(originalDraft) = controller.phase else {
+            return XCTFail("Expected an initial result")
+        }
+
+        let improvement = Task {
+            try await controller.improveEstimate(with: "this is a filled pastry")
+        }
+        let arrived = await waitUntil { [runner] in await runner!.requestCount == 2 }
+        XCTAssertTrue(arrived)
+        await runner.fail(with: InferenceError.humanInputRequired(
+            recognizedItems: ["pastry"],
+            unresolvedItems: ["filling"]
+        ))
+
+        do {
+            _ = try await improvement.value
+            XCTFail("The unresolved retry should fail without replacing the draft")
+        } catch InferenceError.humanInputRequired {
+            // Expected; the sheet converts this to neutral retry copy.
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+        XCTAssertEqual(controller.activeSheetDraft, originalDraft)
+    }
+
+    @MainActor
     func testNotFoodRefusalShowsNoFoodStateNotError() async throws {
         makeSUT()
         let photoPath = try await startAnalyzingScan()

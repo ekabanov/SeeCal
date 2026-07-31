@@ -146,6 +146,12 @@ public struct MealEditDraft: Equatable, Sendable {
         existingEntry?.origin ?? newMealContext?.origin ?? .manual
     }
 
+    /// Preserved across a same-photo hinted re-analysis so a correction made
+    /// near a meal-type boundary cannot silently move breakfast to lunch.
+    public var mealType: MealType? {
+        existingEntry?.mealType ?? newMealContext?.mealType
+    }
+
     public var barcodeSource: BarcodeSourceMetadata? {
         existingEntry?.barcodeSource ?? newMealContext?.barcodeSource
     }
