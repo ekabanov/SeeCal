@@ -16,7 +16,10 @@ contract="${3:-portion-units}"
 output="runs/factored/${arm}"
 database="datasets/fdc/seecal-nutrition.sqlite"
 taxonomy="eval_taxonomies/eval_taxonomy_v3.json"
-scale_run="runs/factored/scale-v2-probe-b-nv-1024"
+scale_run="runs/factored/scale-v2-probe-c1-fpb-center"
+oracle_n5k="runs/factored/oracle-v5-floor-attribution/nutrition5k-test325.json"
+oracle_nv="runs/factored/oracle-v4-fpb-c1/nutritionverse-official-val.json"
+oracle_nv_quality="runs/factored/oracle-v4-fpb-c1/nutritionverse-official-val-quality-v1.json"
 
 if [[ ! -f "${adapter}/adapters.safetensors" ]]; then
   echo "Missing adapter: ${adapter}/adapters.safetensors" >&2
@@ -34,6 +37,12 @@ if [[ ! -f "${scale_run}/eval-nutritionverse-real-calibrated.json" ]]; then
   echo "Missing SCALE NutritionVerse-Real predictions" >&2
   exit 2
 fi
+for oracle in "${oracle_n5k}" "${oracle_nv}" "${oracle_nv_quality}"; do
+  if [[ ! -f "${oracle}" ]]; then
+    echo "Missing oracle audit: ${oracle}" >&2
+    exit 2
+  fi
+done
 if [[ ! -f "datasets/nutritionverse-real/eval-official-val-v2.jsonl" ]]; then
   echo "Missing frozen NutritionVerse official-Val IDENTIFY manifest" >&2
   exit 2
@@ -90,3 +99,45 @@ mkdir -p "${output}"
   --database "${database}" \
   --taxonomy "${taxonomy}" \
   --output "${output}/assembly-nutritionverse-real.json"
+
+.venv/bin/python filter_identify_eval.py \
+  --input "${output}/identify-nutritionverse-real.json" \
+  --manifest datasets/nutritionverse-real/eval-official-val-quality-v1.jsonl \
+  --output "${output}/identify-nutritionverse-real-quality-v1.json"
+
+.venv/bin/python score_harness.py audit \
+  --eval "${output}/identify-nutritionverse-real-quality-v1.json" \
+  --database "${database}" \
+  --taxonomy "${taxonomy}" \
+  --output "${output}/audit-nutritionverse-real-quality-v1.json"
+
+.venv/bin/python score_harness.py assemble \
+  --identify-eval "${output}/identify-nutritionverse-real-quality-v1.json" \
+  --scale-predictions "${scale_run}/eval-nutritionverse-real-calibrated.json" \
+  --database "${database}" \
+  --taxonomy "${taxonomy}" \
+  --output "${output}/assembly-nutritionverse-real-quality-v1.json"
+
+.venv/bin/python model_oracle_gap.py \
+  --model-assembly "${output}/assembly-test325.json" \
+  --oracle-audit "${oracle_n5k}" \
+  --scope all_complete \
+  --output "${output}/model-oracle-gap-nutrition5k-all.json"
+
+.venv/bin/python model_oracle_gap.py \
+  --model-assembly "${output}/assembly-test325.json" \
+  --oracle-audit "${oracle_n5k}" \
+  --scope baseline_shared_clean \
+  --output "${output}/model-oracle-gap-nutrition5k-clean72.json"
+
+.venv/bin/python model_oracle_gap.py \
+  --model-assembly "${output}/assembly-nutritionverse-real.json" \
+  --oracle-audit "${oracle_nv}" \
+  --scope all_complete \
+  --output "${output}/model-oracle-gap-nutritionverse-raw.json"
+
+.venv/bin/python model_oracle_gap.py \
+  --model-assembly "${output}/assembly-nutritionverse-real-quality-v1.json" \
+  --oracle-audit "${oracle_nv_quality}" \
+  --scope all_complete \
+  --output "${output}/model-oracle-gap-nutritionverse-quality-v1.json"

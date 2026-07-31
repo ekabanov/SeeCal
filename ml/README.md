@@ -261,18 +261,25 @@ for the full flag list.
 ```bash
 ./train.sh                                             # fresh v5-style run
 OUTPUT_PATH=adapters_v7 ./train.sh                      # new versioned run
-ADAPTER_PATH=adapters_v7 OUTPUT_PATH=adapters_v7 ./train.sh   # resume v7
+ADAPTER_PATH=adapters_v7 OUTPUT_PATH=adapters_v7-cont ITERS=1000 \
+  ./resume_train.sh                                    # guarded warm-start
 ```
 
 Configured entirely through environment variables (no positional args) —
 `MODEL_PATH` (base model), `OUTPUT_PATH` (adapter output dir, **pick an
 explicit versioned name** like `adapters_v7` for any run that isn't a
-deliberate resume of the existing default), `DATASET`
-(default `finetune_data_v2`), and `ADAPTER_PATH` (resume from an existing
-checkpoint). The script warns — but does not refuse — if `OUTPUT_PATH`
-already has a checkpoint and `ADAPTER_PATH` is unset, since that combination
-means you're about to overwrite it. Run `./train.sh --help` for the full
-list and the resume example.
+deliberate re-run of the existing default), and `DATASET`
+(default `finetune_data_v2`). `train.sh` intentionally rejects
+`ADAPTER_PATH`: mlx-vlm 0.6.7's built-in resume path failed to freeze the base
+model and exposed 366.9M trainable parameters instead of the 32.464896M LoRA
+parameters.
+
+For a saved adapter, use `resume_train.sh` with a **different**
+`OUTPUT_PATH` and an explicit number of continuation `ITERS`. It freezes the
+base model before loading the LoRA weights and still runs through the
+trainable-parameter guard. This is a warm-start, not an exact resume:
+mlx-vlm's adapter checkpoints do not contain Adam optimizer state or the
+random data-shuffle position.
 
 Do **not** run anything else GPU-heavy (LM Studio, `eval.sh`, another
 training run) at the same time — Metal memory doesn't swap, so co-tenancy
@@ -339,12 +346,21 @@ order — skipping straight to a long run is exactly how a past training run
 Only after all three are green should `./train.sh` run unattended for
 hours.
 
-## Current shipping metrics
+## Current baselines and device pilot
 
-The selected `v8-conditioned` system runs the S1 MobileNetV3 specialist before
-Qwen3.5-4B. On all 325 untouched test dishes it scores 56.8 kcal MAE / 29.7
-median with zero parse failures; it also refuses 29/29 held-out non-food
-images. See
+The default real-world device-test build now selects the factored pipeline:
+E3 FoodSeg-trained Qwen IDENTIFY, SCALE C1, the local USDA resolver, and
+deterministic assembly. Its frozen 354-image IDENTIFY evaluation has zero parse,
+schema, repair, or post-repair rejection failures, 29/29 correct non-food
+refusals, and zero false refusals. On the shared clean 72-dish Nutrition5K
+slice, the assembled candidate is 41.0 kcal MAE versus its 38.5 kcal
+current-SCALE oracle; this is an experimental field pilot, not evidence of
+real-phone accuracy.
+
+The protected `v8-conditioned` rollback runs the S1 MobileNetV3 specialist
+before Qwen3.5-4B. On all 325 untouched test dishes it scores 56.8 kcal MAE /
+29.7 median with zero parse failures; it also refuses 29/29 held-out non-food
+images. Select it with `SEECAL_MODEL_STACK=v8 scripts/build.sh --device`. See
 `../docs/plans/2026-07-28-visual-specialist-conditioned-qwen-plan.md` and
 `visual_specialist/README.md` for the complete pipeline and artifact contract.
 

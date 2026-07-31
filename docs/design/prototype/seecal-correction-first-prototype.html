@@ -1,0 +1,407 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SeeCal — Correction-first review prototype</title>
+<style>
+  :root{
+    --paper:#edf0eb; --paper-2:#e3e7e0; --ink:#19201c; --muted:#667069;
+    --line:#d1d8d0; --basil:#1f7a52; --basil-dark:#155d3d; --basil-soft:#e2f0e8;
+    --card:#fff; --app:#f6f7f5; --app-line:#e4e8e3; --shadow:0 12px 35px rgba(20,32,24,.09);
+    --protein:#c2495e; --fat:#d99a2b; --carbs:#4e79c7; --warn:#a96812; --warn-soft:#fff2d9;
+    --danger:#be473d;
+  }
+  :root[data-theme="dark"]{
+    --paper:#10130f; --paper-2:#171b16; --ink:#e8ece8; --muted:#9ca49d;
+    --line:#2b312b; --basil:#53cf92; --basil-dark:#7be3ad; --basil-soft:#152a1f;
+    --card:#1c1e1c; --app:#000; --app-line:#2a2d2a; --shadow:0 12px 35px rgba(0,0,0,.4);
+    --protein:#e0728a; --fat:#e6b45a; --carbs:#7d9fe0; --warn:#f0b65e; --warn-soft:#322718;
+    --danger:#e16b62;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;min-height:100%;font-family:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",sans-serif}
+  body{background:var(--paper);color:var(--ink);-webkit-font-smoothing:antialiased}
+  button,input{font:inherit}
+  button{color:inherit}
+  .studio{display:flex;gap:48px;align-items:flex-start;justify-content:center;max-width:1180px;margin:auto;padding:36px 24px 52px}
+  .rail{width:300px;position:sticky;top:36px;display:flex;flex-direction:column;gap:24px}
+  .eyebrow{font:700 10.5px/1 ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.14em;text-transform:uppercase;color:var(--muted)}
+  h1{font-size:24px;line-height:1.12;letter-spacing:-.03em;margin:7px 0}
+  .lede{font-size:14px;line-height:1.55;color:var(--muted);margin:0}
+  .scenario-list,.notes{border-top:1px solid var(--line);padding-top:18px}
+  .scenario-list{display:flex;flex-direction:column;gap:7px}
+  .scenario{
+    border:0;background:transparent;text-align:left;display:grid;grid-template-columns:26px 1fr;gap:9px;
+    padding:10px;border-radius:11px;cursor:pointer;color:var(--ink)
+  }
+  .scenario:hover{background:var(--paper-2)}
+  .scenario.on{background:var(--basil-soft);color:var(--basil-dark)}
+  .scenario .num{font:700 10px/1.3 ui-monospace,monospace;letter-spacing:.08em;color:var(--muted)}
+  .scenario b{display:block;font-size:13.5px}
+  .scenario small{display:block;font-size:11.5px;line-height:1.4;color:var(--muted);margin-top:2px}
+  .notes{display:flex;flex-direction:column;gap:13px}
+  .note{font-size:12.5px;line-height:1.45;color:var(--muted)}
+  .note b{display:block;color:var(--ink);font-size:12.5px;margin-bottom:2px}
+  .cost{
+    background:var(--card);border-radius:15px;padding:13px 14px;box-shadow:var(--shadow);
+    display:flex;align-items:center;justify-content:space-between
+  }
+  .cost .value{font-size:20px;font-weight:800;color:var(--basil-dark);font-variant-numeric:tabular-nums}
+  .cost .label{font-size:11px;color:var(--muted);line-height:1.25;text-align:right}
+  .rail-actions{display:flex;gap:8px}
+  .rail-actions button,.rail-actions a{
+    border:1px solid var(--line);background:var(--card);color:var(--ink);border-radius:10px;
+    padding:9px 11px;text-decoration:none;font-size:12px;font-weight:700;cursor:pointer
+  }
+
+  .device{width:390px;height:844px;background:var(--app);border:12px solid #090a09;border-radius:58px;position:relative;overflow:clip;box-shadow:0 0 0 2px #343734,0 30px 70px rgba(0,0,0,.28)}
+  .island{position:absolute;z-index:30;top:12px;left:50%;transform:translateX(-50%);width:118px;height:34px;border-radius:20px;background:#090a09}
+  .status{height:55px;padding:17px 27px 0;display:flex;justify-content:space-between;align-items:center;font-size:14px;font-weight:700;position:relative;z-index:10}
+  .status-icons{font-size:11px;letter-spacing:.08em}
+  .app{position:absolute;inset:55px 0 0;display:flex;flex-direction:column;color:var(--ink)}
+  .nav{height:52px;padding:5px 18px 8px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--app-line);background:color-mix(in srgb,var(--app) 90%,transparent);backdrop-filter:blur(12px);z-index:5}
+  .nav h2{font-size:18px;margin:0;letter-spacing:-.015em}
+  .nav .sub{font-size:10px;font-weight:800;text-transform:uppercase;letter-spacing:.08em;color:var(--basil-dark);margin-top:2px}
+  .close{border:0;background:var(--card);width:32px;height:32px;border-radius:50%;font-size:18px;box-shadow:0 1px 4px rgba(0,0,0,.08);cursor:pointer}
+  .scroll{flex:1;overflow-y:auto;padding:0 16px 128px;scrollbar-width:none}
+  .scroll::-webkit-scrollbar{display:none}
+  .photo{
+    height:170px;margin:14px 0 12px;border-radius:22px;overflow:hidden;position:relative;
+    background:radial-gradient(circle at 48% 42%,#4a463c,#292620 66%,#191714)
+  }
+  .plate{position:absolute;width:196px;height:196px;border-radius:50%;left:50%;top:48%;transform:translate(-50%,-50%);background:radial-gradient(circle,#f6f3e9 0 67%,#d7d3c8 68% 70%,#f5f2e8 71%);box-shadow:0 11px 25px rgba(0,0,0,.36)}
+  .food{position:absolute;filter:drop-shadow(0 2px 2px rgba(0,0,0,.18))}
+  .rice{left:35px;top:66px;width:78px;height:66px;border-radius:52% 48% 46% 54%;background:radial-gradient(circle at 35% 30%,#fff9d8 0 3px,transparent 4px),radial-gradient(circle at 65% 60%,#fff9d8 0 3px,transparent 4px),#eee2a8}
+  .chicken{right:37px;top:72px;width:77px;height:52px;border-radius:48% 42% 52% 44%;background:linear-gradient(145deg,#e7bb7d,#b76f36);transform:rotate(-8deg)}
+  .chicken:after{content:"";position:absolute;inset:9px 7px;border-top:3px solid rgba(93,49,24,.4);border-bottom:3px solid rgba(93,49,24,.25);transform:rotate(7deg)}
+  .greens{right:51px;top:29px;width:66px;height:47px;background:radial-gradient(circle at 18px 22px,#4b843e 0 12px,transparent 13px),radial-gradient(circle at 39px 13px,#5a9348 0 14px,transparent 15px),radial-gradient(circle at 46px 31px,#3f7337 0 13px,transparent 14px)}
+  .photo-badge{position:absolute;top:10px;left:10px;padding:6px 9px;border-radius:999px;background:rgba(11,15,12,.72);color:#fff;font-size:10.5px;font-weight:750;backdrop-filter:blur(7px)}
+  .photo-total{position:absolute;right:11px;bottom:10px;background:rgba(11,15,12,.76);color:white;border-radius:13px;padding:7px 10px;backdrop-filter:blur(7px)}
+  .photo-total b{font-size:19px;font-variant-numeric:tabular-nums}
+  .photo-total span{font-size:10px;font-weight:700;opacity:.76}
+  .review-head{display:flex;align-items:flex-end;justify-content:space-between;margin:3px 2px 10px}
+  .review-head h3{font-size:19px;margin:0;letter-spacing:-.015em}
+  .review-head p{font-size:11.5px;color:var(--muted);margin:3px 0 0}
+  .edit-cost{font-size:10.5px;color:var(--basil-dark);font-weight:800;background:var(--basil-soft);padding:5px 8px;border-radius:999px}
+  .quick-check{border:1px solid color-mix(in srgb,var(--warn) 38%,var(--app-line));background:var(--warn-soft);border-radius:17px;padding:12px;margin-bottom:10px;display:none}
+  .quick-check.show{display:block}
+  .quick-check .qtop{display:flex;gap:9px;align-items:flex-start}
+  .qicon{width:25px;height:25px;border-radius:50%;background:var(--warn);color:white;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:900;flex:0 0 auto}
+  .quick-check b{font-size:13px;display:block}
+  .quick-check p{font-size:11.5px;color:var(--muted);margin:2px 0 8px;line-height:1.35}
+  .quick-choices{display:flex;gap:6px;overflow-x:auto;padding-bottom:1px;scrollbar-width:none}
+  .quick-choices button{border:1px solid color-mix(in srgb,var(--warn) 45%,var(--app-line));background:var(--card);border-radius:999px;padding:7px 10px;white-space:nowrap;font-size:11.5px;font-weight:750;cursor:pointer}
+  .items{background:var(--card);border-radius:19px;box-shadow:0 1px 2px rgba(0,0,0,.05);overflow:hidden}
+  .item{padding:12px 12px 11px;transition:background .2s}
+  .item.edited{background:color-mix(in srgb,var(--basil-soft) 52%,var(--card))}
+  .item+.item{border-top:1px solid var(--app-line)}
+  .item-top{display:flex;align-items:center;gap:8px}
+  .food-name{border:0;background:transparent;padding:0;min-width:0;display:flex;align-items:center;gap:5px;cursor:pointer;text-align:left;flex:1}
+  .food-name b{font-size:15px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .food-name .chev{font-size:12px;color:var(--basil-dark);font-weight:900}
+  .flag{font-size:8.5px;font-weight:900;text-transform:uppercase;letter-spacing:.05em;border-radius:6px;padding:3px 5px;background:var(--warn-soft);color:var(--warn)}
+  .changed{font-size:8.5px;font-weight:900;text-transform:uppercase;letter-spacing:.05em;border-radius:6px;padding:3px 5px;background:var(--basil-soft);color:var(--basil-dark)}
+  .item-kcal{font-size:13px;font-weight:800;font-variant-numeric:tabular-nums}
+  .item-bottom{display:flex;align-items:center;justify-content:space-between;margin-top:7px}
+  .nutrition{font-size:10.5px;color:var(--muted);font-variant-numeric:tabular-nums}
+  .amount{display:flex;border:1px solid var(--app-line);border-radius:10px;overflow:hidden;height:30px;background:var(--app)}
+  .amount button{width:30px;border:0;background:transparent;color:var(--basil-dark);font-size:17px;font-weight:800;cursor:pointer}
+  .amount-value{width:56px;border:0;border-left:1px solid var(--app-line);border-right:1px solid var(--app-line);background:transparent;font-size:11.5px;font-weight:800;text-align:center;cursor:pointer}
+  .maybe{margin-top:11px;background:var(--card);border-radius:17px;padding:11px 12px}
+  .maybe-head{display:flex;justify-content:space-between;align-items:center}
+  .maybe-head b{font-size:12.5px}
+  .maybe-head span{font-size:10.5px;color:var(--muted)}
+  .addon-list{display:flex;gap:7px;margin-top:9px;overflow-x:auto;scrollbar-width:none}
+  .addon{border:1px solid var(--app-line);background:var(--app);border-radius:999px;padding:8px 10px;white-space:nowrap;font-size:11px;font-weight:750;cursor:pointer}
+  .addon.on{background:var(--basil-soft);border-color:color-mix(in srgb,var(--basil) 45%,var(--app-line));color:var(--basil-dark)}
+  .add-food{width:100%;border:1px dashed color-mix(in srgb,var(--basil) 55%,var(--app-line));background:transparent;color:var(--basil-dark);border-radius:13px;padding:11px;margin-top:11px;font-size:12.5px;font-weight:800;cursor:pointer}
+  .details{border:0;background:transparent;color:var(--muted);width:100%;padding:12px;font-size:11.5px;font-weight:700;cursor:pointer}
+  .sticky{position:absolute;left:0;right:0;bottom:0;padding:12px 16px 22px;background:linear-gradient(transparent,var(--app) 22%);z-index:8}
+  .save{width:100%;border:0;background:var(--basil);color:white;border-radius:15px;padding:15px;font-size:15.5px;font-weight:800;box-shadow:0 8px 18px rgba(31,122,82,.25);cursor:pointer}
+  .save small{font-size:11px;opacity:.8;font-weight:700}
+  .privacy{text-align:center;color:var(--muted);font-size:9.5px;margin-top:6px}
+  .toast{position:absolute;left:24px;right:24px;bottom:94px;border-radius:13px;padding:11px 13px;background:#172019;color:#fff;font-size:12px;font-weight:700;box-shadow:0 8px 25px rgba(0,0,0,.25);opacity:0;transform:translateY(9px);pointer-events:none;transition:.25s;z-index:22}
+  .toast.show{opacity:1;transform:translateY(0)}
+  .drawer-scrim{position:absolute;inset:0;background:rgba(0,0,0,.38);opacity:0;pointer-events:none;transition:.2s;z-index:40}
+  .drawer-scrim.open{opacity:1;pointer-events:auto}
+  .drawer{position:absolute;left:0;right:0;bottom:0;background:var(--card);border-radius:25px 25px 0 0;z-index:41;transform:translateY(104%);transition:.32s cubic-bezier(.32,.72,.28,1);padding:10px 17px 25px;max-height:68%;overflow-y:auto}
+  .drawer.open{transform:translateY(0)}
+  .grab{width:38px;height:5px;border-radius:3px;background:var(--app-line);margin:0 auto 13px}
+  .drawer h3{font-size:19px;margin:0}
+  .drawer .hint{font-size:11.5px;color:var(--muted);margin:3px 0 13px;line-height:1.35}
+  .choice{width:100%;border:0;border-top:1px solid var(--app-line);background:transparent;padding:12px 3px;display:flex;align-items:center;gap:10px;text-align:left;cursor:pointer}
+  .choice:first-of-type{border-top:0}
+  .choice-icon{width:35px;height:35px;border-radius:11px;background:var(--basil-soft);display:flex;align-items:center;justify-content:center;font-size:17px}
+  .choice-txt{flex:1}
+  .choice-txt b{font-size:13.5px;display:block}
+  .choice-txt span{font-size:10.5px;color:var(--muted)}
+  .choice .ck{color:var(--basil-dark);font-weight:900}
+  .search{display:flex;gap:8px;margin-top:7px}
+  .search input{min-width:0;flex:1;border:1px solid var(--app-line);background:var(--app);border-radius:11px;padding:10px 11px;color:var(--ink);font-size:12px}
+  .search button{border:0;border-radius:11px;background:var(--basil-soft);color:var(--basil-dark);padding:0 12px;font-size:12px;font-weight:800;cursor:pointer}
+  .portion-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin:13px 0}
+  .portion{border:1px solid var(--app-line);background:var(--app);border-radius:13px;padding:12px 6px;text-align:center;cursor:pointer}
+  .portion b{display:block;font-size:13px}
+  .portion span{font-size:10.5px;color:var(--muted)}
+  .portion.on{border-color:var(--basil);background:var(--basil-soft);color:var(--basil-dark)}
+  .exact{display:flex;align-items:center;justify-content:space-between;border-top:1px solid var(--app-line);padding-top:12px}
+  .exact span{font-size:12px;font-weight:700}
+  .exact input{width:86px;border:1px solid var(--app-line);background:var(--app);border-radius:10px;padding:8px;text-align:right;color:var(--ink)}
+  .saved{position:absolute;inset:0;background:var(--app);z-index:50;display:none;align-items:center;justify-content:center;text-align:center;padding:35px}
+  .saved.show{display:flex}
+  .saved-icon{width:70px;height:70px;border-radius:50%;background:var(--basil);color:white;display:flex;align-items:center;justify-content:center;font-size:35px;margin:0 auto 17px}
+  .saved h3{font-size:23px;margin:0 0 6px}
+  .saved p{font-size:13px;color:var(--muted);line-height:1.5;margin:0 0 18px}
+  .saved button{border:0;background:var(--basil-soft);color:var(--basil-dark);border-radius:12px;padding:11px 15px;font-size:12.5px;font-weight:800;cursor:pointer}
+  @media(min-width:761px) and (max-height:920px){
+    .device{transform:scale(.82);transform-origin:top center;margin-bottom:-152px}
+  }
+  @media(max-width:760px){
+    html,body{height:100%;overflow:hidden}
+    .studio{padding:0;display:block;height:100vh;overflow:hidden}.rail{display:none}.device{width:100vw;height:100vh;border:0;border-radius:0;box-shadow:none}.island{display:none}.status{padding-top:10px;height:43px}.app{inset:43px 0 0}
+  }
+</style>
+</head>
+<body>
+<main class="studio">
+  <aside class="rail">
+    <div>
+      <div class="eyebrow">Alternative prototype · UX metric pivot</div>
+      <h1>A good draft, cheaply corrected</h1>
+      <p class="lede">The model does not have to be right about everything. It has to put the right correction within reach, preserve the useful parts, and stay out of the way when the draft is acceptable.</p>
+    </div>
+    <div class="scenario-list" aria-label="Prototype scenarios">
+      <button class="scenario on" data-scenario="fast"><span class="num">01</span><span><b>Fast path</b><small>Accept a useful draft without opening an editor.</small></span></button>
+      <button class="scenario" data-scenario="wrong"><span class="num">02</span><span><b>Wrong main food</b><small>One tap from a useful check, or two from the item row.</small></span></button>
+      <button class="scenario" data-scenario="missing"><span class="num">03</span><span><b>Missing dressing</b><small>Add a likely hidden item with one reversible tap.</small></span></button>
+      <button class="scenario" data-scenario="portion"><span class="num">04</span><span><b>Wrong portion</b><small>Use inline controls or a coarse size preset.</small></span></button>
+      <button class="scenario" data-scenario="add"><span class="num">05</span><span><b>Missing visible food</b><small>Choose from likely and recent foods before searching.</small></span></button>
+    </div>
+    <div class="cost">
+      <div class="value" id="railCost">0 taps</div>
+      <div class="label" id="railCostLabel">current<br>review cost</div>
+    </div>
+    <div class="notes">
+      <div class="note"><b>Replacement, not rename</b>The new food keeps the estimated grams but receives its own database nutrition.</div>
+      <div class="note"><b>One useful question</b>Only the highest-impact ambiguity gets a Quick check. Saving is never blocked.</div>
+      <div class="note"><b>Keyboard is fallback</b>Five choices, recents, portions and likely additions cover the frequent paths.</div>
+    </div>
+    <div class="rail-actions">
+      <button id="themeBtn">Dark mode</button>
+      <button id="resetBtn">Reset scenario</button>
+    </div>
+  </aside>
+
+  <section class="device" aria-label="Correction-first meal review prototype">
+    <div class="island"></div>
+    <div class="status"><span>9:41</span><span class="status-icons">● ᯤ ▰</span></div>
+    <div class="app">
+      <header class="nav">
+        <button class="close" aria-label="Close review">×</button>
+        <div><h2>Review meal</h2><div class="sub">Draft · nothing saved yet</div></div>
+        <span style="width:32px"></span>
+      </header>
+      <div class="scroll" id="scroll">
+        <div class="photo">
+          <div class="plate"><div class="food rice"></div><div class="food chicken"></div><div class="food greens"></div></div>
+          <div class="photo-badge">Lunch · just now</div>
+          <div class="photo-total"><b id="totalKcal">462</b> <span>kcal</span></div>
+        </div>
+        <div class="review-head">
+          <div><h3>Chicken, rice &amp; broccoli</h3><p id="reviewSubtitle">3 foods found · looks ready to save</p></div>
+          <span class="edit-cost" id="inlineCost">0 edits</span>
+        </div>
+        <section class="quick-check" id="quickCheck">
+          <div class="qtop"><span class="qicon">?</span><div><b id="questionTitle">Quick check: main protein</b><p id="questionText">Chicken and tofu would change this meal substantially.</p></div></div>
+          <div class="quick-choices">
+            <button data-quick-food="Chicken breast">Chicken</button>
+            <button data-quick-food="Tofu">Tofu</button>
+            <button data-quick-food="White fish">Fish</button>
+            <button data-open-food="0">Other…</button>
+          </div>
+        </section>
+        <section class="items" id="items"></section>
+        <section class="maybe" id="maybe">
+          <div class="maybe-head"><b>Maybe missing?</b><span>Optional · tap to add</span></div>
+          <div class="addon-list">
+            <button class="addon" data-addon="Olive oil">＋ Oil</button>
+            <button class="addon" data-addon="Dressing">＋ Dressing</button>
+            <button class="addon" data-addon="Sauce">＋ Sauce</button>
+            <button class="addon" data-addon="Butter">＋ Butter</button>
+          </div>
+        </section>
+        <button class="add-food" id="addFoodBtn">＋ Add another food</button>
+        <button class="details" id="detailsBtn">Edit calories, macros or exact details</button>
+      </div>
+      <div class="sticky">
+        <button class="save" id="saveBtn">Save meal · <span id="saveKcal">462</span> kcal</button>
+        <div class="privacy">You can edit this meal again later</div>
+      </div>
+      <div class="toast" id="toast">Updated</div>
+    </div>
+    <div class="drawer-scrim" id="drawerScrim"></div>
+    <section class="drawer" id="foodDrawer" aria-label="Replace food">
+      <div class="grab"></div>
+      <h3 id="foodDrawerTitle">Replace chicken breast</h3>
+      <p class="hint">The portion stays the same. Calories and macros update from the selected food.</p>
+      <div id="foodChoices"></div>
+      <div class="search"><input id="foodSearch" placeholder="Something else…" autocomplete="off"><button id="foodSearchBtn">Use</button></div>
+    </section>
+    <section class="drawer" id="portionDrawer" aria-label="Adjust portion">
+      <div class="grab"></div>
+      <h3 id="portionTitle">Chicken portion</h3>
+      <p class="hint">Use a quick size or enter exact grams.</p>
+      <div class="portion-grid">
+        <button class="portion" data-mult=".7"><b>Small</b><span id="smallG">95 g</span></button>
+        <button class="portion on" data-mult="1"><b>Medium</b><span id="mediumG">135 g</span></button>
+        <button class="portion" data-mult="1.35"><b>Large</b><span id="largeG">180 g</span></button>
+      </div>
+      <div class="exact"><span>Exact amount</span><label><input id="exactGrams" type="number" min="1" inputmode="decimal"> g</label></div>
+    </section>
+    <section class="drawer" id="addDrawer" aria-label="Add food">
+      <div class="grab"></div>
+      <h3>Add a food</h3>
+      <p class="hint">Likely for this photo and recently used foods come first.</p>
+      <div id="addChoices"></div>
+      <div class="search"><input id="addSearch" placeholder="Search foods…" autocomplete="off"><button id="addSearchBtn">Add</button></div>
+    </section>
+    <section class="saved" id="saved">
+      <div><div class="saved-icon">✓</div><h3>Meal saved</h3><p id="savedCopy">462 kcal · no corrections needed<br>Review cost: 1 tap, no typing</p><button id="reviewAgain">Review another scenario</button></div>
+    </section>
+  </section>
+</main>
+<script>
+(() => {
+  const profiles = {
+    "Chicken breast": {k:1.65,p:.31,f:.036,c:0,icon:"🍗"},
+    "Tofu": {k:.83,p:.10,f:.053,c:.012,icon:"◻️"},
+    "White fish": {k:1.25,p:.24,f:.025,c:0,icon:"🐟"},
+    "Pork": {k:1.87,p:.27,f:.087,c:0,icon:"🥩"},
+    "Rice": {k:1.30,p:.027,f:.003,c:.282,icon:"🍚"},
+    "Broccoli": {k:.35,p:.024,f:.004,c:.07,icon:"🥦"},
+    "Avocado": {k:1.60,p:.02,f:.147,c:.085,icon:"🥑"},
+    "Egg": {k:1.43,p:.126,f:.095,c:.007,icon:"🥚"},
+    "Bread": {k:2.65,p:.09,f:.032,c:.49,icon:"🍞"},
+    "Greek yogurt": {k:.97,p:.09,f:.05,c:.04,icon:"🥣"},
+    "Olive oil": {k:8.84,p:0,f:1,c:0,icon:"◉"},
+    "Dressing": {k:4.20,p:.01,f:.42,c:.06,icon:"◌"},
+    "Sauce": {k:1.20,p:.02,f:.04,c:.18,icon:"◉"},
+    "Butter": {k:7.17,p:.009,f:.81,c:.001,icon:"▰"}
+  };
+  const baseItems = [
+    {name:"Chicken breast",g:135,baseG:135,flag:false,edited:false},
+    {name:"Rice",g:160,baseG:160,flag:false,edited:false},
+    {name:"Broccoli",g:90,baseG:90,flag:false,edited:false}
+  ];
+  let items=[], scenario="fast", taps=0, typing=false, openItem=0, portionItem=0, toastTimer;
+  const $=id=>document.getElementById(id);
+  const round=n=>Math.round(n);
+  const profile=name=>profiles[name] || {k:1.2,p:.08,f:.04,c:.12,icon:"•"};
+  const nutrients=item=>{
+    const p=profile(item.name);
+    return {k:round(p.k*item.g),p:(p.p*item.g).toFixed(1),f:(p.f*item.g).toFixed(1),c:(p.c*item.g).toFixed(1)};
+  };
+  const total=()=>items.reduce((sum,item)=>sum+nutrients(item).k,0);
+  function countTap(){taps++;renderCost()}
+  function renderCost(){
+    $("railCost").textContent=taps+" tap"+(taps===1?"":"s");
+    $("railCostLabel").innerHTML=(typing?"keyboard used":"no typing")+"<br>current review cost";
+    $("inlineCost").textContent=taps+" action"+(taps===1?"":"s");
+  }
+  function render(){
+    $("items").innerHTML="";
+    items.forEach((item,i)=>{
+      const n=nutrients(item);
+      const row=document.createElement("div");
+      row.className="item"+(item.edited?" edited":"");
+      row.innerHTML=`<div class="item-top">
+        <button class="food-name" data-name="${i}"><b>${item.name}</b><span class="chev">⌄</span></button>
+        ${item.flag?'<span class="flag">Check</span>':item.edited?'<span class="changed">Changed</span>':''}
+        <span class="item-kcal">${n.k} kcal</span>
+      </div><div class="item-bottom"><span class="nutrition">${n.p}p · ${n.f}f · ${n.c}c</span>
+        <div class="amount"><button data-minus="${i}" aria-label="Decrease ${item.name}">−</button><button class="amount-value" data-portion="${i}">${round(item.g)} g</button><button data-plus="${i}" aria-label="Increase ${item.name}">＋</button></div>
+      </div>`;
+      $("items").appendChild(row);
+    });
+    const kcal=total();
+    $("totalKcal").textContent=kcal;$("saveKcal").textContent=kcal;
+    document.querySelectorAll("[data-name]").forEach(b=>b.onclick=()=>{countTap();openFood(+b.dataset.name)});
+    document.querySelectorAll("[data-minus]").forEach(b=>b.onclick=()=>adjust(+b.dataset.minus,-15));
+    document.querySelectorAll("[data-plus]").forEach(b=>b.onclick=()=>adjust(+b.dataset.plus,15));
+    document.querySelectorAll("[data-portion]").forEach(b=>b.onclick=()=>{countTap();openPortion(+b.dataset.portion)});
+    document.querySelectorAll(".addon").forEach(b=>b.classList.toggle("on",items.some(x=>x.name===b.dataset.addon)));
+    renderCost();
+  }
+  function adjust(i,delta){countTap();items[i].g=Math.max(15,items[i].g+delta);items[i].edited=true;items[i].flag=false;render();showToast(`${items[i].name}: ${items[i].g} g`)}
+  function showToast(text){clearTimeout(toastTimer);$("toast").textContent=text;$("toast").classList.add("show");toastTimer=setTimeout(()=>$("toast").classList.remove("show"),1600)}
+  function openDrawer(id){$("drawerScrim").classList.add("open");document.querySelectorAll(".drawer").forEach(x=>x.classList.remove("open"));$(id).classList.add("open")}
+  function closeDrawers(){$("drawerScrim").classList.remove("open");document.querySelectorAll(".drawer").forEach(x=>x.classList.remove("open"))}
+  function openFood(i){
+    openItem=i;const current=items[i].name;
+    $("foodDrawerTitle").textContent="Replace "+current.toLowerCase();
+    const names=current==="Rice"?["Rice","Potatoes","Pasta","Couscous","Quinoa"]:current==="Broccoli"?["Broccoli","Green beans","Asparagus","Mixed greens","Cauliflower"]:["Chicken breast","Tofu","White fish","Pork","Egg"];
+    $("foodChoices").innerHTML=names.map(name=>`<button class="choice" data-choice="${name}"><span class="choice-icon">${profile(name).icon}</span><span class="choice-txt"><b>${name}</b><span>${name===current?"Current estimate":name==="Tofu"?"Recent correction":"Nutrition updates automatically"}</span></span>${name===current?'<span class="ck">✓</span>':''}</button>`).join("");
+    document.querySelectorAll("[data-choice]").forEach(b=>b.onclick=()=>replaceFood(openItem,b.dataset.choice,true));
+    openDrawer("foodDrawer");
+  }
+  function replaceFood(i,name,count){
+    if(count)countTap();items[i].name=name;items[i].edited=true;items[i].flag=false;
+    closeDrawers();$("quickCheck").classList.remove("show");render();showToast(`Changed to ${name} · portion kept`);
+  }
+  function openPortion(i){
+    portionItem=i;const item=items[i];$("portionTitle").textContent=item.name+" portion";
+    $("smallG").textContent=round(item.baseG*.7)+" g";$("mediumG").textContent=round(item.baseG)+" g";$("largeG").textContent=round(item.baseG*1.35)+" g";$("exactGrams").value=round(item.g);
+    document.querySelectorAll(".portion").forEach(b=>b.classList.toggle("on",Math.abs(item.g-item.baseG*(+b.dataset.mult))<2));
+    openDrawer("portionDrawer");
+  }
+  function setScenario(name){
+    scenario=name;taps=0;typing=false;items=baseItems.map(x=>({...x}));
+    clearTimeout(toastTimer);$("toast").classList.remove("show");$("toast").textContent="Updated";
+    document.querySelectorAll(".scenario").forEach(b=>b.classList.toggle("on",b.dataset.scenario===name));
+    $("quickCheck").classList.remove("show");$("maybe").style.outline="";$("addFoodBtn").style.boxShadow="";
+    $("reviewSubtitle").textContent="3 foods found · looks ready to save";
+    if(name==="wrong"){items[0].flag=true;$("quickCheck").classList.add("show");$("reviewSubtitle").textContent="3 foods found · 1 quick check"}
+    if(name==="missing"){$("maybe").style.outline="2px solid var(--warn)";$("reviewSubtitle").textContent="3 foods found · optional add-ons ready"}
+    if(name==="portion"){items[1].flag=true;$("reviewSubtitle").textContent="3 foods found · rice amount may need a check"}
+    if(name==="add"){$("addFoodBtn").style.boxShadow="0 0 0 2px var(--warn)";$("reviewSubtitle").textContent="3 foods found · adding is retrieval-first"}
+    $("saved").classList.remove("show");closeDrawers();render();$("scroll").scrollTop=0;
+  }
+  function renderAddChoices(){
+    const names=["Avocado","Egg","Bread","Greek yogurt"];
+    $("addChoices").innerHTML=names.map((name,i)=>`<button class="choice" data-add="${name}"><span class="choice-icon">${profile(name).icon}</span><span class="choice-txt"><b>${name}</b><span>${i<2?"Likely in this photo":"Recently used"}</span></span></button>`).join("");
+    document.querySelectorAll("[data-add]").forEach(b=>b.onclick=()=>addFood(b.dataset.add,60,true));
+  }
+  function addFood(name,g,count){if(count)countTap();if(!items.some(x=>x.name===name))items.push({name,g,baseG:g,edited:true});closeDrawers();render();showToast(`${name} added`)}
+  document.querySelectorAll(".scenario").forEach(b=>b.onclick=()=>setScenario(b.dataset.scenario));
+  document.querySelectorAll("[data-quick-food]").forEach(b=>b.onclick=()=>{countTap();replaceFood(0,b.dataset.quickFood,false)});
+  document.querySelectorAll("[data-open-food]").forEach(b=>b.onclick=()=>{countTap();openFood(+b.dataset.openFood)});
+  document.querySelectorAll(".addon").forEach(b=>b.onclick=()=>{
+    countTap();const name=b.dataset.addon,idx=items.findIndex(x=>x.name===name);
+    if(idx>=0){items.splice(idx,1);showToast(`${name} removed`)}else{const grams=name==="Olive oil"||name==="Butter"?8:20;items.push({name,g:grams,baseG:grams,edited:true});showToast(`${name} added · tap again to remove`)}render();
+  });
+  $("addFoodBtn").onclick=()=>{countTap();renderAddChoices();openDrawer("addDrawer")};
+  $("drawerScrim").onclick=closeDrawers;
+  document.querySelectorAll(".portion").forEach(b=>b.onclick=()=>{countTap();const item=items[portionItem];item.g=Math.max(1,round(item.baseG*(+b.dataset.mult)));item.edited=true;item.flag=false;closeDrawers();render();showToast(`${item.name}: ${item.g} g`)});
+  $("exactGrams").onchange=()=>{const value=Math.max(1,+$("exactGrams").value||1);countTap();items[portionItem].g=value;items[portionItem].edited=true;items[portionItem].flag=false;closeDrawers();render()};
+  $("foodSearch").oninput=()=>typing=true;
+  $("addSearch").oninput=()=>typing=true;
+  $("foodSearchBtn").onclick=()=>{const v=$("foodSearch").value.trim();if(v){countTap();replaceFood(openItem,v,false)}};
+  $("addSearchBtn").onclick=()=>{const v=$("addSearch").value.trim();if(v)addFood(v,60,true)};
+  $("detailsBtn").onclick=()=>{countTap();showToast("Precise editor remains available as a fallback")};
+  $("saveBtn").onclick=()=>{
+    countTap();const edits=items.filter(x=>x.edited).length;
+    $("savedCopy").innerHTML=`${total()} kcal · ${edits?edits+" corrected item"+(edits===1?"":"s"):"draft accepted"}<br>Review cost: ${taps} tap${taps===1?"":"s"}, ${typing?"keyboard used":"no typing"}`;
+    $("saved").classList.add("show");
+  };
+  $("reviewAgain").onclick=()=>setScenario("wrong");
+  $("resetBtn").onclick=()=>setScenario(scenario);
+  $("themeBtn").onclick=()=>{
+    const dark=document.documentElement.dataset.theme==="dark";
+    document.documentElement.dataset.theme=dark?"light":"dark";$("themeBtn").textContent=dark?"Dark mode":"Light mode";
+  };
+  setScenario("fast");
+})();
+</script>
+</body>
+</html>

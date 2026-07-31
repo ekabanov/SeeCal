@@ -12,6 +12,7 @@
 #   SEECAL_ALLOW_NO_WEIGHTS   Set to 1 to build without weights (simulator dev
 #                             mode). Without MODELS_DIR or this flag the build
 #                             fails with instructions.
+#   SEECAL_MODEL_STACK        "factored" (default) or "v8" rollback.
 #   BUNDLE_ID                 Overrides the com.example.seecal placeholder
 #                             (required for --device unless in .secrets/release.env).
 #   DEVELOPMENT_TEAM          Apple Developer team id (required for --device
@@ -82,6 +83,9 @@ if [[ -n "${MODELS_DIR:-}" ]]; then
 fi
 if [[ -n "${SEECAL_ALLOW_NO_WEIGHTS:-}" ]]; then
     XCODEBUILD_ARGS+=("SEECAL_ALLOW_NO_WEIGHTS=${SEECAL_ALLOW_NO_WEIGHTS}")
+fi
+if [[ -n "${SEECAL_MODEL_STACK:-}" ]]; then
+    XCODEBUILD_ARGS+=("SEECAL_MODEL_STACK=${SEECAL_MODEL_STACK}")
 fi
 
 if [[ "${DEVICE_BUILD}" == "1" ]]; then

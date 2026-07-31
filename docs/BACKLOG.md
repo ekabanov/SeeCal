@@ -2,6 +2,24 @@
 
 Deferred work items. Not scheduled; picked up when prioritized. Dated when added.
 
+## Correction-first meal review (implemented 2026-07-30; usability pilot pending)
+
+The first product pivot from exact reconstruction toward fast acceptance is now
+implemented. Food names open a five-choice, database-backed replacement tray;
+replacements keep the estimated amount while changing nutrition density; each
+row has inline ±15 g controls; and the complete editor remains under **Edit
+details**. Privacy-safe local instrumentation measures active review time,
+actions, corrections, keyboard use, and save/discard/dismiss without recording
+photos, food names, or nutrition.
+
+**Next step:** run 10–15 representative meals with at least five people,
+counterbalanced against the previous form-first flow. Measure median/P90 active
+review time, keyboard rate, corrections-to-save, and abandonment. Do not add
+retrieval-first food additions, hidden-ingredient shortcuts, personalization,
+or another expensive LoRA solely from intuition; let the observed costly paths
+choose the next slice. Plan and provisional gates:
+`docs/plans/2026-07-30-correction-first-ux-plan.md`.
+
 ## Hint-assisted photo re-analysis (added 2026-07-28)
 
 **Goal:** when the photo is usable but the model identifies a food incorrectly,
@@ -315,9 +333,22 @@ selected FPB-trained C1 checkpoint cuts FPB equal-group MAE to 73.3 g and
 repairs ordering to 37/40 triads while keeping frozen N5K/NV regressions below
 10%. The subsequent calorie-regret decomposition shows a split constraint:
 true-mass non-mass floors are 53.5% of total error on all-complete N5K and
-59.7% on raw NutritionVerse, but only 26.7% on clean-72 and 41.0% on the
-NutritionVerse quality slice. The pre-agreed rule therefore resumes
-IDENTIFY-v2 now, without claiming SCALE is solved.
+26.7% on clean-72; the NutritionVerse quality slice is 41.0%. Raw
+NutritionVerse's 59.7% is retained only as a label-noise stress diagnostic.
+The pre-agreed rule therefore resumes IDENTIFY-v2 as reaching-the-floor work,
+without claiming SCALE is solved. The 33.92 kcal N5K floor itself attributes
+to 20.63 visible-label/exclusion residual, 11.82 rung-1/2 density mismatch,
+0.09 rung-3+ mismatch, and 1.39 share bucketing. Prepared-variant alias
+re-curation from train/validation is therefore the next resolver lever. Its
+signed train/validation audit is now complete: mean residual is
+−14.93/−12.60 kcal, but the median is zero and variance contributes 81–85% of
+MSE. A uniform train-derived +14.93 kcal correction worsens validation MAE
+14.02→19.55 and is rejected. Item-count-keyed train-P90 residual intervals
+validate at 92.0% overall coverage and remain shadow-only. A semantics-first
+alias pass rejects generic Fish NFS, blocks Caesar salad for lack of a dressed
+whole-dish profile, and leaves cooked wheat berry plus Pork NFS provisional:
+they improve 31 affected N5K validation groups, but have zero direct coverage
+on the NutritionVerse quality slice, so the canonical database is unchanged.
 
 Teacher follow-up diagnostics are complete. FPB is inside the numerical
 training target support, but Probe B compresses its visual mass mapping.
@@ -356,11 +387,11 @@ synthetic domain gap), MetaFood3D (637 3D objects → render unlimited angles, b
 per-object so scenes must be composed), FoodSeg103/154 (9,490 real images, avg 6
 ingredients, pixel masks — but **no nutrition or weights**, so ingredient ID only).
 
-**Next step:** complete the fresh current-contract IDENTIFY-v2 memorization
-gate, train the 1,024-pixel-capped FoodSeg primary arm, then run the matched
-fully-resolved BF2 ablation. In parallel, Probe E adds NutritionVerse-Synth at
-only 10–15% effective SCALE exposure with frozen real-domain tests and the
-existing minimax/Pareto rejection rules.
+**Next step:** finish the active 1,024-pixel-capped FoodSeg IDENTIFY-v2 primary
+arm, then run the frozen v3 taxonomy evaluation and four model-versus-oracle
+gap slices. Run Probe E after Metal frees. Resolve direct OOD support for the
+provisional wheat/pork aliases before any database promotion; do not substitute
+raw NutritionVerse or the frozen Nutrition5K test as a selector.
 
 ## Further multi-view Qwen training (v9?) (added 2026-07-28)
 

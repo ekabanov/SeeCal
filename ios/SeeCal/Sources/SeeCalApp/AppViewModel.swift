@@ -32,6 +32,9 @@ public final class AppViewModel: ObservableObject {
     /// explain why the first scan takes longer. Injected/mock runtimes are
     /// considered ready by default.
     public let modelPreparationState: ModelPreparationState
+    /// Optional local database used by the correction-first replacement tray.
+    /// The review flow remains usable through Edit details when unavailable.
+    public let nutritionCandidateProvider: (any NutritionCandidateProviding)?
 
     private let orchestrator: RuntimeOrchestrator
     private let store: MealLogStore
@@ -124,6 +127,7 @@ public final class AppViewModel: ObservableObject {
         modelPath: String? = nil,
         adapterPath: String? = nil,
         modelPreparationState: ModelPreparationState = ModelPreparationState(),
+        nutritionCandidateProvider: (any NutritionCandidateProviding)? = nil,
         now: @escaping @Sendable () -> Date = Date.init
     ) {
         self.orchestrator = orchestrator
@@ -133,6 +137,7 @@ public final class AppViewModel: ObservableObject {
         self.dailyTarget = dailyTarget
         self.modelInfo = ModelInfoResolver.resolve(modelPath: modelPath, adapterPath: adapterPath)
         self.modelPreparationState = modelPreparationState
+        self.nutritionCandidateProvider = nutritionCandidateProvider
         self.now = now
         SeeCalDiagnostics.record(
             .info,

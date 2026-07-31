@@ -412,6 +412,34 @@ public protocol NutritionResolving: Sendable {
     func resolve(name: String) async throws -> NutritionResolution
 }
 
+/// A database-backed choice shown when the user wants to replace a recognized
+/// food. Values are expressed per 100 g so the editor can preserve the current
+/// amount while swapping the nutrition density.
+public struct NutritionProfileCandidate: Equatable, Sendable, Identifiable {
+    public let profile: ResolvedNutritionProfile
+    public let displayName: String
+    public let score: Double
+
+    public init(
+        profile: ResolvedNutritionProfile,
+        displayName: String? = nil,
+        score: Double
+    ) {
+        self.profile = profile
+        self.displayName = displayName ?? profile.name
+        self.score = score
+    }
+
+    public var id: String {
+        profile.fdcID.map(String.init)
+            ?? "\(profile.dataType):\(FactoredNameNormalizer.normalize(profile.name))"
+    }
+}
+
+public protocol NutritionCandidateProviding: Sendable {
+    func candidates(for name: String, limit: Int) async -> [NutritionProfileCandidate]
+}
+
 public protocol NutritionHypothesisProviding: Sendable {
     func hypothesis(
         name: String,
@@ -444,7 +472,11 @@ public enum NutritionDatabaseError: Error, CustomStringConvertible {
     }
 }
 
-public final class SQLiteNutritionResolver: NutritionResolving, @unchecked Sendable {
+public final class SQLiteNutritionResolver:
+    NutritionResolving,
+    NutritionCandidateProviding,
+    @unchecked Sendable
+{
     private struct Candidate: Sendable {
         let normalizedName: String
         let profile: ResolvedNutritionProfile
@@ -586,6 +618,159 @@ public final class SQLiteNutritionResolver: NutritionResolving, @unchecked Senda
             profile: nil,
             estimated: true
         )
+    }
+
+    /// Returns a small, deterministic replacement set. Common visual
+    /// confusions are seeded first, then nearby database foods fill any open
+    /// slots. The current food is excluded.
+    public func candidates(
+        for name: String,
+        limit: Int = 5
+    ) async -> [NutritionProfileCandidate] {
+        guard limit > 0 else { return [] }
+        let normalized = FactoredNameNormalizer.normalize(name)
+        guard !normalized.isEmpty else { return [] }
+
+        let current = profileForCandidateQuery(normalized)
+        var output: [NutritionProfileCandidate] = []
+        var seen = Set<String>()
+
+        func append(
+            _ profile: ResolvedNutritionProfile,
+            displayName: String? = nil,
+            score: Double
+        ) {
+            let key = profile.fdcID.map(String.init)
+                ?? "\(profile.dataType):\(FactoredNameNormalizer.normalize(profile.name))"
+            guard key != current.map(profileKey), seen.insert(key).inserted else { return }
+            output.append(.init(profile: profile, displayName: displayName, score: score))
+        }
+
+        for (index, seed) in Self.replacementSeeds(for: normalized).enumerated() {
+            if let profile = profileForCandidateQuery(seed, allowLooseTokenMatch: true) {
+                append(
+                    profile,
+                    displayName: seed.capitalized,
+                    score: 1 - Double(index) * 0.01
+                )
+            }
+        }
+        if output.count >= limit {
+            return Array(output.prefix(limit))
+        }
+
+        let currentCategory = current?.category
+        var indexedCandidates: [Int64: Candidate] = [:]
+        for token in FactoredNameNormalizer.tokens(normalized) {
+            for candidate in tokenIndex[token] ?? [] {
+                if let fdcID = candidate.profile.fdcID {
+                    indexedCandidates[fdcID] = candidate
+                }
+            }
+        }
+        let compact = normalized.replacingOccurrences(of: " ", with: "")
+        let candidatePool: [Candidate]
+        if !indexedCandidates.isEmpty {
+            candidatePool = Array(indexedCandidates.values)
+        } else if let prefixCandidates = prefixIndex[String(compact.prefix(2))],
+                  !prefixCandidates.isEmpty {
+            candidatePool = prefixCandidates
+        } else {
+            candidatePool = foods
+        }
+        let ranked = candidatePool.compactMap { candidate -> (Candidate, Double)? in
+            let lexical = FactoredNameNormalizer.lexicalScore(
+                normalized,
+                candidate.normalizedName
+            )
+            let categoryBoost = candidate.profile.category == currentCategory ? 0.18 : 0
+            let score = lexical + categoryBoost
+            return score > 0 ? (candidate, score) : nil
+        }.sorted {
+            if $0.1 != $1.1 { return $0.1 > $1.1 }
+            if $0.0.normalizedName != $1.0.normalizedName {
+                return $0.0.normalizedName < $1.0.normalizedName
+            }
+            return ($0.0.profile.fdcID ?? 0) < ($1.0.profile.fdcID ?? 0)
+        }
+        for (candidate, score) in ranked {
+            append(candidate.profile, score: score)
+            if output.count >= limit { break }
+        }
+        return Array(output.prefix(limit))
+    }
+
+    private func profileForCandidateQuery(
+        _ query: String,
+        allowLooseTokenMatch: Bool = false
+    ) -> ResolvedNutritionProfile? {
+        let normalized = FactoredNameNormalizer.normalize(query)
+        if let exact = exactAliases[normalized] {
+            return exact
+        }
+        let compact = normalized.replacingOccurrences(of: " ", with: "")
+        if let exact = compactIndex[compact]?.first?.profile {
+            return exact
+        }
+        var indexedCandidates: [Int64: Candidate] = [:]
+        for token in FactoredNameNormalizer.tokens(normalized) {
+            for candidate in tokenIndex[token] ?? [] {
+                if let fdcID = candidate.profile.fdcID {
+                    indexedCandidates[fdcID] = candidate
+                }
+            }
+        }
+        let candidatePool = indexedCandidates.isEmpty
+            ? foods
+            : Array(indexedCandidates.values)
+        let best = candidatePool
+            .map { candidate in
+                let lexical = FactoredNameNormalizer.lexicalScore(
+                    normalized,
+                    candidate.normalizedName
+                )
+                let startsWithBoost = candidate.normalizedName.hasPrefix(normalized) ? 0.1 : 0
+                let specificityPenalty =
+                    Double(FactoredNameNormalizer.tokens(candidate.normalizedName).count) * 0.002
+                return (
+                    candidate.profile,
+                    lexical + startsWithBoost - specificityPenalty
+                )
+            }
+            .max { $0.1 < $1.1 }
+        let threshold = allowLooseTokenMatch ? min(fuzzyThreshold, 0.42) : fuzzyThreshold
+        return best.flatMap { $0.1 >= threshold ? $0.0 : nil }
+    }
+
+    private func profileKey(_ profile: ResolvedNutritionProfile) -> String {
+        profile.fdcID.map(String.init)
+            ?? "\(profile.dataType):\(FactoredNameNormalizer.normalize(profile.name))"
+    }
+
+    /// Small, transparent priors for frequent photo-level confusions. These
+    /// only choose among real local database rows; they never invent nutrition.
+    private static func replacementSeeds(for normalized: String) -> [String] {
+        let groups: [[String]] = [
+            ["chicken", "turkey", "tofu", "salmon", "egg", "paneer"],
+            ["beef", "pork", "chicken", "lamb", "tofu", "mushroom"],
+            ["salmon", "tuna", "white fish", "shrimp", "chicken", "tofu"],
+            ["rice", "quinoa", "pasta", "potato", "couscous", "cauliflower"],
+            ["broccoli", "green beans", "asparagus", "spinach", "zucchini", "peas"],
+            ["potato", "sweet potato", "rice", "pasta", "bread", "quinoa"],
+            ["yogurt", "cottage cheese", "sour cream", "cream cheese", "tofu"],
+            ["egg", "tofu", "chicken", "sausage", "yogurt"],
+        ]
+        let tokens = Set(FactoredNameNormalizer.tokens(normalized))
+        guard let group = groups.first(where: { candidates in
+            candidates.contains { seed in
+                tokens.contains(where: { seed.contains($0) || $0.contains(seed) })
+            }
+        }) else {
+            return []
+        }
+        return group.filter { seed in
+            !tokens.contains(where: { seed.contains($0) || $0.contains(seed) })
+        }
     }
 
     private static let foodColumns =

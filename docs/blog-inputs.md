@@ -502,6 +502,43 @@ NutritionVerse quality slice. Mass remains the larger error on clean data;
 identification and resolution dominate enough broad, messy data that the
 pre-registered rule resumed IDENTIFY-v2 in parallel.
 
+There was one more necessary correction: those oracle columns already had
+perfect names and shares, so the 33.9 kcal true-mass floor could not be blamed
+on IDENTIFY. A telescoping counterfactual audit split it into 20.6 kcal of
+visible-label/exclusion residual, 11.8 kcal of wrong density behind otherwise
+successful rung-1/2 resolutions, 1.4 kcal from five-point share buckets, and
+only 0.09 kcal from category defaults. Exact resolution was not the same thing
+as correct resolution: `wheat berry` pointed to dry wheat at 351 kcal/100 g
+while measured dishes averaged about 91, and `caesar salad` pointed to Caesar
+dressing. The resolver work therefore became train-derived prepared-variant
+re-curation; the LoRA's separate job is only to close the future
+model-versus-oracle gap. Raw NutritionVerse's noisy nutrient floor was also
+demoted from a prioritization signal in favor of its predeclared quality slice.
+
+The signed follow-up made the exclusion result less tempting to "fix" with a
+constant. Train and validation means were −14.9 and −12.6 kcal, and 80–86% of
+material residuals were underestimates, exactly as expected when omitted oil
+and dressing carry more calories than their mass. But the median was zero:
+roughly half the meals had no material residual, while the top validation
+decile carried 61% of all absolute error. Bias explained only 15–19% of MSE;
+variance explained the rest. A train-only +14.9 kcal correction cleaned up
+mean bias and RMSE but made validation MAE much worse, 14.0→19.5, so the guard
+rejected it. A more honest shadow candidate was an item-count-keyed uncertainty
+term: train-derived P90 widths ranged from effectively zero for one visible
+item to 74.8 kcal for five or more and covered 92.0% of validation overall.
+
+The preparation-state pass then demonstrated the anti-Goodhart constraint in
+practice. Mapping dry `wheat berry` to cooked wheat and generic `pork` to an
+as-consumed FNDDS profile improved their 31 affected validation groups from
+75.2 to 44.3 kcal MAE. Generic `Fish, NFS` was semantically defensible but
+worsened its affected dishes by 82.9 kcal, so it was rejected rather than
+quietly swapped for a cafeteria-density lookalike. Caesar salad had no valid
+whole-dish-with-dressing profile at all; dressing-only and no-dressing entries
+were both refused. NutritionVerse's quality slice contained none of the
+changed labels, which made its unchanged score non-evidence rather than a
+transfer victory. Wheat and pork stayed provisional, and the production
+database stayed untouched.
+
 That restart immediately paid for the tiny-overfit discipline. The old perfect
 32-image memorization result belonged to the retired percentage-output
 contract. A new `portion_units` run failed before its first update because
@@ -519,3 +556,15 @@ serving by a predicted share and averaging. On C1, eligible-record gate fires
 fell from 36.7% to 29.2% on Nutrition5K and from 16.6% to 4.2% on
 NutritionVerse (11.6% to 11.2% on FPB). The prior still loses badly as a mass
 estimate, so it remains confirmation-only evidence.
+
+The product response was to stop treating the remaining model error as purely
+an ML leaderboard problem. The first correction-first app slice turns a wrong
+food from a six-field form into a two-tap operation: tap the recognized name,
+then choose one of five likely local-database profiles. The estimated grams stay
+fixed while calories and macros switch to the selected food's density; ±15 g
+controls sit directly on each row, and the exact editor remains available.
+This also created the measurement loop the project had been missing. Review
+sessions now record active time, corrections, keyboard use, and the terminal
+outcome without retaining food names, photos, or nutrition. The next model
+decision can therefore be based on which errors actually cost people time,
+rather than which offline metric happens to look worst.

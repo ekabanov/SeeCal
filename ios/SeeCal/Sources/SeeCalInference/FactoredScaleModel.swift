@@ -2,6 +2,7 @@ import CoreGraphics
 import CoreImage
 @preconcurrency import CoreML
 import Foundation
+import SeeCalDiagnostics
 import SeeCalDomain
 
 public protocol ScalePredicting: Sendable {
@@ -218,5 +219,54 @@ public struct FactoredNutritionInferencePipeline: Sendable {
                 resolutions: resolutions
             )
         )
+    }
+}
+
+/// Shipping adapter from the factored pipeline to the app's existing scan
+/// runtime contract. The richer factored result remains available inside the
+/// pipeline; the current review UI consumes its resolved point estimates and
+/// lets the user correct names, amounts, and nutrition before saving.
+public struct FactoredNutritionRuntime: InferenceRuntime {
+    public let name = "factored_qwen_scale_resolve"
+    public let modelFamily = "qwen3.5-factored"
+
+    private let pipeline: FactoredNutritionInferencePipeline
+
+    public init(pipeline: FactoredNutritionInferencePipeline) {
+        self.pipeline = pipeline
+    }
+
+    public func isAvailable() async -> Bool {
+        true
+    }
+
+    public func infer(request: FoodScanRequest) async throws -> FoodScanResult {
+        switch try await pipeline.infer(request: request) {
+        case .notFood:
+            throw InferenceError.notFood
+        case let .meal(meal):
+            guard let result = meal.foodScanResult else {
+                let unresolved = meal.items
+                    .filter { $0.nutrition == nil }
+                    .map(\.identification.name)
+                    .joined(separator: ", ")
+                throw InferenceError.runtimeFailed(
+                    "Nutrition lookup needs manual confirmation for: \(unresolved)"
+                )
+            }
+            SeeCalDiagnostics.record(
+                .notice,
+                category: "inference",
+                name: "factored_assembly_succeeded",
+                fields: [
+                    "item_count": String(meal.items.count),
+                    "confirmation_reasons": meal.confirmationReasons
+                        .map(\.rawValue)
+                        .sorted()
+                        .joined(separator: ","),
+                ]
+            )
+            return try result.validated()
+        }
     }
 }

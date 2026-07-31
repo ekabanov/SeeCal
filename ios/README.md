@@ -62,19 +62,32 @@ $MODELS_DIR/
 └── mlx-community/Qwen3.5-4B-MLX-4bit/   base model, ~2.3 GB   (ml/download_model.sh)
 ```
 
-The **shipping LoRA adapter** and compiled **Core ML specialist** are local,
-gitignored build artifacts. By default `copy_weights.sh` sources:
+The default **real-world pilot stack** is local and gitignored. It consists of
+the E3 IDENTIFY LoRA, the compiled SCALE C1 Core ML model, and the generated
+USDA nutrition database. By default `copy_weights.sh` sources:
 
 ```
-ml/adapters_v8_numeric_4b_swift/
-ml/runs/visual-specialist/deployment/SeeCalVisualSpecialist.mlmodelc/
+ml/runs/factored/e3-v2-foodseg-1024-warm-start-12000-lr1e-5/adapter_swift/
+ml/runs/factored/deployment/compiled/SeeCalScaleC1.mlmodelc/
+ml/datasets/fdc/seecal-nutrition.sqlite
 ```
 
-Optional staged overrides may be placed at `$MODELS_DIR/adapters/` and
-`$MODELS_DIR/visual-specialist/SeeCalVisualSpecialist.mlmodelc/`. Device builds
-fail if either artifact is missing or the adapter is not stamped
-`v8-conditioned`; running the conditioned adapter without its specialist is
-not a supported shipping configuration.
+The app runs IDENTIFY and SCALE concurrently, resolves food names against the
+local database, and assembles calories and macros deterministically. A device
+build fails if any member of the selected stack is missing or mismatched.
+
+The protected conditioned-v8 stack remains available as an immediate rollback:
+
+```bash
+SEECAL_MODEL_STACK=v8 scripts/build.sh --device
+```
+
+The default is equivalent to `SEECAL_MODEL_STACK=factored`. Optional matching
+staged overrides may be placed at `$MODELS_DIR/adapters/`,
+`$MODELS_DIR/scale/SeeCalScaleC1.mlmodelc/`, or
+`$MODELS_DIR/visual-specialist/SeeCalVisualSpecialist.mlmodelc/`. Do not place
+an adapter from one stack in `$MODELS_DIR/adapters/` while selecting the other
+stack; the build rejects the mismatched version stamp.
 
 Without `MODELS_DIR` the build **fails with instructions**, unless
 `SEECAL_ALLOW_NO_WEIGHTS=1` (simulator dev mode — on the simulator,

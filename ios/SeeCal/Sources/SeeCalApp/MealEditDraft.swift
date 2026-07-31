@@ -1,5 +1,6 @@
 import Foundation
 import SeeCalDomain
+import SeeCalInference
 import SeeCalPersistence
 
 public enum MealEditDraftError: Error, Equatable, CustomStringConvertible {
@@ -181,6 +182,31 @@ public struct MealEditDraft: Equatable, Sendable {
     public mutating func replaceItem(_ item: MealItem) {
         guard let index = items.firstIndex(where: { $0.id == item.id }) else { return }
         items[index] = item
+    }
+
+    /// Replaces the food identity and nutrition density while keeping the
+    /// model's current portion estimate and immutable reset reference.
+    public mutating func replaceFood(
+        itemID: MealItem.ID,
+        with candidate: NutritionProfileCandidate
+    ) {
+        guard let index = items.firstIndex(where: { $0.id == itemID }) else { return }
+        let current = items[index]
+        let profile = candidate.profile
+        items[index] = MealItem(
+            id: current.id,
+            name: candidate.displayName,
+            grams: current.grams,
+            amountUnit: current.amountUnit,
+            base: MealItemBase(
+                grams: 100,
+                kcal: profile.kcalPer100g,
+                protein: profile.proteinPer100g,
+                fat: profile.fatPer100g,
+                carbs: profile.carbsPer100g
+            ),
+            sourceReference: current.sourceReference
+        )
     }
 
     public mutating func addItem(_ item: MealItem) {

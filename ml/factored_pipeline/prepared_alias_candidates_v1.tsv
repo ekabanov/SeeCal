@@ -1,0 +1,5 @@
+name	candidate_fdc_id	preparation_transition	semantic_justification	decision
+wheat berry	169744	dry_to_cooked_as_served	Whole cooked wheat kernels are the same visible food form; KAMUT is a wheat berry variety, not a dry-grain profile.	provisional_no_nutritionverse_support
+pork	2705862	specific_lean_roast_to_as_consumed_nfs	The emitted label supplies neither cut nor lean-only status; FNDDS Pork NFS is the matching as-consumed generic profile.	provisional_no_nutritionverse_support
+fish	2706224	raw_species_to_as_consumed_nfs	The emitted label supplies neither species nor cooking method; FNDDS Fish NFS is the matching as-consumed generic profile.	rejected_nutrition5k_validation
+caesar salad		dressing_only_to_dressed_composite	No whole-dish Caesar-with-dressing profile exists in the local FDC/FNDDS database; dressing-only and no-dressing profiles both violate the emitted label.	blocked_no_semantic_candidate

@@ -1,5 +1,6 @@
 import XCTest
 import SeeCalDomain
+import SeeCalInference
 import SeeCalPersistence
 @testable import SeeCalApp
 
@@ -209,6 +210,49 @@ final class MealEditDraftTests: XCTestCase {
             draft.items[1].id,
             edited.id
         ])
+    }
+
+    func testReplaceFoodPreservesAmountAndResetReferenceButChangesDensity() throws {
+        var draft = MealEditDraft(
+            scanResult: makeScanResult(),
+            imagePath: "/tmp/a.jpg",
+            mealType: .lunch
+        )
+        let original = draft.items[0]
+        let tofu = try ResolvedNutritionProfile(
+            fdcID: 99,
+            name: "Tofu, firm",
+            category: "Legumes",
+            kcalPer100g: 120,
+            proteinPer100g: 13,
+            fatPer100g: 7,
+            carbsPer100g: 2,
+            dataType: "Foundation"
+        )
+
+        draft.replaceFood(
+            itemID: original.id,
+            with: NutritionProfileCandidate(
+                profile: tofu,
+                displayName: "Tofu",
+                score: 1
+            )
+        )
+
+        let replaced = draft.items[0]
+        XCTAssertEqual(replaced.id, original.id)
+        XCTAssertEqual(replaced.name, "Tofu")
+        XCTAssertEqual(replaced.grams, 150)
+        XCTAssertEqual(replaced.base.grams, 100)
+        XCTAssertEqual(replaced.kcal, 180, accuracy: 0.0001)
+        XCTAssertEqual(replaced.protein, 19.5, accuracy: 0.0001)
+        XCTAssertEqual(replaced.sourceReference, original.sourceReference)
+        XCTAssertTrue(replaced.isEdited)
+
+        var reset = replaced
+        reset.resetToEstimate()
+        XCTAssertEqual(reset.name, "chicken breast")
+        XCTAssertEqual(reset.kcal, 300, accuracy: 0.0001)
     }
 
     // MARK: - Commit: edit mode -> updates the existing entry in place

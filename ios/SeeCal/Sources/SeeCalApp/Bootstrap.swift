@@ -1,4 +1,5 @@
 import Foundation
+import SeeCalDiagnostics
 import SeeCalDomain
 import SeeCalInference
 import SeeCalPersistence
@@ -53,20 +54,29 @@ public enum SeeCalBootstrap {
         config: QwenRuntimeConfig,
         mlxRunner: @escaping MLXSwiftQwenVisionEngine.Runner,
         mnnRunner: MNNQwenVisionEngine.Runner? = nil,
-        visualSpecialist: (any VisualSpecialistPredicting)? = nil
+        visualSpecialist: (any VisualSpecialistPredicting)? = nil,
+        factoredScalePredictor: (any ScalePredicting)? = nil,
+        nutritionResolver: (any NutritionResolving)? = nil,
+        nutritionDatabaseURL: URL? = nil
     ) throws -> AppViewModel {
         return try SeeCalProductionFactory.makeViewModel(
             config: config,
             mlxRunner: mlxRunner,
             mnnRunner: mnnRunner,
-            visualSpecialist: visualSpecialist
+            visualSpecialist: visualSpecialist,
+            factoredScalePredictor: factoredScalePredictor,
+            nutritionResolver: nutritionResolver,
+            nutritionCandidateProvider: makeCandidateProvider(databaseURL: nutritionDatabaseURL)
         )
     }
 
     @MainActor
     public static func makeProductionViewModelUsingMLX(
         config: QwenRuntimeConfig,
-        mnnRunner: MNNQwenVisionEngine.Runner? = nil
+        mnnRunner: MNNQwenVisionEngine.Runner? = nil,
+        nutritionDatabaseURL: URL? = nil,
+        factoredScaleModelPath: String? = nil,
+        factoredScaleCalibrationMarginGrams: Double = 0
     ) throws -> AppViewModel {
         let modelPreparationState = ModelPreparationState(phase: .notStarted)
         let engine = SeeCalMLXEngine(
@@ -81,6 +91,25 @@ public enum SeeCalBootstrap {
         } else {
             visualSpecialist = nil
         }
+        var factoredScalePredictor: (any ScalePredicting)?
+        var nutritionResolver: (any NutritionResolving)?
+        var nutritionCandidateProvider = makeCandidateProvider(
+            databaseURL: nutritionDatabaseURL
+        )
+        if let factoredScaleModelPath {
+            guard let nutritionDatabaseURL else {
+                throw NutritionDatabaseError.openFailed(
+                    "factored inference requires the bundled nutrition database"
+                )
+            }
+            let resolver = try SQLiteNutritionResolver(databaseURL: nutritionDatabaseURL)
+            factoredScalePredictor = try CoreMLScalePredictor(
+                modelPath: factoredScaleModelPath,
+                calibrationMarginGrams: factoredScaleCalibrationMarginGrams
+            )
+            nutritionResolver = resolver
+            nutritionCandidateProvider = resolver
+        }
         return try SeeCalProductionFactory.makeViewModel(
             config: config,
             mlxRunner: { imagePath, prompt in
@@ -88,16 +117,55 @@ public enum SeeCalBootstrap {
             },
             mnnRunner: mnnRunner,
             visualSpecialist: visualSpecialist,
-            modelPreparationState: modelPreparationState
+            factoredScalePredictor: factoredScalePredictor,
+            nutritionResolver: nutritionResolver,
+            modelPreparationState: modelPreparationState,
+            nutritionCandidateProvider: nutritionCandidateProvider
         )
     }
 
     @MainActor
-    public static func makeDevelopmentViewModel() -> AppViewModel {
+    public static func makeDevelopmentViewModel(
+        nutritionDatabaseURL: URL? = nil
+    ) -> AppViewModel {
         let mlxRuntime = MLXQwenRuntime(engine: DevelopmentMockQwenVisionEngine())
         let mnnRuntime = MNNQwenRuntime(engine: DevelopmentMockQwenVisionEngine())
         let orchestrator = RuntimeOrchestrator(runtimes: [mlxRuntime, mnnRuntime])
         let store = InMemoryMealLogStore()
-        return AppViewModel(orchestrator: orchestrator, store: store)
+        return AppViewModel(
+            orchestrator: orchestrator,
+            store: store,
+            nutritionCandidateProvider: makeCandidateProvider(databaseURL: nutritionDatabaseURL)
+        )
+    }
+
+    private static func makeCandidateProvider(
+        databaseURL: URL?
+    ) -> (any NutritionCandidateProviding)? {
+        guard let databaseURL else {
+            SeeCalDiagnostics.record(
+                .info,
+                category: "nutrition_database",
+                name: "replacement_database_unavailable"
+            )
+            return nil
+        }
+        do {
+            let resolver = try SQLiteNutritionResolver(databaseURL: databaseURL)
+            SeeCalDiagnostics.record(
+                .notice,
+                category: "nutrition_database",
+                name: "replacement_database_loaded"
+            )
+            return resolver
+        } catch {
+            SeeCalDiagnostics.record(
+                .error,
+                category: "nutrition_database",
+                name: "replacement_database_load_failed",
+                fields: SeeCalDiagnostics.errorFields(error)
+            )
+            return nil
+        }
     }
 }

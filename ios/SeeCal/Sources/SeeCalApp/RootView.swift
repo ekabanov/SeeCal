@@ -106,6 +106,7 @@ public struct RootView: View {
             if let draft = scanController.activeSheetDraft {
                 MealResultSheet(
                     draft: draft,
+                    candidateProvider: viewModel.nutritionCandidateProvider,
                     onPrimary: { finalDraft in
                         Task {
                             if finalDraft.isEditingExisting {

@@ -13,10 +13,21 @@ public struct ProductionRootView: View {
     }
 
     private let config: QwenRuntimeConfig
+    private let nutritionDatabaseURL: URL?
+    private let factoredScaleModelPath: String?
+    private let factoredScaleCalibrationMarginGrams: Double
     @State private var loadState: LoadState = .loading
 
-    public init(config: QwenRuntimeConfig) {
+    public init(
+        config: QwenRuntimeConfig,
+        nutritionDatabaseURL: URL? = nil,
+        factoredScaleModelPath: String? = nil,
+        factoredScaleCalibrationMarginGrams: Double = 0
+    ) {
         self.config = config
+        self.nutritionDatabaseURL = nutritionDatabaseURL
+        self.factoredScaleModelPath = factoredScaleModelPath
+        self.factoredScaleCalibrationMarginGrams = factoredScaleCalibrationMarginGrams
     }
 
     public var body: some View {
@@ -75,7 +86,11 @@ public struct ProductionRootView: View {
             category: "model_load",
             name: "simulator_mock_engine_selected"
         )
-        loadState = .loaded(SeeCalBootstrap.makeDevelopmentViewModel())
+        loadState = .loaded(
+            SeeCalBootstrap.makeDevelopmentViewModel(
+                nutritionDatabaseURL: nutritionDatabaseURL
+            )
+        )
 #else
         do {
             let startedAt = DispatchTime.now().uptimeNanoseconds
@@ -85,7 +100,12 @@ public struct ProductionRootView: View {
                 name: "production_runtime_configuration_started",
                 fields: ["adapter_configured": String(config.adapterPath != nil)]
             )
-            let vm = try SeeCalBootstrap.makeProductionViewModelUsingMLX(config: config)
+            let vm = try SeeCalBootstrap.makeProductionViewModelUsingMLX(
+                config: config,
+                nutritionDatabaseURL: nutritionDatabaseURL,
+                factoredScaleModelPath: factoredScaleModelPath,
+                factoredScaleCalibrationMarginGrams: factoredScaleCalibrationMarginGrams
+            )
             loadState = .loaded(vm)
             SeeCalDiagnostics.record(
                 .notice,

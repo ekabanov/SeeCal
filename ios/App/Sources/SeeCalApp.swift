@@ -11,27 +11,40 @@ import SeeCalInference
 /// see `ModelAssetResolver`).
 @main
 struct SeeCalHostApp: App {
+    private let runtimeConfig: QwenRuntimeConfig
+    private let nutritionDatabaseURL: URL?
+    private let factoredScaleModelPath: String?
+    private let factoredScaleCalibrationMarginGrams: Double
+
     init() {
         SeeCalDiagnostics.record(.notice, category: "app", name: "process_started")
+        let assets = ModelAssetResolver.resolveInferenceAssets()
+        runtimeConfig = QwenRuntimeConfig(
+            modelPath: ModelAssetResolver.resolveModelPath(),
+            adapterPath: assets.adapterPath,
+            visualSpecialistModelPath: assets.visualSpecialistModelPath,
+            runtimePolicy: .mlxOnly,
+            // IDENTIFY emits a much smaller object than the monolith, while
+            // retaining headroom for unusually long visible-component lists.
+            maxOutputTokens: assets.factoredScaleModelPath == nil ? 1536 : 512,
+            temperature: 0.1,
+            timeoutSeconds: 180,
+            maxAttemptsPerRuntime: 1
+        )
+        nutritionDatabaseURL = ModelAssetResolver.resolveNutritionDatabaseURL()
+        factoredScaleModelPath = assets.factoredScaleModelPath
+        factoredScaleCalibrationMarginGrams =
+            assets.factoredScaleCalibrationMarginGrams
     }
 
     var body: some Scene {
         WindowGroup {
             ProductionRootView(
-                config: QwenRuntimeConfig(
-                    modelPath: ModelAssetResolver.resolveModelPath(),
-                    adapterPath: ModelAssetResolver.resolveAdapterPath(),
-                    visualSpecialistModelPath: ModelAssetResolver.resolveVisualSpecialistModelPath(),
-                    runtimePolicy: .mlxOnly,
-                    // Matches the eval's max_tokens (ml/infer.py) so the app can't
-                    // truncate a long ingredient list where the eval had headroom.
-                    // Ground-truth JSON is ~700 tokens at p90, so this only costs
-                    // extra time on unusually long outputs.
-                    maxOutputTokens: 1536,
-                    temperature: 0.1,
-                    timeoutSeconds: 180,
-                    maxAttemptsPerRuntime: 1
-                )
+                config: runtimeConfig,
+                nutritionDatabaseURL: nutritionDatabaseURL,
+                factoredScaleModelPath: factoredScaleModelPath,
+                factoredScaleCalibrationMarginGrams:
+                    factoredScaleCalibrationMarginGrams
             )
         }
     }

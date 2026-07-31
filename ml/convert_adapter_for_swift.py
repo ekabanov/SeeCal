@@ -45,7 +45,7 @@ import re
 import sys
 from pathlib import Path
 
-import mlx.core as mx
+from safetensors.numpy import load_file, save_file
 
 LAYER_RE = re.compile(r"\.layers\.(\d+)\.")
 # module path relative to the decoder layer, e.g. "self_attn.q_proj"
@@ -121,7 +121,11 @@ def main():
     version = args.version or version_from_dirname(adapter_dir.name)
 
     config = json.loads((adapter_dir / "adapter_config.json").read_text())
-    weights = mx.load(str(adapter_dir / "adapters.safetensors"))
+    # Adapter conversion is a key rename/config rewrite and does not require
+    # model execution. Keep it CPU-only so packaging works in headless build
+    # environments where importing/saving through MLX would try to create a
+    # Metal device.
+    weights = load_file(str(adapter_dir / "adapters.safetensors"))
 
     keys = sorted(weights.keys())
     fmt = detect_format(keys)
@@ -167,7 +171,7 @@ def main():
         swift_config["seecal_adapter_version"] = version
 
     out_dir.mkdir(parents=True, exist_ok=True)
-    mx.save_safetensors(str(out_dir / "adapters.safetensors"), converted)
+    save_file(converted, str(out_dir / "adapters.safetensors"))
     (out_dir / "adapter_config.json").write_text(json.dumps(swift_config, indent=2) + "\n")
 
     # Summary

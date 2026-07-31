@@ -14,8 +14,51 @@ enum ModelAssetResolver {
     private static let bundledAdapterFolderName = "adapters"
     private static let adapterRequiredFiles = ["adapter_config.json", "adapters.safetensors"]
     private static let conditionedAdapterVersion = "v8-conditioned"
+    private static let factoredAdapterVersion = "factored-e3-foodseg-c1"
+    private static let supportedAdapterVersions = [
+        conditionedAdapterVersion,
+        factoredAdapterVersion,
+    ]
     private static let bundledSpecialistSubdirectory = "Models/visual-specialist"
     private static let bundledSpecialistFolderName = "SeeCalVisualSpecialist.mlmodelc"
+    private static let bundledScaleSubdirectory = "Models/scale"
+    private static let bundledScaleFolderName = "SeeCalScaleC1.mlmodelc"
+    private static let factoredScaleCalibrationMarginGrams = 129.55438232421875
+    private static let bundledNutritionDatabase = "Models/nutrition/seecal-nutrition.sqlite"
+
+    struct InferenceAssets {
+        let adapterPath: String?
+        let visualSpecialistModelPath: String?
+        let factoredScaleModelPath: String?
+        let factoredScaleCalibrationMarginGrams: Double
+    }
+
+    static func resolveInferenceAssets() -> InferenceAssets {
+        let adapterPath = resolveAdapterPath()
+        switch adapterPath.flatMap(adapterVersion) {
+        case factoredAdapterVersion:
+            return InferenceAssets(
+                adapterPath: adapterPath,
+                visualSpecialistModelPath: nil,
+                factoredScaleModelPath: resolveFactoredScaleModelPath(),
+                factoredScaleCalibrationMarginGrams: Self.factoredScaleCalibrationMarginGrams
+            )
+        case conditionedAdapterVersion:
+            return InferenceAssets(
+                adapterPath: adapterPath,
+                visualSpecialistModelPath: resolveVisualSpecialistModelPath(),
+                factoredScaleModelPath: nil,
+                factoredScaleCalibrationMarginGrams: 0
+            )
+        default:
+            return InferenceAssets(
+                adapterPath: adapterPath,
+                visualSpecialistModelPath: nil,
+                factoredScaleModelPath: nil,
+                factoredScaleCalibrationMarginGrams: 0
+            )
+        }
+    }
 
     static func resolveModelPath() -> String {
         if let bundledPath = bundledModelPath() {
@@ -90,9 +133,7 @@ enum ModelAssetResolver {
 
     /// Resolves the LoRA adapter directory using the same lookup order as the model:
     /// bundled resources, then (device) Documents / Application Support.
-    /// Returns nil when no correctly stamped adapter is present; conditioned
-    /// runtime validation then fails explicitly instead of silently pairing
-    /// the specialist with the base model or a legacy adapter.
+    /// Returns nil when no supported, correctly stamped adapter is present.
     static func resolveAdapterPath() -> String? {
         if let bundledPath = bundledAdapterPath() {
             SeeCalDiagnostics.record(
@@ -108,9 +149,10 @@ enum ModelAssetResolver {
         // Keep the selected conditioned adapter in sync with
         // SHIPPING_ADAPTER in ios/App/copy_weights.sh.
         let localDevPaths = [
+            "/Users/jevgenikabanov/Documents/Projects/Claude/SeeCal/ml/runs/factored/e3-v2-foodseg-1024-warm-start-12000-lr1e-5/adapter_swift",
             "/Users/jevgenikabanov/Documents/Projects/Claude/SeeCal/ml/adapters_v8_numeric_4b_swift"
         ]
-        for localDevPath in localDevPaths where isConditionedAdapterDirectory(localDevPath) {
+        for localDevPath in localDevPaths where isSupportedAdapterDirectory(localDevPath) {
             SeeCalDiagnostics.record(
                 .notice,
                 category: "model_assets",
@@ -130,7 +172,7 @@ enum ModelAssetResolver {
             documents.appendingPathComponent("\(bundledAdapterFolderName)", isDirectory: true),
             appSupport.appendingPathComponent("\(bundledAdapterSubdirectory)/\(bundledAdapterFolderName)", isDirectory: true),
         ]
-        for candidate in candidates where isConditionedAdapterDirectory(candidate.path) {
+        for candidate in candidates where isSupportedAdapterDirectory(candidate.path) {
             SeeCalDiagnostics.record(
                 .notice,
                 category: "model_assets",
@@ -144,7 +186,7 @@ enum ModelAssetResolver {
         SeeCalDiagnostics.record(
             .error,
             category: "model_assets",
-            name: "conditioned_adapter_not_found"
+            name: "supported_adapter_not_found"
         )
         return nil
     }
@@ -219,6 +261,101 @@ enum ModelAssetResolver {
         return expected
     }
 
+    /// Resolve SCALE C1 for the factored device-test stack. As with the v8
+    /// specialist, return the expected bundled path when absent so bootstrap
+    /// reports a concrete missing-model error.
+    static func resolveFactoredScaleModelPath() -> String {
+        if let base = Bundle.main.resourceURL?
+            .appendingPathComponent(bundledScaleSubdirectory, isDirectory: true) {
+            let bundled = base
+                .appendingPathComponent(bundledScaleFolderName, isDirectory: true)
+                .path
+            if isDirectory(bundled) {
+                SeeCalDiagnostics.record(
+                    .notice,
+                    category: "model_assets",
+                    name: "factored_scale_resolved",
+                    fields: ["source": "bundled"]
+                )
+                return bundled
+            }
+        }
+
+#if targetEnvironment(simulator)
+        let localDevPath =
+            "/Users/jevgenikabanov/Documents/Projects/Claude/SeeCal/ml/runs/factored/deployment/compiled/SeeCalScaleC1.mlmodelc"
+        if isDirectory(localDevPath) {
+            return localDevPath
+        }
+#else
+        let fm = FileManager.default
+        let documents = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let appSupport = fm.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let candidates = [
+            documents.appendingPathComponent(
+                "\(bundledScaleSubdirectory)/\(bundledScaleFolderName)",
+                isDirectory: true
+            ),
+            appSupport.appendingPathComponent(
+                "\(bundledScaleSubdirectory)/\(bundledScaleFolderName)",
+                isDirectory: true
+            ),
+        ]
+        if let candidate = candidates.first(where: { isDirectory($0.path) }) {
+            return candidate.path
+        }
+#endif
+
+        SeeCalDiagnostics.record(
+            .fault,
+            category: "model_assets",
+            name: "factored_scale_not_found"
+        )
+        return Bundle.main.bundleURL
+            .appendingPathComponent(bundledScaleSubdirectory, isDirectory: true)
+            .appendingPathComponent(bundledScaleFolderName, isDirectory: true)
+            .path
+    }
+
+    static func resolveNutritionDatabaseURL() -> URL? {
+        if let resourceURL = Bundle.main.resourceURL {
+            let bundled = resourceURL.appendingPathComponent(bundledNutritionDatabase)
+            if FileManager.default.fileExists(atPath: bundled.path) {
+                return bundled
+            }
+        }
+
+#if targetEnvironment(simulator)
+        let local = URL(
+            fileURLWithPath:
+                "/Users/jevgenikabanov/Documents/Projects/Claude/SeeCal/ml/datasets/fdc/seecal-nutrition.sqlite"
+        )
+        if FileManager.default.fileExists(atPath: local.path) {
+            return local
+        }
+#else
+        let fileManager = FileManager.default
+        let documents = fileManager.urls(for: .documentDirectory, in: .userDomainMask)[0]
+        let appSupport = fileManager.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
+        let candidates = [
+            documents.appendingPathComponent(bundledNutritionDatabase),
+            appSupport.appendingPathComponent(bundledNutritionDatabase),
+        ]
+        if let candidate = candidates.first(where: {
+            fileManager.fileExists(atPath: $0.path)
+        }) {
+            return candidate
+        }
+#endif
+
+        SeeCalDiagnostics.record(
+            .error,
+            category: "model_assets",
+            name: "nutrition_database_not_found"
+        )
+        return nil
+    }
+
     private static func bundledAdapterPath() -> String? {
         guard
             let base = Bundle.main.resourceURL?
@@ -228,7 +365,7 @@ enum ModelAssetResolver {
         }
 
         let adapterPath = base.appendingPathComponent(bundledAdapterFolderName, isDirectory: true).path
-        return isConditionedAdapterDirectory(adapterPath) ? adapterPath : nil
+        return isSupportedAdapterDirectory(adapterPath) ? adapterPath : nil
     }
 
     private static func isAdapterDirectory(_ path: String) -> Bool {
@@ -243,16 +380,21 @@ enum ModelAssetResolver {
         }
     }
 
-    private static func isConditionedAdapterDirectory(_ path: String) -> Bool {
-        guard isAdapterDirectory(path) else { return false }
+    private static func adapterVersion(_ path: String) -> String? {
+        guard isAdapterDirectory(path) else { return nil }
         let configURL = URL(fileURLWithPath: path, isDirectory: true)
             .appendingPathComponent("adapter_config.json")
         guard let data = try? Data(contentsOf: configURL),
               let object = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let version = object["seecal_adapter_version"] as? String else {
-            return false
+            return nil
         }
-        return version == conditionedAdapterVersion
+        return version
+    }
+
+    private static func isSupportedAdapterDirectory(_ path: String) -> Bool {
+        guard let version = adapterVersion(path) else { return false }
+        return supportedAdapterVersions.contains(version)
     }
 
     private static func isDirectory(_ path: String) -> Bool {

@@ -37,6 +37,8 @@ they exist; on a fresh clone they do not, and some cost hours to rebuild:
 | `ml/adapters_v8_numeric_4b/` | 1.3 GB | retrain from `finetune_data_v8_numeric` (see visual-specialist plan) |
 | `ml/adapters_v8_numeric_4b_swift/` | 128 MB | `cd ml && ./convert.sh adapters_v8_numeric_4b --version v8-conditioned` |
 | `ml/runs/visual-specialist/deployment/SeeCalVisualSpecialist.mlmodelc/` | 9.5 MB | export S1 best checkpoint, then `xcrun coremlcompiler compile` |
+| `ml/runs/factored/e3-v2-foodseg-1024-warm-start-12000-lr1e-5/adapter_swift/` | 124 MB | convert its final adapter with `convert_adapter_for_swift.py --version factored-e3-foodseg-c1` |
+| `ml/runs/factored/deployment/compiled/SeeCalScaleC1.mlmodelc/` | 8.2 MB | export C1 `best.pt` with Python 3.12/coremltools, then `xcrun coremlcompiler compile` |
 | `ml/runs/factored/scale-v1/` | 33 MB | `make_scale_data.py`, then `python -m visual_specialist.scale train/evaluate/export` |
 | `ml/runs/factored/scale-v2-probe-b-nv-1024/` | ~17 MB | regenerate `datasets/scale_v2_nc_1024`, then use the run config preserved beside the checkpoint |
 | `ml/datasets/fdc/seecal-nutrition.sqlite` | 7.2 MB | `cd ml && ./download_fdc.sh`, then apply the reviewed base and NutritionVerse official-Train alias files with `make_alias_table.py` |
@@ -51,9 +53,10 @@ they exist; on a fresh clone they do not, and some cost hours to rebuild:
 | `ml/negatives/`, `ml/coco/` | 48 + 19 MB | `cd ml && ./download_negatives.sh` then `make_negatives.py jsonl` |
 | `ml/finetune_data_v7b/` | 5.1 MB | `make_v7_data.py --neg-train-cap 100 --out-dir finetune_data_v7b` |
 
-**`adapters_v8_numeric_4b` is the shipping adapter; `adapters_v7b` remains the
-protected rollback baseline.** Both exist only on this machine. Do not delete
-either casually.
+**The factored E3 + SCALE C1 stack is the default real-world device-test
+build. `adapters_v8_numeric_4b` is the protected stable rollback, and
+`adapters_v7b` is the older rollback baseline.** All exist only on this
+machine. Do not delete any casually.
 
 ## Conventions
 
@@ -78,7 +81,7 @@ either casually.
 
 ```bash
 cd ml && .venv/bin/python -m pytest tests/        # ml pipeline unit tests (90)
-cd ios/SeeCal && swift test -Xcxx -DFMT_CONSTEVAL= # Swift package tests (219; 3 env-gated skips)
+cd ios/SeeCal && swift test -Xcxx -DFMT_CONSTEVAL= # Swift package tests (235; 3 env-gated skips)
 scripts/test.sh                                    # both of the above + iOS build check
 scripts/test.sh --skip-build                       # skip the slow xcodebuild step
 scripts/build.sh --device                          # signed device build (bundles weights)
@@ -161,6 +164,28 @@ verified off a green `swift test`.
 
 ## Current state (2026-07-30)
 
+- **Factored stack selected for the real-world pilot (2026-07-31).** Device
+  builds now default to the completed E3 IDENTIFY adapter
+  (`factored-e3-foodseg-c1`), SCALE C1 Core ML model, local USDA resolver, and
+  deterministic assembler. IDENTIFY and SCALE run concurrently. The frozen
+  IDENTIFY eval has 0/354 parse/schema/repair/rejection failures, 29/29
+  non-food refusals, and zero false refusals. The compiled SCALE artifact
+  matches Python closely and measures 39.3 g MAE on the 325-image Nutrition5K
+  overhead parity set. The assembled E3 candidate is 41.0 kcal MAE on
+  clean-72 versus its 38.5 kcal current-SCALE oracle. This is a field pilot,
+  not a Stage-3 accuracy promotion: physical-device latency, memory, thermal,
+  and real-photo behavior still need measurement. Use
+  `SEECAL_MODEL_STACK=v8 scripts/build.sh --device` for the protected rollback.
+- **Correction-first UX first slice implemented, usability pilot pending.**
+  Tapping a gram-based food opens five likely local-database replacements;
+  selection preserves amount, swaps nutrition density, and retains the model
+  reset reference. Ingredient rows have inline ±15 g controls and the complete
+  field editor remains under Edit details. Privacy-safe local instrumentation
+  records active review time, correction/action counts, keyboard use, and
+  outcome without food names, photos, or nutrition values. The generated
+  7.2 MB nutrition database is bundled at device build time. This alternative
+  is not yet the binding visual spec; measure it against the form-first flow
+  before expanding it.
 - **Factored pipeline migration (2026-07-29): Stage 0–1 implemented in
   shadow, not shipping.** Frozen IDENTIFY schema/parity/smoke gates, USDA
   SQLite RESOLVE ladder, paired E0/E1/E2 harness, deterministic Swift
@@ -207,16 +232,35 @@ verified off a green `swift test`.
   MAE on 66 shared valid scenes and wins 66.7% of scenes; one v8 generation
   fails parsing. The teacher-required regret decomposition changes the
   binding-constraint decision: the true-mass floor is 53.5% of total C1
-  calorie MAE on all complete N5K groups and 59.7% on raw NV Val, versus
-  26.7% on clean-72 and 41.0% on the NV quality slice. Per the pre-agreed
-  half-total rule, IDENTIFY-v2 LoRA resumes with a fresh current-contract
+  calorie MAE on all complete N5K groups, versus 26.7% on clean-72 and 41.0%
+  on the NV quality slice. Raw NV's 59.7% is discounted for prioritization
+  because its floor contains known nutrient-label noise. Per the pre-agreed
+  half-total rule, IDENTIFY-v2 LoRA resumes as reaching-the-floor work with a
+  fresh current-contract
   memorization gate, FoodSeg primary arm, then matched +BF2 ablation. The
   FoodSeg manifests now cap images at 1,024 px after the first tiny run caught
   a 2,048-token truncation mismatch before any weight update. The corrected
   20-epoch probe reached loss 0.000125 and reproduced 32/32 names, containers,
   and portion units exactly with no parse/schema failure or repair; the
   two-epoch 7,677-record FoodSeg primary run is active at
-  `runs/factored/e3-v2-foodseg-1024/adapter`. USDA serving
+  `runs/factored/e3-v2-foodseg-1024/adapter`. The N5K all-complete 33.92 kcal
+  floor is now attributed exactly: 20.63 visible-label/exclusion residual,
+  11.82 rung-1/2 density mismatch, 0.09 rung-3+ mismatch, and 1.39 share
+  bucketing. Thus prepared-variant re-curation from train/validation is the
+  resolver workstream; finer buckets and category expansion are rejected. The
+  signed exclusion audit confirms systematic underestimation when a residual
+  exists (train/val mean −14.93/−12.60 kcal; 85.6%/80.0% of material residuals
+  are negative), but the median is zero and variance is 81–85% of MSE. A
+  train-derived uniform +14.93 kcal correction worsens validation MAE
+  14.02→19.55 and is rejected. Item-count-keyed train-P90 floor intervals reach
+  92.0% validation coverage and remain a shadow uncertainty candidate. The
+  semantics-first prepared-alias audit rejects generic Fish NFS, blocks Caesar
+  salad because no dressed composite exists, and leaves cooked wheat berry plus
+  Pork NFS provisional: together they improve affected N5K validation groups
+  75.19→44.34 kcal MAE, but NutritionVerse quality has zero matching labels, so
+  no alias is promoted and the canonical database is unchanged.
+  The LoRA is accountable only for the post-run model-minus-oracle C1 gap,
+  which the evaluation script now emits for four slices. USDA serving
   evidence remains gate-only; Swift now sums one selected item portion and
   never averages across serving kinds. Stage-3
   device/product gates still block shipping; v8 remains the shipping/rollback
@@ -252,7 +296,7 @@ verified off a green `swift test`.
   E4B is 5.15 GB plain / 7.48 GB OptiQ, too big to bundle. Qwen3.5-4B stays.
   Fine-tuning, not base-model choice, does the heavy lifting.
 - **iOS app**: full product build-out complete against the prototype spec.
-  219 Swift (3 env-gated skips) + 90 ml tests; `scripts/build.sh` /
+  235 Swift (3 env-gated skips) + 174 ml tests; `scripts/build.sh` /
   `scripts/test.sh` green. The signed device build bundles the
   `v8-conditioned` adapter and 9.5 MB compiled Core ML specialist. The real
   specialist Core ML scaffold passes on macOS; physical-device

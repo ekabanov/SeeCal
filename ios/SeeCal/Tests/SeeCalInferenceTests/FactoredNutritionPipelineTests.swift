@@ -18,6 +18,22 @@ private struct StubNutritionResolver: NutritionResolving {
     }
 }
 
+private struct StubFoodIdentifier: FoodIdentifying {
+    let identification: FoodIdentification
+
+    func identify(request: FoodScanRequest) async throws -> FoodIdentification {
+        identification
+    }
+}
+
+private struct StubScalePredictor: ScalePredicting {
+    let prediction: FactoredScalePrediction
+
+    func predict(imagePath: String) async throws -> FactoredScalePrediction {
+        prediction
+    }
+}
+
 final class FactoredNutritionPipelineTests: XCTestCase {
     func testPromptMatchesFrozenPythonContract() {
         XCTAssertEqual(
@@ -155,6 +171,50 @@ final class FactoredNutritionPipelineTests: XCTestCase {
         XCTAssertTrue(meal.confirmationReasons.isEmpty)
     }
 
+    func testFactoredRuntimeBridgesResolvedMealToScanResult() async throws {
+        let identification = try FoodIdentification(
+            notFood: false,
+            container: .bowl,
+            items: [IdentifiedFoodItem(name: "rice", sharePercent: 100)]
+        )
+        let scale = try FactoredScalePrediction(
+            massGrams: .init(estimate: 200, low: 150, high: 250)
+        )
+        let profile = try ResolvedNutritionProfile(
+            fdcID: 1,
+            name: "Rice, cooked",
+            category: "Grains",
+            kcalPer100g: 130,
+            proteinPer100g: 2.7,
+            fatPer100g: 0.3,
+            carbsPer100g: 28,
+            dataType: "fixture"
+        )
+        let runtime = FactoredNutritionRuntime(
+            pipeline: FactoredNutritionInferencePipeline(
+                identifier: StubFoodIdentifier(identification: identification),
+                scalePredictor: StubScalePredictor(prediction: scale),
+                resolver: StubNutritionResolver(
+                    resolutions: [
+                        "rice": NutritionResolution(
+                            query: "rice",
+                            rung: .exactAlias,
+                            score: 1,
+                            profile: profile,
+                            estimated: false
+                        )
+                    ]
+                )
+            )
+        )
+        let result = try await runtime.infer(
+            request: FoodScanRequest(imagePath: "/tmp/unused.jpg", mealType: .lunch)
+        )
+        XCTAssertEqual(result.items.map(\.name), ["rice"])
+        XCTAssertEqual(result.items[0].estimatedGrams, 200)
+        XCTAssertEqual(result.totalCalories, 260)
+    }
+
     func testUnresolvedItemIsVisibleAndNeverBecomesZeros() throws {
         let identification = try FoodIdentification(
             notFood: false,
@@ -282,6 +342,55 @@ final class FactoredNutritionPipelineTests: XCTestCase {
         XCTAssertEqual(exact.profile?.fdcID, 1)
     }
 
+    func testReplacementCandidatesUseRealProfilesAndExcludeCurrentFood() async throws {
+        let url = FileManager.default.temporaryDirectory
+            .appendingPathComponent(UUID().uuidString)
+            .appendingPathExtension("sqlite")
+        defer { try? FileManager.default.removeItem(at: url) }
+        var database: OpaquePointer?
+        XCTAssertEqual(sqlite3_open(url.path, &database), SQLITE_OK)
+        let sql = """
+        CREATE TABLE foods(
+          fdc_id INTEGER PRIMARY KEY,name TEXT,normalized_name TEXT,category TEXT,
+          data_type TEXT,kcal_per_100g REAL,source_kcal_per_100g REAL,
+          protein_per_100g REAL,fat_per_100g REAL,carbs_per_100g REAL,
+          typical_portion_g REAL);
+        CREATE TABLE aliases(
+          normalized_alias TEXT,fdc_id INTEGER,priority INTEGER,source TEXT);
+        CREATE TABLE category_defaults(
+          category TEXT PRIMARY KEY,name TEXT,normalized_name TEXT,
+          kcal_per_100g REAL,source_kcal_per_100g REAL,protein_per_100g REAL,
+          fat_per_100g REAL,carbs_per_100g REAL,typical_portion_g REAL,
+          data_type TEXT);
+        INSERT INTO foods VALUES
+          (1,'Chicken breast','chicken breast','Poultry','Foundation',165,NULL,31,3.6,0,100),
+          (2,'Turkey breast','turkey breast','Poultry','Foundation',135,NULL,30,1,0,100),
+          (3,'Tofu, firm','tofu firm','Legumes','Foundation',120,NULL,13,7,2,100),
+          (4,'Salmon, cooked','salmon cooked','Fish','Foundation',206,NULL,22,12,0,100),
+          (5,'Egg, whole','egg whole','Eggs','Foundation',143,NULL,13,10,1,50),
+          (6,'Paneer','paneer','Dairy','Foundation',265,NULL,18,21,2,100);
+        INSERT INTO aliases VALUES
+          ('chicken',1,10,'test'),
+          ('turkey',2,10,'test'),
+          ('tofu',3,10,'test'),
+          ('salmon',4,10,'test'),
+          ('egg',5,10,'test'),
+          ('paneer',6,10,'test');
+        """
+        XCTAssertEqual(sqlite3_exec(database, sql, nil, nil, nil), SQLITE_OK)
+        sqlite3_close(database)
+
+        let resolver = try SQLiteNutritionResolver(databaseURL: url)
+        let candidates = await resolver.candidates(for: "chicken breast", limit: 5)
+
+        XCTAssertEqual(candidates.map(\.displayName), [
+            "Turkey", "Tofu", "Salmon", "Egg", "Paneer",
+        ])
+        XCTAssertEqual(candidates.map(\.profile.fdcID), [2, 3, 4, 5, 6])
+        XCTAssertFalse(candidates.contains { $0.profile.fdcID == 1 })
+        XCTAssertTrue(candidates.allSatisfy { $0.profile.kcalPer100g > 0 })
+    }
+
     func testShadowPipelineCanExerciseCurrentV8Names() async throws {
         let profile = try ResolvedNutritionProfile(
             fdcID: 1,
@@ -402,6 +511,62 @@ final class FactoredNutritionPipelineTests: XCTestCase {
         XCTAssertLessThanOrEqual(coverage, 0.85)
     }
 
+    func testRealScaleC1CoreMLPointMatchesPythonWhenPresent() async throws {
+        let repository = URL(fileURLWithPath: #filePath)
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+            .deletingLastPathComponent()
+        let model = repository.appendingPathComponent(
+            "ml/runs/factored/deployment/compiled/SeeCalScaleC1.mlmodelc",
+            isDirectory: true
+        )
+        let evaluation = repository.appendingPathComponent(
+            "ml/runs/factored/scale-v2-probe-c1-fpb-center/" +
+                "eval-nutrition5k-overhead-calibrated.json"
+        )
+        guard FileManager.default.fileExists(atPath: model.path),
+              FileManager.default.fileExists(atPath: evaluation.path)
+        else {
+            throw XCTSkip("Local SCALE C1 artifacts are gitignored")
+        }
+        let data = try Data(contentsOf: evaluation)
+        let json = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        let paired = try XCTUnwrap(json["paired"] as? [[String: Any]])
+        let predictor = try CoreMLScalePredictor(
+            modelPath: model.path,
+            calibrationMarginGrams: 129.55438232421875
+        )
+        var relativeErrors = [Double]()
+        var absoluteTargetErrors = [Double]()
+        for row in paired {
+            let groupID = try XCTUnwrap(row["group_id"] as? String)
+            let image = repository.appendingPathComponent(
+                "ml/dataset_clean/\(groupID)/overhead.jpg"
+            )
+            let actual = try await predictor.predict(imagePath: image.path)
+            let expected = try XCTUnwrap(row["p50_g"] as? Double)
+            let target = try XCTUnwrap(row["target_mass_g"] as? Double)
+            relativeErrors.append(
+                abs(actual.massGrams.estimate - expected) / max(expected, 1)
+            )
+            absoluteTargetErrors.append(abs(actual.massGrams.estimate - target))
+        }
+        let meanRelativeDrift =
+            relativeErrors.reduce(0, +) / Double(relativeErrors.count)
+        let coreMLMAE =
+            absoluteTargetErrors.reduce(0, +) / Double(absoluteTargetErrors.count)
+        print(
+            "[FactoredNutritionPipelineTests] SCALE C1 Core ML: " +
+                "mean P50 relative drift=\(meanRelativeDrift), MAE=\(coreMLMAE)"
+        )
+        XCTAssertLessThan(meanRelativeDrift, 0.10)
+        XCTAssertLessThan(coreMLMAE, 44.13)
+    }
+
     func testRealPrunedNutritionDatabaseWhenPresent() async throws {
         let repository = URL(fileURLWithPath: #filePath)
             .deletingLastPathComponent()
@@ -438,5 +603,15 @@ final class FactoredNutritionPipelineTests: XCTestCase {
             XCTAssertEqual(resolution.rung, expected.0)
             XCTAssertEqual(resolution.profile?.category, expected.1)
         }
+        let chickenAlternatives = await resolver.candidates(
+            for: "chicken breast",
+            limit: 5
+        )
+        XCTAssertEqual(chickenAlternatives.count, 5)
+        XCTAssertEqual(
+            chickenAlternatives.prefix(5).map(\.displayName),
+            ["Turkey", "Tofu", "Salmon", "Egg", "Paneer"]
+        )
+        XCTAssertTrue(chickenAlternatives.allSatisfy { $0.profile.kcalPer100g > 0 })
     }
 }

@@ -1,23 +1,32 @@
 import SwiftUI
 import SeeCalDomain
+import SeeCalInference
 
 /// Shared fresh-result and logged-meal editor. The summary and focused
 /// ingredient editor are two panels inside this one sheet.
 struct MealResultSheet: View {
     @State private var draft: MealEditDraft
     @State private var editor: IngredientEditorDraft?
+    @State private var replacementTarget: ReplacementTarget?
+    @State private var replacementCandidates: [NutritionProfileCandidate] = []
+    @State private var isLoadingReplacements = false
+    @State private var candidateLoadTask: Task<Void, Never>?
+    @State private var reviewRecorder = MealReviewSessionRecorder()
     @State private var deletedItem: DeletedItem?
     @State private var undoTask: Task<Void, Never>?
     @State private var isCommitting = false
     @State private var confirmsMealDeletion = false
+    @Environment(\.scenePhase) private var scenePhase
 
     private let onPrimary: (MealEditDraft) -> Void
     private let onSecondary: () -> Void
     private let onDeleteMeal: (MealEditDraft) -> Void
     private let onDraftChanged: (MealEditDraft) -> Void
+    private let candidateProvider: (any NutritionCandidateProviding)?
 
     init(
         draft: MealEditDraft,
+        candidateProvider: (any NutritionCandidateProviding)? = nil,
         onPrimary: @escaping (MealEditDraft) -> Void,
         onSecondary: @escaping () -> Void,
         onDeleteMeal: @escaping (MealEditDraft) -> Void = { _ in },
@@ -29,6 +38,7 @@ struct MealResultSheet: View {
         self.onSecondary = onSecondary
         self.onDeleteMeal = onDeleteMeal
         self.onDraftChanged = onDraftChanged
+        self.candidateProvider = candidateProvider
     }
 
     var body: some View {
@@ -37,6 +47,8 @@ struct MealResultSheet: View {
 
             if editor != nil {
                 ingredientEditor
+            } else if replacementTarget != nil {
+                replacementTray
             } else {
                 summary
             }
@@ -47,6 +59,18 @@ struct MealResultSheet: View {
         }
         .onDisappear {
             undoTask?.cancel()
+            candidateLoadTask?.cancel()
+            reviewRecorder.finish(.dismissed)
+        }
+        .onAppear {
+            reviewRecorder.start()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                reviewRecorder.resume()
+            } else {
+                reviewRecorder.pause()
+            }
         }
         .alert("Delete this meal?", isPresented: $confirmsMealDeletion) {
             Button("Cancel", role: .cancel) {}
@@ -108,6 +132,9 @@ struct MealResultSheet: View {
                         .foregroundStyle(Theme.appInk)
                         .lineLimit(1...2)
                         .accessibilityLabel("Meal name")
+                        .simultaneousGesture(TapGesture().onEnded {
+                            reviewRecorder.record(.keyboardUsed)
+                        })
 
                     Image(systemName: "pencil")
                         .font(.system(size: 12, weight: .semibold))
@@ -244,57 +271,235 @@ struct MealResultSheet: View {
                 if index > 0 {
                     Divider().overlay(Theme.appLine)
                 }
-                Button {
-                    editor = IngredientEditorDraft(item: item)
-                } label: {
-                    itemRow(item)
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel("Edit \(item.name)")
+                itemRow(item)
             }
         }
     }
 
     private func itemRow(_ item: MealItem) -> some View {
-        HStack(spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                HStack(spacing: 6) {
-                    Text(item.name.capitalized)
-                        .font(.system(size: 15, weight: .semibold))
-                        .foregroundStyle(Theme.appInk)
-                        .lineLimit(1)
-                    if item.sourceReference?.source == .barcode {
-                        statusChip("Label")
-                    } else if item.isManual {
-                        statusChip("Added")
-                    } else if item.isEdited {
-                        statusChip("Edited")
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(spacing: 10) {
+                Button {
+                    openReplacements(for: item)
+                } label: {
+                    HStack(spacing: 6) {
+                        Text(item.name.capitalized)
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(Theme.appInk)
+                            .lineLimit(1)
+                        Image(systemName: "chevron.down")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(Theme.basil)
                     }
+                    .contentShape(Rectangle())
                 }
-                Text("\(Int(item.grams.rounded())) \(item.amountUnit.symbol) · \(item.protein.formattedOneDecimal)p · \(item.fat.formattedOneDecimal)f · \(item.carbs.formattedOneDecimal)c")
+                .buttonStyle(.plain)
+                .accessibilityLabel("Replace \(item.name)")
+
+                if item.sourceReference?.source == .barcode {
+                    statusChip("Label")
+                } else if item.isManual {
+                    statusChip("Added")
+                } else if item.isEdited {
+                    statusChip("Edited")
+                }
+
+                Spacer(minLength: 0)
+
+                Text("\(Int(item.kcal.rounded())) kcal")
+                    .font(.system(size: 14, weight: .bold))
+                    .monospacedDigit()
+                    .foregroundStyle(Theme.appInk)
+            }
+
+            HStack(spacing: 8) {
+                amountButton(systemName: "minus", item: item, delta: -15)
+
+                Text("\(Int(item.grams.rounded())) \(item.amountUnit.symbol)")
+                    .font(.system(size: 13, weight: .bold))
+                    .monospacedDigit()
+                    .foregroundStyle(Theme.appInk)
+                    .frame(minWidth: 58)
+                    .accessibilityLabel("Amount \(Int(item.grams.rounded())) \(item.amountUnit.symbol)")
+
+                amountButton(systemName: "plus", item: item, delta: 15)
+
+                Spacer(minLength: 8)
+
+                Text("\(item.protein.formattedOneDecimal)p · \(item.fat.formattedOneDecimal)f · \(item.carbs.formattedOneDecimal)c")
                     .font(.system(size: 12))
                     .foregroundStyle(Theme.appInk2)
                     .monospacedDigit()
                     .lineLimit(1)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-
-            VStack(alignment: .trailing, spacing: 0) {
-                Text("\(Int(item.kcal.rounded()))")
-                    .font(.system(size: 14, weight: .bold))
-                    .monospacedDigit()
-                    .foregroundStyle(Theme.appInk)
-                Text("kcal")
-                    .font(.system(size: 10.5, weight: .semibold))
-                    .foregroundStyle(Theme.appInk2)
-            }
-
-            Image(systemName: "chevron.right")
-                .font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(Theme.appInk2.opacity(0.7))
         }
         .padding(.vertical, 11)
-        .contentShape(Rectangle())
+    }
+
+    private func amountButton(
+        systemName: String,
+        item: MealItem,
+        delta: Double
+    ) -> some View {
+        Button {
+            draft.stepGrams(itemID: item.id, by: delta)
+            reviewRecorder.record(.amountChanged)
+        } label: {
+            Image(systemName: systemName)
+                .font(.system(size: 11, weight: .bold))
+                .foregroundStyle(Theme.appInk)
+                .frame(width: 30, height: 30)
+                .background(Theme.appBg)
+                .clipShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(delta < 0 ? "Decrease amount by 15" : "Increase amount by 15")
+    }
+
+    private func openReplacements(for item: MealItem) {
+        guard item.amountUnit == .grams else {
+            editor = IngredientEditorDraft(item: item)
+            reviewRecorder.record(.itemOpened)
+            reviewRecorder.record(.detailsOpened)
+            return
+        }
+        replacementTarget = ReplacementTarget(itemID: item.id, originalName: item.name)
+        replacementCandidates = []
+        isLoadingReplacements = candidateProvider != nil
+        reviewRecorder.record(.itemOpened)
+        candidateLoadTask?.cancel()
+        guard let candidateProvider else { return }
+        candidateLoadTask = Task { @MainActor in
+            let candidates = await candidateProvider.candidates(for: item.name, limit: 5)
+            guard !Task.isCancelled, replacementTarget?.itemID == item.id else { return }
+            replacementCandidates = candidates
+            isLoadingReplacements = false
+        }
+    }
+
+    // MARK: - Fast replacement
+
+    private var replacementTray: some View {
+        VStack(spacing: 0) {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(spacing: 10) {
+                        Button {
+                            candidateLoadTask?.cancel()
+                            replacementTarget = nil
+                        } label: {
+                            Image(systemName: "chevron.left")
+                                .font(.system(size: 15, weight: .bold))
+                                .foregroundStyle(Theme.appInk)
+                                .frame(width: 34, height: 34)
+                                .background(Theme.appBg)
+                                .clipShape(Circle())
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("Back to meal")
+
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text("Replace food")
+                                .font(.system(size: 19, weight: .bold))
+                                .foregroundStyle(Theme.appInk)
+                            Text(replacementTarget?.originalName.capitalized ?? "")
+                                .font(.system(size: 12))
+                                .foregroundStyle(Theme.appInk2)
+                                .lineLimit(1)
+                        }
+                        Spacer()
+                    }
+                    .padding(.top, 6)
+
+                    Text("Choose a likely match. The amount stays the same and nutrition updates automatically.")
+                        .font(.system(size: 12.5))
+                        .foregroundStyle(Theme.appInk2)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    if isLoadingReplacements {
+                        HStack(spacing: 10) {
+                            ProgressView()
+                            Text("Finding alternatives…")
+                                .font(.system(size: 14, weight: .semibold))
+                                .foregroundStyle(Theme.appInk2)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .center)
+                        .padding(.vertical, 28)
+                    } else if replacementCandidates.isEmpty {
+                        Text("No quick matches yet. You can still edit all details.")
+                            .font(.system(size: 14))
+                            .foregroundStyle(Theme.appInk2)
+                            .frame(maxWidth: .infinity, alignment: .center)
+                            .padding(.vertical, 24)
+                    } else {
+                        VStack(spacing: 8) {
+                            ForEach(replacementCandidates) { candidate in
+                                replacementButton(candidate)
+                            }
+                        }
+                    }
+
+                    Button {
+                        openDetailedEditor()
+                    } label: {
+                        Label("Edit details", systemImage: "slider.horizontal.3")
+                            .font(.system(size: 14, weight: .bold))
+                            .foregroundStyle(Theme.appInk)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 13)
+                            .background(Theme.appBg)
+                            .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+                    }
+                    .buttonStyle(.plain)
+                }
+                .padding(.horizontal, 20)
+                .padding(.bottom, 24)
+            }
+        }
+    }
+
+    private func replacementButton(_ candidate: NutritionProfileCandidate) -> some View {
+        Button {
+            guard let itemID = replacementTarget?.itemID else { return }
+            draft.replaceFood(itemID: itemID, with: candidate)
+            reviewRecorder.record(.replacementSelected)
+            replacementTarget = nil
+        } label: {
+            HStack(spacing: 12) {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(candidate.displayName)
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(Theme.appInk)
+                        .lineLimit(1)
+                    Text(candidate.profile.category)
+                        .font(.system(size: 11.5))
+                        .foregroundStyle(Theme.appInk2)
+                        .lineLimit(1)
+                }
+                Spacer(minLength: 6)
+                Text("\(Int(candidate.profile.kcalPer100g.rounded())) kcal/100g")
+                    .font(.system(size: 12, weight: .bold))
+                    .monospacedDigit()
+                    .foregroundStyle(Theme.appInk2)
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundStyle(Theme.basil)
+            }
+            .padding(.vertical, 13)
+            .padding(.horizontal, 14)
+            .background(Theme.appBg)
+            .clipShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func openDetailedEditor() {
+        guard let itemID = replacementTarget?.itemID,
+              let item = draft.items.first(where: { $0.id == itemID })
+        else { return }
+        replacementTarget = nil
+        editor = IngredientEditorDraft(item: item)
+        reviewRecorder.record(.detailsOpened)
     }
 
     private func statusChip(_ title: String) -> some View {
@@ -311,6 +516,7 @@ struct MealResultSheet: View {
     private var addIngredientButton: some View {
         Button {
             editor = IngredientEditorDraft()
+            reviewRecorder.record(.detailsOpened)
         } label: {
             Label("Add ingredient", systemImage: "plus")
                 .font(.system(size: 14, weight: .bold))
@@ -384,7 +590,10 @@ struct MealResultSheet: View {
                 background: Theme.appBg,
                 foreground: Theme.appInk,
                 disabled: isCommitting,
-                action: onSecondary
+                action: {
+                    reviewRecorder.finish(.discarded)
+                    onSecondary()
+                }
             )
             sheetButton(
                 draft.isEditingExisting ? "Save changes" : "Log meal",
@@ -394,6 +603,7 @@ struct MealResultSheet: View {
             ) {
                 guard !isCommitting, draft.isValid else { return }
                 isCommitting = true
+                reviewRecorder.finish(.saved)
                 onPrimary(draft)
             }
         }
@@ -418,7 +628,8 @@ struct MealResultSheet: View {
                 editor: binding,
                 onCancel: { editor = nil },
                 onDone: saveIngredient,
-                onDelete: deleteIngredient
+                onDelete: deleteIngredient,
+                onKeyboardEntry: { reviewRecorder.record(.keyboardUsed) }
             )
         }
     }
@@ -427,6 +638,7 @@ struct MealResultSheet: View {
         guard let editor, let item = editor.makeItem() else { return }
         if editor.originalItem == nil {
             draft.addItem(item)
+            reviewRecorder.record(.ingredientAdded)
         } else {
             draft.replaceItem(item)
         }
@@ -439,6 +651,7 @@ struct MealResultSheet: View {
         else { return }
 
         editor = nil
+        reviewRecorder.record(.ingredientDeleted)
         undoTask?.cancel()
         deletedItem = DeletedItem(item: removed.item, index: removed.index)
         undoTask = Task {
@@ -475,6 +688,11 @@ private struct DeletedItem {
     let index: Int
 }
 
+private struct ReplacementTarget {
+    let itemID: MealItem.ID
+    let originalName: String
+}
+
 // MARK: - Ingredient editor panel
 
 private struct IngredientEditorPanel: View {
@@ -482,6 +700,7 @@ private struct IngredientEditorPanel: View {
     let onCancel: () -> Void
     let onDone: () -> Void
     let onDelete: () -> Void
+    let onKeyboardEntry: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -586,6 +805,7 @@ private struct IngredientEditorPanel: View {
                 .padding(.vertical, 12)
                 .background(Theme.appBg)
                 .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .simultaneousGesture(TapGesture().onEnded { _ in onKeyboardEntry() })
         }
     }
 
@@ -610,6 +830,7 @@ private struct IngredientEditorPanel: View {
                     .monospacedDigit()
                     .foregroundStyle(Theme.appInk)
                     .numericKeyboard()
+                    .simultaneousGesture(TapGesture().onEnded { _ in onKeyboardEntry() })
                 Text(unit)
                     .font(.system(size: 13, weight: .semibold))
                     .foregroundStyle(Theme.appInk2)
